@@ -7,6 +7,8 @@
 > - `deepseek-harness`：`47f943859bef60e4160492346772ded9b24f765a`（`master`）
 >
 > 三个 commit 均与审计时 GitHub 远端分支一致。OmO 的 GitHub 引用固定到上述 commit；DSH 与 Legion 结论来自当前本地源码及其测试。
+>
+> **Edition caveat：** 矩阵中的 OmO 列是 OpenCode、Senpi 与共享 core 的能力并集，不代表一个统一 runtime 同时具备全部语义。OpenCode/Senpi 的 task depth、TTL、concurrency、resume/reconcile 和 goal wiring 并不相同；durable scoped resume 主要由 Senpi task runtime提供。Legion 不应把跨 edition 并集直接当作单一 parity target。
 
 ## 1. Executive verdict
 
@@ -71,8 +73,8 @@ Legion 目前没有这些 opinionated orchestration policies。更准确的定�
 | Planner → executor → reviewer | Prometheus/Atlas/Metis/Momus/Oracle | plan/goal/workflow/skills primitives | 只有 `deep/quick/review` profiles，无阶段协议 | **P1 缺口** |
 | Synthesis/quorum/voting | Team/high-accuracy review | workflow 可脚本化，但无现成 policy | 无 | **P1 缺口** |
 | Bounded retry/backoff | task/runtime fallback/circuit breaker | LLM exact-route retry；无 semantic retry | 无 | **P1 缺口** |
-| Provider/model concurrency quota | global/provider/model FIFO limits | workflow per-run cap；无 provider/model pool | 无 | **P1 缺口** |
-| Whole-execution limits | depth/TTL/residency/wall-clock/tool calls | depth、goal rounds、workflow total分别存在 | 只有 child maxDepth/maxTokens | **P1 缺口** |
+| Provider/model concurrency quota | default/provider/model keyed FIFO limits；OpenCode/Senpi 语义不同，并非统一 global pool | workflow per-run cap；无 provider/model pool | 无 | **P1 缺口** |
+| Whole-execution limits | 各 edition 分散提供 depth/TTL/residency/wall-clock/tool-call limits | depth、goal rounds、workflow total分别存在 | 只有 child maxDepth/maxTokens | **P1 缺口** |
 | Cost/token/time budget | 部分 token/cost routing能力 | token usage可观测；goal只计 rounds | 无 aggregate budget | **P1 缺口** |
 | Durable task/run ledger | Senpi task state/reconcile + boulder plan | durable child Session + goal + jobs | Legion 自身无 execution/run state | **策略 ledger 缺口；勿复制 Session** |
 | Accumulated wisdom | Atlas notepad + task learnings | transcript/skills/goal存在，但不自动归纳传递 | 无 | **P1/P2 缺口** |
@@ -365,6 +367,10 @@ DSH 已有 Web subagent conversation tree。tmux/worktree可作为 optional adap
 ### 7.6 默认 telemetry、全量兼容层和外围工具复制
 
 Legion 不需要自己的 DAU telemetry、LSP/AST/MCP实现、Claude兼容层或第二套 AGENTS loader。DSH 已有对应 seams；analytics应由部署统一治理。
+
+### 7.7 把多个 edition 的能力并集伪装成一个 runtime contract
+
+OmO 的 OpenCode、Senpi 与 Codex editions 并非同一 task/goal/runtime 实现。Legion 应先定义一份 DSH-native contract，再按需要提供 adapter；不能把某 edition 的 durable resume、另一 edition 的 Team hooks、以及共享 core 的 schema 合并后宣称一个单体系统全部保证。
 
 ## 8. 推荐路线图
 
