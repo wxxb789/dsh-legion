@@ -25,7 +25,7 @@ Legion 是一个可开源的 **module**，让一个 SOTA 主 agent 在 DSH/Cordi
 
 ## 2. 经只读检查确认的正式 DSH/Cordis 模式
 
-设计以 `Q:\repos\deepseek-harness` 当前实现为依据：
+设计以 `deepseek-ai/deepseek-harness` 的固定审计版本为依据：
 
 1. Host composition 持有跨 Session singleton：`subagents` registry、spawn/fork backend、Agent/Session registry、持久化、sandbox/approval、model route。Agent preset 只贡献本 Session 的工具、persona、prompt section 等。
 2. `SubagentProvider` 是正式 transport seam：具名注册、声明 `capabilities` 与 `inheritsParentContext`，通过 `start()` 返回可释放的 `SubagentRun`；不支持能力时由 runtime 在调用前拒绝。

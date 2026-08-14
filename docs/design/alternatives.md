@@ -39,7 +39,7 @@
 
 ## 3. 正式 Harness patterns 的只读检查
 
-本节仅依据 `Q:\repos\deepseek-harness` 的正式源码、package metadata、preset composition 与 subsystem docs。
+本节仅依据 `deepseek-ai/deepseek-harness` 的正式源码、package metadata、preset composition 与 subsystem docs。
 
 ### 3.1 Cordis package pattern
 
@@ -706,4 +706,4 @@ MVP 至少覆盖：
 - LLM Adapter registry：`packages/llm/llm/README.md`
 - Multi-provider config behavior：`packages/llm/llm-pi-ai/README.md`
 
-以上 paths 均相对于 `Q:\repos\deepseek-harness`，检查过程为只读。
+以上 paths 均相对于 `deepseek-ai/deepseek-harness` 仓库根目录，检查过程为只读。

@@ -1,6 +1,6 @@
 # oh-my-openagent 能力深度只读审计：面向 dsh-legion 的比较
 
-> **审计基线**：本地只读 checkout `Q:\repos\oh-my-openagent`；当前 HEAD `038ed0cbbefe2b40677b63867aeea0d16bc303e0`；远程 `https://github.com/code-yeongyu/oh-my-openagent.git`。本文所有 GitHub 链接固定到该 commit。本次未修改被审计仓库。
+> **审计基线**：`code-yeongyu/oh-my-openagent` 的只读 checkout；当前 HEAD `038ed0cbbefe2b40677b63867aeea0d16bc303e0`。本文所有 GitHub 链接固定到该 commit。本次未修改被审计仓库。
 >
 > **判定口径**：产品文档只证明“承诺/设计意图”；源码入口、持久化结构、状态转换与测试才证明“已实现”。“真实实现”也不等于三个 edition 行为完全一致：ROADMAP 明确称最大 OpenCode adapter 仍强耦合，且 `omo.json` 目前是 **senpi-first**，OpenCode 仍读取自己的 legacy config chain，两套配置“zero interaction today”（本地 `ROADMAP.md:65-79`；[固定链接](https://github.com/code-yeongyu/oh-my-openagent/blob/038ed0cbbefe2b40677b63867aeea0d16bc303e0/ROADMAP.md#L65-L79)）。
 

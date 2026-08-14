@@ -1,6 +1,6 @@
 # DSH 原生能力与 Legion 非重复边界审计
 
-> 审计对象：`Q:\repos\deepseek-harness`，HEAD `47f943859bef60e4160492346772ded9b24f765a`。
+> 审计对象：`deepseek-ai/deepseek-harness`，HEAD `47f943859bef60e4160492346772ded9b24f765a`。
 > 方法：只读审计当前 HEAD 的一手源码与仓库文档；本文只讨论 DSH 已有能力和仍可由 Legion 占据的 seam，不评价 oh-my-openagent 的具体实现质量。
 
 ## 结论摘要

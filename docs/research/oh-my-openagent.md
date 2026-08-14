@@ -1,6 +1,6 @@
 # oh-my-openagent 对 DSH 的可迁移能力研究
 
-> 研究基线：本地只读 checkout `Q:\repos\oh-my-openagent`，GitHub 默认分支 `dev`，核验时 HEAD 为 `038ed0cbbefe2b40677b63867aeea0d16bc303e0`，工作树干净。研究覆盖 README、docs、ROADMAP、package metadata 及完整 `packages/*` 源码；以下引用仍使用固定到该 commit 的 GitHub URL，避免后续漂移。
+> 研究基线：`code-yeongyu/oh-my-openagent` 的只读 checkout，GitHub 默认分支 `dev`，核验时 HEAD 为 `038ed0cbbefe2b40677b63867aeea0d16bc303e0`。研究覆盖 README、docs、ROADMAP、package metadata 及完整 `packages/*` 源码；以下引用仍使用固定到该 commit 的 GitHub URL，避免后续漂移。
 
 ## 结论摘要
 

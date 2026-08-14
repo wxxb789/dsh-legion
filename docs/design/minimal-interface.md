@@ -19,7 +19,7 @@ Legion 是一个可开源的 orchestration **module**：由一个 SOTA 主 agent
 
 ## 2. 正式扩展模式的只读核对
 
-对 `Q:\repos\deepseek-harness` 的只读检查显示：
+对 `deepseek-ai/deepseek-harness` 固定版本的只读检查显示：
 
 - Host composition 持有跨 session 的 `subagents` registry 及 provider；agent preset 只贡献 model-facing delegation tools。
 - `@deepseek-ai/dsh-tool-subagent` 是单 provider 的薄 tool **adapter**；其配置支持 `provider`、`toolName`、`agentOptions`、`persona`、`toolFilter` 与 `maxDepth`。

@@ -1,6 +1,6 @@
 # Official Senpi Core Inspirations for dsh-legion
 
-> Status: supporting design exploration; the canonical prioritized roadmap is [`omo-senpi-inspirations-and-pitfalls.md`](../research/omo-senpi-inspirations-and-pitfalls.md). Research baseline: `Q:\repos\senpi` at `779c065d3e784168f2bf277112e2351f9d0d1424`, `Q:\repos\deepseek-harness` native seams, and the shipped dsh-legion v0.1 implementation. Senpi labels itself an experimental, in-flight pi-mono fork, so this document borrows tested design patterns rather than treating its interfaces as a dependency or compatibility target [Senpi README](https://github.com/code-yeongyu/senpi/blob/779c065d3e784168f2bf277112e2351f9d0d1424/README.md#L9-L22).
+> Status: supporting design exploration; the canonical prioritized roadmap is [`omo-senpi-inspirations-and-pitfalls.md`](../research/omo-senpi-inspirations-and-pitfalls.md). Research baseline: `code-yeongyu/senpi` at `779c065d3e784168f2bf277112e2351f9d0d1424`, `deepseek-ai/deepseek-harness` native seams, and the shipped dsh-legion v0.1 implementation. Senpi labels itself an experimental, in-flight pi-mono fork, so this document borrows tested design patterns rather than treating its interfaces as a dependency or compatibility target [Senpi README](https://github.com/code-yeongyu/senpi/blob/779c065d3e784168f2bf277112e2351f9d0d1424/README.md#L9-L22).
 
 ## 1. Decision
 

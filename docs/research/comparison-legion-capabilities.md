@@ -1,6 +1,6 @@
 # dsh-legion 当前 HEAD 能力对照审计
 
-> 审计基线：`Q:\repos\dsh-legion`，分支 `main`，HEAD `1897d305b9e416fa704d6d464607ab38f14400e6`。本报告以源码、测试、composition、package metadata 为事实源；`docs/design/*` 中明确标为 superseded 的文本仅作为历史声明核对，不视为当前 contract。
+> 审计基线：`wxxb789/dsh-legion`，分支 `main`，HEAD `1897d305b9e416fa704d6d464607ab38f14400e6`。本报告以源码、测试、composition、package metadata 为事实源；`docs/design/*` 中明确标为 superseded 的文本仅作为历史声明核对，不视为当前 contract。
 
 ## 1. 结论摘要
 
