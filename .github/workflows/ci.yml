@@ -24,3 +24,5 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: pnpm install
       - run: pnpm run check
+      - if: matrix.node == 24
+        run: pnpm run test:profile-install

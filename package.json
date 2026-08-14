@@ -27,9 +27,11 @@
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "verify:pack": "npm pack --dry-run --ignore-scripts",
+    "test:profile-install": "node scripts/verify-profile-install.mjs",
+    "check": "pnpm run typecheck && pnpm run build && pnpm run test && pnpm run verify:pack",
     "prepare": "pnpm run build",
-    "prepack": "pnpm run typecheck && pnpm run test"
+    "prepack": "pnpm run typecheck && pnpm run build && pnpm run test"
   },
   "keywords": [
     "deepseek-harness",

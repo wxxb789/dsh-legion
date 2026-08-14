@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Let the DSH continuation manager enforce depth and install persona/tool filters instead of incorrectly applying one-shot provider capability flags to continuable children.
 - Prove profile-local package resolution with a real AgentPresets mount rather than only a mocked Loader importer.
 - Cover foreground result, disposal, and combined failure settlement paths.
+- Clarify that a clean local checkout must build `lib/` before profile installation, without requiring profile-level build approval.
+- Validate the bundle manifest, patch, packed file inventory, and packed-tarball installation into a real profile preset mount.
 
 ## [0.1.0] - 2026-08-14
 

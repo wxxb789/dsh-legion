@@ -56,7 +56,12 @@ Not yet supported:
 
 ### From a local checkout
 
+A local checkout needs built `lib/` artifacts, but profile-level build approval is not required. Prepare a clean checkout first, then add it:
+
 ```powershell
+cd Q:\repos\dsh-legion
+pnpm install
+pnpm run build
 dsh plugin --profile web add Q:\repos\dsh-legion
 ```
 
