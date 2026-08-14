@@ -1,6 +1,8 @@
 toolName: legion
 defaultProfile: quick
 enableRunInBackground: true
+resourceRoots:
+  bundled: resources
 
 profiles:
   quick:
@@ -33,3 +35,6 @@ profiles:
     maxDepth: 2
     defaultRunInBackground: false
     result: review-v1
+    promptFiles:
+      - root: bundled
+        path: review.md

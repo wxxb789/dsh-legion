@@ -5,12 +5,20 @@ import type { Config, LegionProfile, ResultContract } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import {
+  EMPTY_RESOURCE_SNAPSHOT,
+  assertResourceSnapshot,
+  renderPromptFragments,
+  type LoadedPromptFragment,
+  type ResourceSnapshot,
+} from './resources.ts'
+import {
   CatalogDigest as catalogDigest,
   PolicyDigest as policyDigest,
   ProfileName as profileName,
   type CatalogDigest,
   type PolicyDigest,
   type ProfileName,
+  type ResourceDigest,
 } from './identity.ts'
 
 export const WARNING_DIAGNOSTIC_CODES = [
@@ -58,12 +66,19 @@ export interface RuntimeSnapshot {
 
 export type EffectiveMode = 'foreground' | 'continuable'
 
-export interface EffectiveProfile extends LegionProfile {
+export interface EffectiveProfile extends Omit<LegionProfile, 'agentOptions' | 'toolFilter' | 'promptFiles'> {
   readonly name: ProfileName
+  readonly agentOptions?: Readonly<NonNullable<LegionProfile['agentOptions']>>
+  readonly toolFilter?: {
+    readonly allow?: readonly string[]
+    readonly deny?: readonly string[]
+  }
+  readonly promptFiles?: readonly Readonly<NonNullable<LegionProfile['promptFiles']>[number]>[]
   readonly active: boolean
   readonly defaultMode: EffectiveMode
   readonly allowedModes: readonly EffectiveMode[]
   readonly result: ResultContract
+  readonly promptFragments: readonly LoadedPromptFragment[]
 }
 
 export class CatalogCompileError extends Error {
@@ -92,6 +107,8 @@ export interface DelegationPlan {
   readonly result: ResultContract
   readonly policyDigest: PolicyDigest
   readonly catalogDigest: CatalogDigest
+  readonly resourceDigest: ResourceDigest
+  readonly promptFragments: readonly LoadedPromptFragment[]
   readonly agentOptions?: LegionProfile['agentOptions']
   readonly persona?: string
   readonly toolFilter?: LegionProfile['toolFilter']
@@ -115,13 +132,20 @@ export interface CompiledCatalog {
   readonly configuredDefaultProfile?: ProfileName
   readonly defaultProfile?: ProfileName
   readonly guidance?: string
-  readonly profiles: Record<string, EffectiveProfile>
-  readonly activeProfiles: Record<string, EffectiveProfile>
-  readonly diagnostics: Diagnostic[]
+  readonly profiles: Readonly<Record<string, EffectiveProfile>>
+  readonly activeProfiles: Readonly<Record<string, EffectiveProfile>>
+  readonly diagnostics: readonly Diagnostic[]
   /** Digest of authored policy after schema defaults, independent of live provider state. */
   readonly policyDigest: PolicyDigest
   /** Digest of policy plus the runtime provider snapshot used for this compilation. */
   readonly catalogDigest: CatalogDigest
+  readonly resourceDigest: ResourceDigest
+}
+
+function copyPromptFragments(
+  fragments: readonly LoadedPromptFragment[],
+): readonly LoadedPromptFragment[] {
+  return Object.freeze(fragments.map(fragment => Object.freeze({ ...fragment })))
 }
 
 function copyProfile(
@@ -130,28 +154,46 @@ function copyProfile(
   active: boolean,
   defaultMode: EffectiveMode,
   allowedModes: readonly EffectiveMode[],
+  promptFragments: readonly LoadedPromptFragment[],
 ): EffectiveProfile {
-  return {
+  const agentOptions = profile.agentOptions === undefined
+    ? undefined
+    : Object.freeze({ ...profile.agentOptions })
+  const toolFilter = profile.toolFilter === undefined
+    ? undefined
+    : Object.freeze({
+        ...profile.toolFilter.allow === undefined
+          ? {}
+          : { allow: Object.freeze([...profile.toolFilter.allow]) },
+        ...profile.toolFilter.deny === undefined
+          ? {}
+          : { deny: Object.freeze([...profile.toolFilter.deny]) },
+      })
+  const promptFiles = profile.promptFiles === undefined
+    ? undefined
+    : Object.freeze(profile.promptFiles.map(reference => Object.freeze({ ...reference })))
+  return Object.freeze({
     name,
     description: profile.description,
     subagentProvider: profile.subagentProvider,
-    ...profile.agentOptions === undefined ? {} : { agentOptions: { ...profile.agentOptions } },
+    ...agentOptions === undefined ? {} : { agentOptions },
     ...profile.persona === undefined ? {} : { persona: profile.persona },
-    ...profile.toolFilter === undefined
-      ? {}
-      : {
-          toolFilter: {
-            ...profile.toolFilter.allow === undefined ? {} : { allow: [...profile.toolFilter.allow] },
-            ...profile.toolFilter.deny === undefined ? {} : { deny: [...profile.toolFilter.deny] },
-          },
-        },
+    ...toolFilter === undefined ? {} : { toolFilter },
     maxDepth: profile.maxDepth,
     defaultRunInBackground: profile.defaultRunInBackground,
     result: profile.result ?? 'text',
+    ...promptFiles === undefined ? {} : { promptFiles },
+    promptFragments: copyPromptFragments(promptFragments),
     active,
     defaultMode,
-    allowedModes: [...allowedModes],
-  }
+    allowedModes: Object.freeze([...allowedModes]),
+  })
+}
+
+function deepFreeze<Value>(value: Value): Value {
+  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
+  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
+  return Object.freeze(value)
 }
 
 function canonical(value: unknown): unknown {
@@ -192,8 +234,13 @@ export function assertCatalogUsable(catalog: CompiledCatalog): void {
  * policy and a plain provider snapshot. No Cordis or DSH live object crosses
  * this seam.
  */
-export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): CompiledCatalog {
-  config = materializeConfig(config)
+export function compileCatalog(
+  input: Config,
+  snapshot: RuntimeSnapshot,
+  resources: ResourceSnapshot = EMPTY_RESOURCE_SNAPSHOT,
+): CompiledCatalog {
+  const config = materializeConfig(input)
+  assertResourceSnapshot(config, resources)
   const diagnostics: Diagnostic[] = []
   const profiles: Record<string, EffectiveProfile> = {}
   const activeProfiles: Record<string, EffectiveProfile> = {}
@@ -202,6 +249,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     const identity = profileName(name)
     const profile = config.profiles[name]!
     const result = profile.result ?? 'text'
+    const promptFragments = resources.profiles[name] ?? []
     const defaultMode: EffectiveMode = config.enableRunInBackground && profile.defaultRunInBackground
       ? 'continuable'
       : 'foreground'
@@ -218,7 +266,8 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
       })
     } else {
       const depthSupported = typeof profile.maxDepth !== 'number' || provider.capabilities.depthLimit
-      const personaSupported = profile.persona === undefined || provider.capabilities.persona
+      const personaSupported = (profile.persona === undefined && promptFragments.length === 0)
+        || provider.capabilities.persona
       const toolFilterSupported = profile.toolFilter === undefined || provider.capabilities.toolFilter
       const outputSupported = result === 'text' || provider.capabilities.outputSchema
       foregroundSupported = depthSupported && personaSupported && toolFilterSupported && outputSupported
@@ -255,7 +304,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
             diagnostics,
             identity,
             'PROFILE_PERSONA_UNSUPPORTED',
-            `provider "${profile.subagentProvider}" does not support persona`,
+            `provider "${profile.subagentProvider}" does not support configured persona or Prompt Fragments`,
           )
         }
         if (!toolFilterSupported) {
@@ -280,7 +329,14 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     const allowedModes: EffectiveMode[] = []
     if (foregroundSupported) allowedModes.push('foreground')
     if (continuableSupported) allowedModes.push('continuable')
-    const effective = copyProfile(identity, profile, allowedModes.includes(defaultMode), defaultMode, allowedModes)
+    const effective = copyProfile(
+      identity,
+      profile,
+      allowedModes.includes(defaultMode),
+      defaultMode,
+      allowedModes,
+      promptFragments,
+    )
     profiles[name] = effective
     if (effective.active) activeProfiles[name] = effective
   }
@@ -299,17 +355,25 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     enableRunInBackground: config.enableRunInBackground,
     ...config.defaultProfile === undefined ? {} : { defaultProfile: config.defaultProfile },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
+    resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
+    maxResourceBytes: config.maxResourceBytes,
     profiles: Object.fromEntries(Object.keys(config.profiles).sort().map(name => [name, config.profiles[name]])),
   }
   const runtime = {
     providers: Object.fromEntries(Object.keys(snapshot.providers).sort().map(name => [name, snapshot.providers[name]])),
+    resourceDigest: resources.digest,
   }
 
   const activeDefaultProfile = config.defaultProfile === undefined
     ? undefined
     : activeProfiles[config.defaultProfile]?.name
 
-  return {
+  const frozenProfiles = Object.freeze({ ...profiles })
+  const frozenActiveProfiles = Object.freeze({ ...activeProfiles })
+  const frozenDiagnostics = Object.freeze(
+    diagnostics.map(diagnostic => Object.freeze({ ...diagnostic })),
+  )
+  return Object.freeze({
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
     ...config.defaultProfile === undefined
@@ -317,12 +381,13 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
       : { configuredDefaultProfile: profileName(config.defaultProfile) },
     ...activeDefaultProfile === undefined ? {} : { defaultProfile: activeDefaultProfile },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
-    profiles,
-    activeProfiles,
-    diagnostics,
+    profiles: frozenProfiles,
+    activeProfiles: frozenActiveProfiles,
+    diagnostics: frozenDiagnostics,
     policyDigest: policyDigest(sha256({ version: 1, kind: 'legion-policy', policy })),
     catalogDigest: catalogDigest(sha256({ version: 1, kind: 'legion-catalog', policy, runtime })),
-  }
+    resourceDigest: resources.digest,
+  })
 }
 
 /** Compile one invocation into detached plain data before crossing the live DSH start edge. */
@@ -361,7 +426,11 @@ export function compileDelegationPlan(
     )
   }
   const schema = mode === 'foreground' ? outputSchemaFor(profile.result) : undefined
-  return {
+  const fragmentInstructions = renderPromptFragments(profile.promptFragments)
+  const persona = [profile.persona, fragmentInstructions]
+    .filter((value): value is string => value !== undefined && value.length > 0)
+    .join('\n\n') || undefined
+  return deepFreeze({
     profile: profile.name,
     mode,
     subagentProvider: profile.subagentProvider,
@@ -370,8 +439,10 @@ export function compileDelegationPlan(
     result: profile.result ?? 'text',
     policyDigest: catalog.policyDigest,
     catalogDigest: catalog.catalogDigest,
+    resourceDigest: catalog.resourceDigest,
+    promptFragments: profile.promptFragments.map(fragment => ({ ...fragment })),
     ...profile.agentOptions === undefined ? {} : { agentOptions: { ...profile.agentOptions } },
-    ...profile.persona === undefined ? {} : { persona: profile.persona },
+    ...persona === undefined ? {} : { persona },
     ...profile.toolFilter === undefined
       ? {}
       : {
@@ -382,5 +453,5 @@ export function compileDelegationPlan(
         },
     ...typeof profile.maxDepth === 'number' ? { maxDepth: profile.maxDepth } : {},
     ...schema === undefined ? {} : { outputSchema: schema },
-  }
+  })
 }

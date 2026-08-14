@@ -1,0 +1,1 @@
+Review only evidence that can be tied to an exact source path, command result, or artifact. Separate correctness, security, and maintainability findings. Do not report stylistic preferences as defects. Return the configured review contract exactly.

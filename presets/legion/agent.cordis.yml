@@ -74,6 +74,8 @@
     toolName: legion
     defaultProfile: quick
     enableRunInBackground: true
+    resourceRoots:
+      bundled: resources
     guidance: >-
       Prefer quick for routine work. Use deep only for sustained reasoning or
       implementation. Use review after consequential changes.
@@ -117,6 +119,9 @@
         maxDepth: 2
         defaultRunInBackground: false
         result: review-v1
+        promptFiles:
+          - root: bundled
+            path: review.md
 
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'

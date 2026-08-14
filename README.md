@@ -34,7 +34,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.2.1` adds branded type-driven contracts and a fixture-based doctor/explain CLI to the EffectiveProfile compiler and versioned foreground result contracts.
+`0.2.2` adds confined Profile Prompt Fragments and immutable resource digests to the branded compiler and fixture-based doctor/explain CLI.
 
 Supported:
 
@@ -140,6 +140,8 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 | `defaultProfile` | none | Profile used when a call omits `profile`; otherwise `profile` is required. |
 | `enableRunInBackground` | `true` | Expose and accept `run_in_background`. |
 | `guidance` | none | Additional coordinator guidance appended to the generated profile table. |
+| `resourceRoots` | `{}` | Deployment-owned aliases for relative directories containing Prompt Fragments. |
+| `maxResourceBytes` | `65536` | Maximum combined raw Prompt Fragment bytes loaded for one Profile; hard ceiling 4 MiB. |
 
 Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider lifecycle: profiles whose `subagentProvider` is absent are omitted from the live tool schema, and the tool plus prompt guidance disappear when no configured provider is available. They return automatically when the provider is registered again. When a provider is present, the profile's default execution mode is capability-checked immediately; an invalid default fails activation instead of waiting for the first tool call.
 
@@ -157,8 +159,31 @@ Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider li
 | `maxDepth` | `3` | Absolute depth. Foreground numeric limits require `depthLimit`; the continuation manager enforces background limits. Use `provider-managed` for external one-shot products. |
 | `defaultRunInBackground` | `true` | Use a continuable child when the tool call omits the flag. |
 | `result` | `text` | `text`, `findings-v1`, or `review-v1`; structured contracts require foreground one-shot execution and provider `outputSchema` support. |
+| `promptFiles` | none | Ordered `{ root, path }` Prompt Fragments appended to the child persona after confinement and content validation. |
 
 For `codex` and `claude-code`, the external product owns its model selection. Use `maxDepth: provider-managed` and normally `defaultRunInBackground: false` because those providers are one-shot.
+
+### Prompt Fragments
+
+Prompt Fragments are explicit deployment resources, not arbitrary workspace reads:
+
+```yaml
+resourceRoots:
+  bundled: resources
+
+profiles:
+  review:
+    # ...normal profile fields...
+    promptFiles:
+      - root: bundled
+        path: review.md
+```
+
+Root directories and file paths must use slash-separated relative paths without `.`, `..`, backslashes, drive letters, UNC paths, or device paths. Roots and every file segment must already exist below the physical config/plugin base and may not be a symlink or junction. Legion accepts only regular files, strict UTF-8 with an optional UTF-8 BOM, no NUL, at most 32 files per Profile, and a bounded aggregate byte budget. Missing, linked, malformed, or oversized explicit references fail activation and doctor with exit code `2`; they are never skipped or truncated.
+
+The loader publishes one immutable content generation at activation. Provider lifecycle changes reuse it; edits require plugin/preset reactivation. `policyDigest` tracks authored references and root policy, `resourceDigest` tracks loaded raw bytes, and `catalogDigest` tracks policy + resources + provider facts. Absolute host paths and file contents are not emitted in diagnostics.
+
+Prompt Fragments use the existing DSH child persona/system composition seam. Providers without that capability fail preflight—Legion does not silently inject system policy as a user task. Skills remain owned by DSH's scoped `ctx.skills` registry; profile-local Skill contributions are waiting for one upstream child-setup seam that also covers continuable cold resume.
 
 Structured contracts are deliberately narrow:
 
@@ -187,7 +212,7 @@ Exit codes:
 
 - `0`: inputs parsed and no error-severity catalog diagnostic; warnings are allowed;
 - `1`: explain view generated with one or more capability errors;
-- `2`: usage, file read, YAML/JSON parse, or runtime schema validation failed.
+- `2`: usage, I/O, Prompt Fragment confinement/content, YAML/JSON parse, or runtime schema validation failed.
 
 ## Development
 
@@ -208,6 +233,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0003: Customization first; defaults as data](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0003-customization-first-defaults-as-data.md)
 - [ADR 0004: Type-driven orchestration contracts](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0004-type-driven-contracts.md)
 - [ADR 0005: Doctor explains fixtures, not health](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0005-doctor-explains-fixtures-not-health.md)
+- [ADR 0006: Confined Prompt Fragment snapshots](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0006-confined-prompt-resource-snapshots.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

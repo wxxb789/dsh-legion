@@ -1,6 +1,11 @@
 import type { Config, LegionProfile } from './config.ts'
 
-export interface CoordinatorProfile extends LegionProfile {
+export interface CoordinatorProfile extends Omit<LegionProfile, 'toolFilter' | 'promptFiles'> {
+  readonly toolFilter?: {
+    readonly allow?: readonly string[]
+    readonly deny?: readonly string[]
+  }
+  readonly promptFiles?: readonly Readonly<NonNullable<LegionProfile['promptFiles']>[number]>[]
   readonly allowedModes?: readonly ('foreground' | 'continuable')[]
 }
 
@@ -12,7 +17,7 @@ export interface CoordinatorCatalog {
   readonly profiles: Readonly<Record<string, CoordinatorProfile>>
 }
 
-function routeLabel(profile: LegionProfile): string {
+function routeLabel(profile: Pick<LegionProfile, 'agentOptions'>): string {
   const route = profile.agentOptions
   if (route?.provider !== undefined && route.model !== undefined) {
     return `${route.provider}/${route.model}`
@@ -41,9 +46,11 @@ export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
       : profile.allowedModes.length === 1
         ? `${profile.allowedModes[0]} only`
         : `${profile.defaultRunInBackground ? 'background' : 'foreground'} by default; foreground/background allowed`
+    const fragments = profile.promptFiles?.length ?? 0
     lines.push(
       `- \`${name}\`: ${profile.description} `
-      + `(backend: ${profile.subagentProvider}; model: ${routeLabel(profile)}; result: ${profile.result}; ${background})`,
+      + `(backend: ${profile.subagentProvider}; model: ${routeLabel(profile)}; result: ${profile.result}; ${background}`
+      + `${fragments === 0 ? '' : `; instructions: ${String(fragments)} fragment(s)`})`,
     )
   }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,13 +24,20 @@ describe('built dsh-legion executable', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-legion-bin-'))
     roots.push(root)
     const config = join(root, 'legion.yml')
+    mkdirSync(join(root, 'resources'), { recursive: true })
+    writeFileSync(join(root, 'resources', 'quick.md'), 'Use the CLI resource.')
     writeFileSync(config, [
+      'resourceRoots:',
+      '  local: resources',
       'profiles:',
       '  quick:',
       '    description: Fast work.',
       '    subagentProvider: spawn',
       '    maxDepth: 2',
       '    defaultRunInBackground: true',
+      '    promptFiles:',
+      '      - root: local',
+      '        path: quick.md',
       'defaultProfile: quick',
       '',
     ].join('\n'))
@@ -45,5 +52,12 @@ describe('built dsh-legion executable', () => {
       source: { providerSnapshot: 'empty-fixture' },
       summary: { status: 'warnings' },
     })
+
+    writeFileSync(config, readFileSync(config, 'utf8').replace('path: quick.md', 'path: missing.md'))
+    const missing = spawnSync(process.execPath, [join(ROOT, 'lib/bin.js'), 'doctor', config], {
+      encoding: 'utf8',
+    })
+    expect(missing.status).toBe(2)
+    expect(missing.stderr).toContain('does not exist')
   })
 })

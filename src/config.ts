@@ -3,30 +3,39 @@ export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
 export const RESULT_CONTRACTS = ['text', 'findings-v1', 'review-v1'] as const
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
+export interface PromptFileReference {
+  /** Name of one top-level configured resource root. */
+  readonly root: string
+  /** Slash-separated relative path below that root. */
+  readonly path: string
+}
+
 export interface LegionProfile {
   /** Human-readable routing guidance shown to the coordinator. */
-  description: string
+  readonly description: string
   /** Named ctx.subagents backend, for example spawn, fork, codex, or claude-code. */
-  subagentProvider: string
+  readonly subagentProvider: string
   /** Optional child LLM route. Omitted fields inherit from the parent Agent. */
-  agentOptions?: {
-    provider?: string
-    model?: string
-    maxTokens?: number
+  readonly agentOptions?: {
+    readonly provider?: string
+    readonly model?: string
+    readonly maxTokens?: number
   }
   /** Optional child persona shadowing the preset persona. */
-  persona?: string
+  readonly persona?: string
   /** Optional child tool visibility restriction. */
-  toolFilter?: {
+  readonly toolFilter?: {
     allow?: string[]
     deny?: string[]
   }
   /** Absolute delegation depth cap, or provider-managed for external products. */
-  maxDepth: number | 'provider-managed'
+  readonly maxDepth: number | 'provider-managed'
   /** Whether an omitted run_in_background starts a continuable child. */
-  defaultRunInBackground: boolean
+  readonly defaultRunInBackground: boolean
   /** Versioned child result contract; structured contracts are foreground-only. */
-  result?: ResultContract
+  readonly result?: ResultContract
+  /** Explicit instruction fragments loaded through configured resource roots. */
+  readonly promptFiles?: PromptFileReference[]
 }
 
 export interface Config {
@@ -40,7 +49,16 @@ export interface Config {
   enableRunInBackground: boolean
   /** Additional coordinator guidance appended after the generated routing table. */
   guidance?: string
+  /** Deployment-owned aliases to directories containing prompt fragments. */
+  resourceRoots?: Record<string, string>
+  /** Maximum combined prompt-fragment bytes loaded for one profile. */
+  maxResourceBytes?: number
 }
+
+const PromptFileReferenceSchema: z<PromptFileReference> = z.object({
+  root: z.string().pattern(PROFILE_NAME).required(),
+  path: z.string().min(1).required(),
+})
 
 const AgentOptionsSchema = z.object({
   provider: z.string().min(1),
@@ -65,7 +83,13 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
   ]).default(3),
   defaultRunInBackground: z.boolean().default(true),
   result: z.union(RESULT_CONTRACTS).default('text'),
+  promptFiles: z.array(PromptFileReferenceSchema).default(undefined as unknown as PromptFileReference[]),
 })
+
+export interface MaterializedConfig extends Config {
+  resourceRoots: Record<string, string>
+  maxResourceBytes: number
+}
 
 export const Config: z<Config> = z.object({
   toolName: z.string().min(1).default('legion'),
@@ -73,6 +97,8 @@ export const Config: z<Config> = z.object({
   defaultProfile: z.string().pattern(PROFILE_NAME),
   enableRunInBackground: z.boolean().default(true),
   guidance: z.string(),
+  resourceRoots: z.dict(z.string().min(1)).default({}),
+  maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
 })
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -91,10 +117,30 @@ function assertKnownKeys(value: unknown, allowed: readonly string[], at: string)
   }
 }
 
+function assertPortableRelativePath(path: string, at: string): void {
+  const segments = path.split('/')
+  if (path.length === 0
+    || path.includes('\0')
+    || path.includes('\\')
+    || path.startsWith('/')
+    || /^[A-Za-z]:/.test(path)
+    || segments.some(segment => segment === '' || segment === '.' || segment === '..')) {
+    throw new Error(`dsh-legion: ${at} must be a slash-separated relative path without . or .. segments`)
+  }
+}
+
 function assertKnownConfigKeys(input: unknown): void {
   assertKnownKeys(
     input,
-    ['toolName', 'profiles', 'defaultProfile', 'enableRunInBackground', 'guidance'],
+    [
+      'toolName',
+      'profiles',
+      'defaultProfile',
+      'enableRunInBackground',
+      'guidance',
+      'resourceRoots',
+      'maxResourceBytes',
+    ],
     'config',
   )
   const profiles = record(record(input)?.profiles)
@@ -111,23 +157,31 @@ function assertKnownConfigKeys(input: unknown): void {
         'maxDepth',
         'defaultRunInBackground',
         'result',
+        'promptFiles',
       ],
       `profiles.${name}`,
     )
     const profileRecord = record(profile)
     assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `profiles.${name}.agentOptions`)
     assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `profiles.${name}.toolFilter`)
+    if (Array.isArray(profileRecord?.promptFiles)) {
+      profileRecord.promptFiles.forEach((reference, index) => {
+        assertKnownKeys(reference, ['root', 'path'], `profiles.${name}.promptFiles[${String(index)}]`)
+      })
+    }
   }
 }
 
 /** Validate, materialize defaults, and detach one untrusted Legion config. */
-export function materializeConfig(input: unknown): Config {
+export function materializeConfig(input: unknown): MaterializedConfig {
   assertKnownConfigKeys(input)
   const parsed = Config(input as Config | null | undefined)
   validateConfig(parsed)
   return {
     toolName: parsed.toolName,
     enableRunInBackground: parsed.enableRunInBackground,
+    resourceRoots: { ...parsed.resourceRoots },
+    maxResourceBytes: parsed.maxResourceBytes ?? 64 * 1024,
     ...parsed.defaultProfile === undefined ? {} : { defaultProfile: parsed.defaultProfile },
     ...parsed.guidance === undefined ? {} : { guidance: parsed.guidance },
     profiles: Object.fromEntries(Object.keys(parsed.profiles).sort().map((name) => {
@@ -148,6 +202,9 @@ export function materializeConfig(input: unknown): Config {
         maxDepth: profile.maxDepth,
         defaultRunInBackground: profile.defaultRunInBackground,
         result: profile.result ?? 'text',
+        ...profile.promptFiles === undefined
+          ? {}
+          : { promptFiles: profile.promptFiles.map(reference => ({ ...reference })) },
       } satisfies LegionProfile]
     })),
   }
@@ -157,6 +214,14 @@ export function materializeConfig(input: unknown): Config {
 export function validateConfig(config: Config): void {
   if (config.toolName.trim().length === 0) {
     throw new Error('dsh-legion: toolName must not be blank')
+  }
+
+  for (const [name, root] of Object.entries(config.resourceRoots ?? {})) {
+    if (!PROFILE_NAME.test(name)) {
+      throw new Error(`dsh-legion: resource root name "${name}" must match ${String(PROFILE_NAME)}`)
+    }
+    if (root.trim().length === 0) throw new Error(`dsh-legion: resource root "${name}" must not be blank`)
+    assertPortableRelativePath(root, `resource root "${name}"`)
   }
 
   const entries = Object.entries(config.profiles)
@@ -180,6 +245,23 @@ export function validateConfig(config: Config): void {
       throw new Error(
         `dsh-legion: profile "${name}" toolFilter names neither allow nor deny`,
       )
+    }
+    if ((profile.promptFiles?.length ?? 0) > 32) {
+      throw new Error(`dsh-legion: profile "${name}" promptFiles exceeds the limit of 32`)
+    }
+    const references = new Set<string>()
+    for (const reference of profile.promptFiles ?? []) {
+      if (config.resourceRoots?.[reference.root] === undefined) {
+        throw new Error(
+          `dsh-legion: profile "${name}" prompt file references unknown root "${reference.root}"`,
+        )
+      }
+      assertPortableRelativePath(reference.path, `profile "${name}" prompt file path`)
+      const key = `${reference.root}:${reference.path}`
+      if (references.has(key)) {
+        throw new Error(`dsh-legion: profile "${name}" repeats prompt file "${key}"`)
+      }
+      references.add(key)
     }
   }
 

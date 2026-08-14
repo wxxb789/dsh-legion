@@ -11,6 +11,7 @@ import {
   type ProfileExplainView,
   type PolicyDigest,
   type ProfileName as ProfileNameType,
+  type ResourceDigest,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
 
@@ -21,6 +22,7 @@ type Assert<Value extends true> = Value
 
 export type CatalogPolicyDigestContract = Assert<Equal<CompiledCatalog['policyDigest'], PolicyDigest>>
 export type PlanCatalogDigestContract = Assert<Equal<DelegationPlan['catalogDigest'], CatalogDigest>>
+export type PlanResourceDigestContract = Assert<Equal<DelegationPlan['resourceDigest'], ResourceDigest>>
 
 const config: LegionConfig = {
   toolName: 'legion',
@@ -50,18 +52,24 @@ void profileAsString
 
 declare const policy: PolicyDigest
 declare const catalog: CatalogDigest
+declare const resource: ResourceDigest
 const policyAsString: string = policy
 const catalogAsString: string = catalog
+const resourceAsString: string = resource
 void policyAsString
 void catalogAsString
+void resourceAsString
 
 // @ts-expect-error CatalogDigest and PolicyDigest are distinct identities.
 const wrongPolicy: PolicyDigest = catalog
+// @ts-expect-error ResourceDigest and CatalogDigest are distinct identities.
+const wrongCatalog: CatalogDigest = resource
 // @ts-expect-error Plain strings have not crossed the checked digest constructor.
 const uncheckedPolicy: PolicyDigest = 'sha256:deadbeef'
 // @ts-expect-error Plain strings have not crossed the checked profile constructor.
 const uncheckedProfile: ProfileNameType = 'quick'
 void wrongPolicy
+void wrongCatalog
 void uncheckedPolicy
 void uncheckedProfile
 

@@ -1,6 +1,8 @@
+import { dirname, resolve } from 'node:path'
 import { compileCatalog } from './compiler.ts'
 import { explainCatalog, renderExplainHuman, type ExplainViewV1 } from './explain.ts'
 import { LegionInputError, loadConfigFile, loadProviderSnapshotFile } from './input.ts'
+import { loadProfileResources } from './resources.ts'
 
 export const EXIT_OK = 0
 export const EXIT_DIAGNOSTICS = 1
@@ -83,7 +85,10 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     const fixture = command.providers === undefined
       ? undefined
       : await loadProviderSnapshotFile(command.providers, io.readTextFile)
-    const catalog = compileCatalog(config, fixture ?? { providers: {} })
+    const resources = await loadProfileResources(config, {
+      baseDirectory: dirname(resolve(command.config)),
+    })
+    const catalog = compileCatalog(config, fixture ?? { providers: {} }, resources)
     const view = explainCatalog(catalog, {
       providerSnapshot: fixture === undefined ? 'empty-fixture' : 'fixture',
     })

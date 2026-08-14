@@ -44,6 +44,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, manifest.bin!['dsh-legion']!)),
       access(resolve(ROOT, 'presets/legion/agent.cordis.yml')),
       access(resolve(ROOT, 'presets/legion/preset.yml')),
+      access(resolve(ROOT, 'presets/legion/resources/review.md')),
       access(resolve(ROOT, 'examples/legion.agent.cordis.fragment.yml')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))

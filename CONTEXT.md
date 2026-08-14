@@ -8,6 +8,14 @@ Legion lets a coordinator delegate one objective through user-defined worker cap
 A reusable worker capability template describing task fit, model-routing requirements, prompt behavior, visible capabilities, and result contract.
 _Avoid_: Agent, Worker instance, Role preset
 
+**Prompt Fragment**:
+A bounded, deployment-authorized text resource that adds Profile-specific system instructions without becoming a user task or a Skill.
+_Avoid_: Skill, Prompt template, Arbitrary file
+
+**Resource Root**:
+A deployment-owned directory alias that bounds where Prompt Fragments may be loaded from.
+_Avoid_: Search path, Workspace access, Filesystem permission
+
 **Team**:
 A named composition of member slots available to one orchestration strategy.
 _Avoid_: Agent list, Fleet, Runtime

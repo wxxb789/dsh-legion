@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-15
+
+### Added
+
+- Profile-scoped Prompt Fragment references through explicit deployment-owned Resource Roots.
+- Immutable ResourceSnapshot and branded ResourceDigest propagation through catalogs, plans, and tool results.
+- Strict relative-path, realpath, link, file-type, byte-budget, UTF-8, NUL, and read-generation validation.
+- Packed preset, doctor CLI, one-shot, and real continuation-manager coverage for Prompt Fragments.
+
+### Changed
+
+- The curated review Profile now consumes the same public Prompt Fragment contract available to user Profiles.
+- Profile-local Skills remain DSH-registry owned and are explicitly gated on a future unified child-setup seam.
+
 ## [0.2.1] - 2026-08-15
 
 ### Added
@@ -58,7 +72,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/wxxb789/dsh-legion/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wxxb789/dsh-legion/releases/tag/v0.1.0

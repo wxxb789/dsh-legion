@@ -18,7 +18,8 @@ Product principles:
 - [x] Versioned `findings-v1` and `review-v1` foreground result contracts.
 - [x] Revalidate and leaf-project provider-owned structured output.
 - [x] Human/JSON doctor CLI over the compiled catalog and explicit provider fixtures.
-- [ ] Profile-scoped skill and prompt-fragment references with canonical path confinement.
+- [x] Profile-scoped prompt-fragment references with canonical path confinement and immutable content snapshots.
+- [ ] Profile-scoped Skill contributions after DSH exposes one child-setup seam for one-shot, continuable activation, and cold resume.
 
 ## v0.3 — Deterministic pre-start route planning
 
@@ -75,6 +76,7 @@ Default Strategies ship only after benchmarks show measurable value over direct 
 
 - Child reasoning-effort override at the AgentOptions/request seam.
 - Per-child named preset composition with durable resume semantics.
+- Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling profile-local DSH Skill registrations.
 - Redacted provider health only if startup-time health becomes a real requirement.
 - Unified recovery seam before Legion attempts cross-route fallback.
 

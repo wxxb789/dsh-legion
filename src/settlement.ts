@@ -9,8 +9,9 @@ export interface ForegroundResult {
   readonly profile: string
   readonly runId: SubagentRun['id']
   readonly resultContract: DelegationPlan['result']
-  readonly policyDigest: string
-  readonly catalogDigest: string
+  readonly policyDigest: DelegationPlan['policyDigest']
+  readonly catalogDigest: DelegationPlan['catalogDigest']
+  readonly resourceDigest: DelegationPlan['resourceDigest']
   readonly output: JsonValue[]
   readonly structured?: JsonValue
 }
@@ -55,6 +56,7 @@ export async function settleForeground(
         resultContract: plan.result,
         policyDigest: plan.policyDigest,
         catalogDigest: plan.catalogDigest,
+        resourceDigest: plan.resourceDigest,
         output: result.output as unknown as JsonValue[],
         ...structured === undefined ? {} : { structured },
       }

@@ -46,7 +46,7 @@ try {
   const presetDir = join(presetRoot, 'legion-packed')
   await mkdir(packDir, { recursive: true })
   await mkdir(profileDir, { recursive: true })
-  await mkdir(presetDir, { recursive: true })
+  await mkdir(join(presetDir, 'resources'), { recursive: true })
 
   run('npm', ['pack', '--ignore-scripts', '--pack-destination', packDir], projectRoot)
   const tarball = join(packDir, `dsh-legion-${String(manifest.version)}.tgz`)
@@ -63,15 +63,21 @@ try {
   runNode([join(profileDir, 'node_modules', 'dsh-legion', 'lib', 'bin.js'), '--help'], profileDir)
 
   await writeFile(join(profileDir, 'cordis.yml'), '[]\n')
+  await writeFile(join(presetDir, 'resources', 'quick.md'), 'Use the packed prompt resource.\n')
   await writeFile(join(presetDir, 'agent.cordis.yml'), [
     '- id: tool-legion',
     '  name: dsh-legion',
     '  config:',
     '    defaultProfile: quick',
+    '    resourceRoots:',
+    '      local: resources',
     '    profiles:',
     '      quick:',
     '        description: Packed profile worker.',
     '        defaultRunInBackground: false',
+    '        promptFiles:',
+    '          - root: local',
+    '            path: quick.md',
     '',
   ].join('\n'))
 

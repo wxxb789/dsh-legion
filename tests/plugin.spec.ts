@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { CallId, MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -199,7 +203,54 @@ describe('dsh-legion', () => {
       resultContract: 'text',
       policyDigest: expect.stringMatching(/^sha256:/),
       catalogDigest: expect.stringMatching(/^sha256:/),
+      resourceDigest: expect.stringMatching(/^sha256:/),
     })
+  })
+
+  it('loads confined prompt fragments before registration and installs them as child persona', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-plugin-resources-'))
+    mkdirSync(join(root, 'resources', 'prompts'), { recursive: true })
+    writeFileSync(join(root, 'resources', 'prompts', 'review.md'), 'Follow the resource instruction.')
+    const ctx = new Context()
+    let request: SubagentStartRequest | undefined
+    try {
+      ctx.baseUrl = pathToFileURL(root).href + '/'
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SubagentRuntime)
+      ctx.subagents.registerProvider(provider('spawn', { onStart: value => { request = value } }))
+      await ctx.plugin(legion, {
+        toolName: 'legion',
+        enableRunInBackground: true,
+        resourceRoots: { local: 'resources' },
+        maxResourceBytes: 65536,
+        profiles: {
+          review: {
+            description: 'Resource review.',
+            subagentProvider: 'spawn',
+            maxDepth: 2,
+            defaultRunInBackground: false,
+            promptFiles: [{ root: 'local', path: 'prompts/review.md' }],
+          },
+        },
+        defaultProfile: 'review',
+      })
+      const guidance = (await ctx.systemPrompt.assemble()).sections
+        .find(section => section.name === 'tool:legion')?.text
+      expect(guidance).toContain('instructions: 1 fragment(s)')
+      const result = await execute(ctx, {
+        description: 'resource review',
+        prompt: 'Review the change.',
+      })
+      expect(result.isError).toBe(false)
+      expect(request?.persona).toContain('## Legion profile instruction: local:prompts/review.md')
+      expect(request?.persona).toContain('Follow the resource instruction.')
+      if (result.isError) throw new Error('expected resource profile success')
+      expect(result.value).toMatchObject({ resourceDigest: expect.stringMatching(/^sha256:/) })
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('passes a versioned output schema and returns detached structured review data', async () => {
@@ -566,6 +617,37 @@ describe('dsh-legion', () => {
     expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
     expect((await ctx.systemPrompt.assemble()).sections
       .find(section => section.name === 'tool:legion')).toBeUndefined()
+  })
+
+  it('fails closed on a missing prompt fragment before publishing effects', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-missing-resource-'))
+    mkdirSync(join(root, 'resources'))
+    const ctx = new Context()
+    ctx.baseUrl = pathToFileURL(root).href + '/'
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SubagentRuntime)
+      ctx.subagents.registerProvider(provider('spawn'))
+      await expect(ctx.plugin(legion, {
+        toolName: 'legion',
+        enableRunInBackground: true,
+        resourceRoots: { local: 'resources' },
+        profiles: {
+          quick: {
+            description: 'Quick work.',
+            subagentProvider: 'spawn',
+            maxDepth: 1,
+            defaultRunInBackground: false,
+            promptFiles: [{ root: 'local', path: 'missing.md' }],
+          },
+        },
+      })).rejects.toThrow(/does not exist/)
+      expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('rejects invalid cross-field configuration during activation', async () => {

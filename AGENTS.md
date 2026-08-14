@@ -22,6 +22,8 @@ Legion is customization-first. Profiles, Teams, Strategies, and the Default Cata
 
 Use TypeScript as a design tool: separate authored/validated/effective/compiled states, prefer discriminated unions and branded identities, keep public data readonly, and make closed vocabularies exhaustive. Keep `unknown` at real configuration/model/plugin/process boundaries and validate it before constructing trusted domain types. Read ADR 0004 before adding public orchestration contracts.
 
+Keep filesystem access out of pure compilers. Prompt Fragment references must pass the ADR 0006 loader and immutable snapshot boundary; do not add direct `readFile` calls in routing or execution code. Skills remain owned by the scoped DSH Skill registry, not parsed or copied by Legion.
+
 ## Files and language
 
 Use English for code, comments, documentation, commit messages, and release notes. Public documentation must use repository-relative paths, generic placeholders, or URLs—never a developer machine's absolute path.

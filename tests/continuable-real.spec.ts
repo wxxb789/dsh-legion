@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -36,7 +37,10 @@ class TextAdapter extends LlmAdapter {
 describe('real DSH continuation manager integration', () => {
   it('creates a durable child with the compiled model route and manager-owned persona', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-legion-continuable-'))
+    mkdirSync(join(root, 'resources'), { recursive: true })
+    writeFileSync(join(root, 'resources', 'deep.md'), 'Use the loaded continuation instruction.')
     const ctx = new Context()
+    ctx.baseUrl = pathToFileURL(root).href + '/'
     try {
       await mountAgentLoopTestDependencies(ctx)
       await ctx.plugin(JsonlSessionPersistence, { root })
@@ -46,6 +50,8 @@ describe('real DSH continuation manager integration', () => {
       await ctx.plugin(legion, {
         toolName: 'legion',
         enableRunInBackground: true,
+        resourceRoots: { local: 'resources' },
+        maxResourceBytes: 65536,
         profiles: {
           deep: {
             description: 'Real continuable work.',
@@ -54,6 +60,7 @@ describe('real DSH continuation manager integration', () => {
             persona: 'You are the real Legion child.',
             maxDepth: 2,
             defaultRunInBackground: true,
+            promptFiles: [{ root: 'local', path: 'deep.md' }],
           },
         },
         defaultProfile: 'deep',
@@ -76,9 +83,15 @@ describe('real DSH continuation manager integration', () => {
       })
       expect(result.isError).toBe(false)
       if (result.isError) throw new Error('expected continuable start success')
-      const value = result.value as { kind: string; subagentId: string; policyDigest: string }
+      const value = result.value as {
+        kind: string
+        subagentId: string
+        policyDigest: string
+        resourceDigest: string
+      }
       expect(value.kind).toBe('continuable')
       expect(value.policyDigest).toMatch(/^sha256:/)
+      expect(value.resourceDigest).toMatch(/^sha256:/)
       const childId = SessionId(value.subagentId)
 
       await vi.waitFor(() => expect(ctx.agents.get(childId)).toBeDefined())
@@ -92,8 +105,10 @@ describe('real DSH continuation manager integration', () => {
       })
       expect(child.session.header.parentSession).toBe(parent.id)
       const prompt = await ctx.systemPrompt.assemble(assembleContextFor(child))
-      expect(prompt.sections.find(section => section.name === 'deployment:persona')?.text)
-        .toBe('You are the real Legion child.')
+      const persona = prompt.sections.find(section => section.name === 'deployment:persona')?.text
+      expect(persona).toContain('You are the real Legion child.')
+      expect(persona).toContain('## Legion profile instruction: local:deep.md')
+      expect(persona).toContain('Use the loaded continuation instruction.')
       expect(child.session.events.some(event => event.type === 'assistant/message')).toBe(true)
     } finally {
       await ctx.fiber.dispose()

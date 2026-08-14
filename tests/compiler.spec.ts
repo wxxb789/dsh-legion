@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Config } from '../src/config.ts'
 import { compileCatalog, compileDelegationPlan, type RuntimeSnapshot } from '../src/compiler.ts'
+import { createResourceSnapshot, promptContentDigest } from '../src/resources.ts'
 
 const base: Config = {
   toolName: 'legion',
@@ -57,7 +58,13 @@ describe('compileCatalog', () => {
     expect(reordered.catalogDigest).toBe(first.catalogDigest)
     expect(first.diagnostics).toEqual([])
 
-    first.profiles.review!.toolFilter!.deny!.push('edit')
+    expect(Object.isFrozen(first)).toBe(true)
+    expect(Object.isFrozen(first.profiles)).toBe(true)
+    expect(Object.isFrozen(first.profiles.review)).toBe(true)
+    expect(Object.isFrozen(first.profiles.review?.toolFilter?.deny)).toBe(true)
+    expect(() => {
+      ;(first.profiles.review!.toolFilter!.deny as string[]).push('edit')
+    }).toThrow(TypeError)
     expect(base.profiles.review?.toolFilter?.deny).toEqual(['write'])
   })
 
@@ -179,7 +186,9 @@ describe('compileCatalog', () => {
         required: ['verdict', 'summary', 'findings', 'verification'],
       },
     })
-    plan.toolFilter!.deny!.push('edit')
+    expect(() => {
+      plan.toolFilter!.deny!.push('edit')
+    }).toThrow(TypeError)
     expect(catalog.activeProfiles.review?.toolFilter?.deny).toEqual(['write'])
   })
 
@@ -191,6 +200,109 @@ describe('compileCatalog', () => {
       prompt: 'Review the patch.',
       runInBackground: true,
     })).toThrow(/foreground-only result contract/)
+  })
+
+  it('compiles loaded prompt fragments into persona and resource-aware catalog identity', () => {
+    const resourceConfig: Config = {
+      ...base,
+      resourceRoots: { local: 'resources' },
+      maxResourceBytes: 65536,
+      profiles: {
+        quick: {
+          ...base.profiles.quick!,
+          promptFiles: [{ root: 'local', path: 'prompts/quick.md' }],
+        },
+      },
+      defaultProfile: 'quick',
+    }
+    expect(() => compileCatalog(resourceConfig, spawn)).toThrow(/resource snapshot does not satisfy/)
+
+    const first = compileCatalog(resourceConfig, spawn, createResourceSnapshot({
+      quick: [{
+        reference: 'local:prompts/quick.md',
+        bytes: 5,
+        utf8Bom: false,
+        digest: promptContentDigest('First'),
+        content: 'First',
+      }],
+    }))
+    const second = compileCatalog(resourceConfig, spawn, createResourceSnapshot({
+      quick: [{
+        reference: 'local:prompts/quick.md',
+        bytes: 6,
+        utf8Bom: false,
+        digest: promptContentDigest('Second'),
+        content: 'Second',
+      }],
+    }))
+    const plan = compileDelegationPlan(first, {
+      description: 'resource task',
+      prompt: 'Work.',
+      runInBackground: false,
+    })
+
+    expect(first.policyDigest).toBe(second.policyDigest)
+    expect(first.catalogDigest).not.toBe(second.catalogDigest)
+    expect(first.resourceDigest).not.toBe(second.resourceDigest)
+    expect(plan.persona).toContain('## Legion profile instruction: local:prompts/quick.md')
+    expect(plan.persona).toContain('First')
+    expect(plan.resourceDigest).toBe(first.resourceDigest)
+    expect(plan.promptFragments[0]?.content).toBe('First')
+    expect(Object.isFrozen(plan)).toBe(true)
+    expect(Object.isFrozen(plan.promptFragments)).toBe(true)
+    expect(Object.isFrozen(plan.promptFragments[0])).toBe(true)
+  })
+
+  it('requires provider system/persona composition for foreground prompt fragments', () => {
+    const resourceConfig: Config = {
+      ...base,
+      resourceRoots: { local: 'resources' },
+      profiles: {
+        quick: {
+          ...base.profiles.quick!,
+          defaultRunInBackground: false,
+          promptFiles: [{ root: 'local', path: 'quick.md' }],
+        },
+      },
+    }
+    const resources = createResourceSnapshot({
+      quick: [{
+        reference: 'local:quick.md',
+        bytes: 5,
+        utf8Bom: false,
+        digest: promptContentDigest('Rules'),
+        content: 'Rules',
+      }],
+    })
+    const catalog = compileCatalog(resourceConfig, {
+      providers: {
+        spawn: {
+          continuable: false,
+          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+        },
+      },
+    }, resources)
+    expect(catalog.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PROFILE_PERSONA_UNSUPPORTED',
+      severity: 'error',
+      profile: 'quick',
+    }))
+
+    const continuable = compileCatalog({
+      ...resourceConfig,
+      profiles: {
+        quick: { ...resourceConfig.profiles.quick!, defaultRunInBackground: true },
+      },
+    }, {
+      providers: {
+        spawn: {
+          continuable: true,
+          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+        },
+      },
+    }, resources)
+    expect(continuable.activeProfiles.quick?.defaultMode).toBe('continuable')
+    expect(continuable.activeProfiles.quick?.allowedModes).toEqual(['continuable'])
   })
 
   it('changes only catalogDigest when provider runtime facts change', () => {

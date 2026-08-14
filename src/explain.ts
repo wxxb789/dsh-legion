@@ -23,6 +23,7 @@ import {
   type RuntimeSnapshot,
 } from './compiler.ts'
 import type { Config, ResultContract } from './config.ts'
+import type { ResourceSnapshot } from './resources.ts'
 
 export type ExplainStatus = 'ok' | 'warnings' | 'errors'
 export type ProviderSnapshotSource = 'live-dsh-registry' | 'fixture' | 'empty-fixture'
@@ -347,8 +348,9 @@ export function compileExplainView(
   config: Config,
   snapshot: RuntimeSnapshot,
   options: ExplainOptions,
+  resources?: ResourceSnapshot,
 ): ExplainViewV1 {
-  return explainCatalog(compileCatalog(config, snapshot), options)
+  return explainCatalog(compileCatalog(config, snapshot, resources), options)
 }
 
 function route(profile: EffectiveProfile): ProfileRouteView {

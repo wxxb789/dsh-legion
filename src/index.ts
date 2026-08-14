@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -14,6 +15,7 @@ import {
 } from './compiler.ts'
 import { renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
+import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
 
 export {
   Config,
@@ -23,7 +25,13 @@ export {
   materializeConfig,
   validateConfig,
 } from './config.ts'
-export type { Config as LegionConfig, LegionProfile, ResultContract } from './config.ts'
+export type {
+  Config as LegionConfig,
+  LegionProfile,
+  MaterializedConfig,
+  PromptFileReference,
+  ResultContract,
+} from './config.ts'
 export {
   CatalogCompileError,
   DelegationPlanError,
@@ -55,7 +63,22 @@ export {
 } from './result-contract.ts'
 export { renderCoordinatorGuidance } from './prompt.ts'
 export type { CoordinatorCatalog, CoordinatorProfile } from './prompt.ts'
-export { CatalogDigest, PolicyDigest, ProfileName } from './identity.ts'
+export {
+  EMPTY_RESOURCE_SNAPSHOT,
+  ProfileResourceError,
+  assertResourceSnapshot,
+  createResourceSnapshot,
+  loadProfileResources,
+  promptContentDigest,
+  renderPromptFragments,
+} from './resources.ts'
+export type {
+  LoadedPromptFragment,
+  ResourceErrorCode,
+  ResourceLoadOptions,
+  ResourceSnapshot,
+} from './resources.ts'
+export { CatalogDigest, PolicyDigest, ProfileName, ResourceDigest } from './identity.ts'
 export {
   EXPLAIN_VIEW_V1_SCHEMA,
   assertExplainViewV1,
@@ -237,6 +260,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
               subagentId: { type: 'string', required: true },
               policyDigest: { type: 'string', required: true },
               catalogDigest: { type: 'string', required: true },
+              resourceDigest: { type: 'string', required: true },
             },
           },
           {
@@ -249,6 +273,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
               resultContract: { type: 'string', required: true },
               policyDigest: { type: 'string', required: true },
               catalogDigest: { type: 'string', required: true },
+              resourceDigest: { type: 'string', required: true },
               output: { type: 'array', required: true, items: { type: 'json' } },
               structured: { type: 'json' },
             },
@@ -294,6 +319,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
           subagentId: started.childId,
           policyDigest: plan.policyDigest,
           catalogDigest: plan.catalogDigest,
+          resourceDigest: plan.resourceDigest,
         }
       }
 
@@ -306,13 +332,31 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
   }))
 }
 
-export function apply(ctx: Context, config: Config): void {
-  config = materializeConfig(config)
+function profileResourceBase(ctx: Context, config: Config): string | undefined {
+  const hasReferences = Object.values(config.profiles).some(profile => (profile.promptFiles?.length ?? 0) > 0)
+  if (!hasReferences) return undefined
+  if (ctx.baseUrl === undefined) {
+    throw new Error('dsh-legion: prompt file references require a file-based plugin context')
+  }
+  const url = new URL('.', ctx.baseUrl)
+  if (url.protocol !== 'file:') {
+    throw new Error('dsh-legion: prompt file references require a file: plugin base URL')
+  }
+  return fileURLToPath(url)
+}
+
+export async function apply(ctx: Context, config: Config): Promise<void> {
+  const resolvedConfig = materializeConfig(config)
+  const resourceBase = profileResourceBase(ctx, resolvedConfig)
+  const resources: ResourceSnapshot = resourceBase === undefined
+    ? EMPTY_RESOURCE_SNAPSHOT
+    : await loadProfileResources(resolvedConfig, { baseDirectory: resourceBase })
+  ctx.fiber.assertActive()
   let activeCatalog: CompiledCatalog | undefined
   let disposeTool: (() => void) | undefined
 
   const refresh = (): void => {
-    const next = compileCatalog(config, runtimeSnapshot(ctx, config))
+    const next = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
     assertCatalogUsable(next)
     disposeTool?.()
     disposeTool = undefined
@@ -321,10 +365,10 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   ctx.on('subagent/provider-added', (provider) => {
-    if (Object.values(config.profiles).some(profile => profile.subagentProvider === provider.name)) refresh()
+    if (Object.values(resolvedConfig.profiles).some(profile => profile.subagentProvider === provider.name)) refresh()
   })
   ctx.on('subagent/provider-removed', (providerName) => {
-    if (Object.values(config.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
+    if (Object.values(resolvedConfig.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
   })
   ctx.effect(() => () => {
     disposeTool?.()
@@ -333,7 +377,7 @@ export function apply(ctx: Context, config: Config): void {
   }, 'dsh-legion.activeTool()')
 
   ctx.systemPrompt.section({
-    name: `tool:${config.toolName}`,
+    name: `tool:${resolvedConfig.toolName}`,
     order: PROMPT_ORDER,
     text: () => activeCatalog === undefined || Object.keys(activeCatalog.activeProfiles).length === 0
       ? ''

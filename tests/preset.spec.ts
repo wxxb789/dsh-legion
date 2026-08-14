@@ -18,6 +18,7 @@ describe('shipped Legion preset template', () => {
     expect(legion).toMatchObject({ name: 'dsh-legion' })
     expect(legion?.config).toMatchObject({
       defaultProfile: 'quick',
+      resourceRoots: { bundled: 'resources' },
       profiles: {
         deep: { subagentProvider: 'spawn' },
         quick: { subagentProvider: 'spawn' },
@@ -25,6 +26,7 @@ describe('shipped Legion preset template', () => {
           subagentProvider: 'spawn',
           defaultRunInBackground: false,
           result: 'review-v1',
+          promptFiles: [{ root: 'bundled', path: 'review.md' }],
         },
       },
     })
