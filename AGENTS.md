@@ -20,6 +20,8 @@ DeepSeek Harness remains the sole owner of Agent, Session, subagent, workflow, g
 
 Legion is customization-first. Profiles, Teams, Strategies, and the Default Catalog must use public replaceable contracts; do not hardcode default names or grant built-in strategies hidden privileges. Read `CONTEXT.md` when changing these domain concepts.
 
+Use TypeScript as a design tool: separate authored/validated/effective/compiled states, prefer discriminated unions and branded identities, keep public data readonly, and make closed vocabularies exhaustive. Keep `unknown` at real configuration/model/plugin/process boundaries and validate it before constructing trusted domain types. Read ADR 0004 before adding public orchestration contracts.
+
 ## Files and language
 
 Use English for code, comments, documentation, commit messages, and release notes. Public documentation must use repository-relative paths, generic placeholders, or URLs—never a developer machine's absolute path.

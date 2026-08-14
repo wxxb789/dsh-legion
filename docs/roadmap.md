@@ -2,7 +2,10 @@
 
 This file tracks implementation status. Design rationale lives in ADRs and the OMO/Senpi research reports.
 
-Product principle: Legion is customization-first. Users can define Profiles, Teams, and Strategies; the curated Default Catalog must use the same replaceable contracts and carry no hidden runtime privileges.
+Product principles:
+
+- Legion is customization-first. Users can define Profiles, Teams, and Strategies; the curated Default Catalog must use the same replaceable contracts and carry no hidden runtime privileges.
+- Legion is type-driven. TypeScript should make internal illegal states unrepresentable, while runtime schemas validate every external configuration, model, plugin, persistence, and process boundary.
 
 ## v0.2 — Explainable profile compiler
 
@@ -57,6 +60,16 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [ ] Seeded interleaving tests: terminal first-wins, no lease leaks, stale generation cannot commit, every waiter settles.
 
 Default Strategies ship only after benchmarks show measurable value over direct delegation.
+
+## Type-system gates
+
+- [ ] Distinct `Authored*`, `Validated*`, `Effective*`, and `Compiled*` types at catalog boundaries.
+- [ ] Branded Profile, Role, Team, Strategy, Decision, Attempt, and Artifact identities.
+- [ ] Discriminated unions for Strategy kinds, execution modes, diagnostics, lifecycle observations, and terminal outcomes.
+- [ ] Generic Strategy artifact input/output contracts that reject invalid stage wiring at compile time.
+- [ ] Default Catalog declared with `as const satisfies` the public user catalog contract.
+- [ ] Type-level tests for valid inference and expected compile failures.
+- [ ] Runtime schema parity tests for every external versioned contract.
 
 ## Upstream DSH proposals
 

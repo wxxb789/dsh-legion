@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Canonical customization-first domain model for user-defined Profiles, Teams, and Strategies.
 - ADR requiring the curated Default Catalog to use the same replaceable contracts as user configuration.
+- Type-driven contract rules for authored/validated/effective/compiled states, branded identities, discriminated unions, and runtime validation boundaries.
 
 ## [0.2.0] - 2026-08-15
 
