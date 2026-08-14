@@ -3,7 +3,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { Config, validateConfig } from './config.ts'
+import { Config, materializeConfig } from './config.ts'
 import {
   assertCatalogUsable,
   compileCatalog,
@@ -15,11 +15,20 @@ import {
 import { renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
 
-export { Config, LegionProfileSchema, PROFILE_NAME, RESULT_CONTRACTS, validateConfig } from './config.ts'
+export {
+  Config,
+  LegionProfileSchema,
+  PROFILE_NAME,
+  RESULT_CONTRACTS,
+  materializeConfig,
+  validateConfig,
+} from './config.ts'
 export type { Config as LegionConfig, LegionProfile, ResultContract } from './config.ts'
 export {
   CatalogCompileError,
   DelegationPlanError,
+  ERROR_DIAGNOSTIC_CODES,
+  WARNING_DIAGNOSTIC_CODES,
   assertCatalogUsable,
   compileCatalog,
   compileDelegationPlan,
@@ -30,6 +39,10 @@ export type {
   DelegationPlan,
   Diagnostic,
   DiagnosticCode,
+  DiagnosticSeverity,
+  ErrorDiagnostic,
+  ErrorDiagnosticCode,
+  WarningDiagnosticCode,
   EffectiveProfile,
   ProviderFacts,
   RuntimeSnapshot,
@@ -42,6 +55,24 @@ export {
 } from './result-contract.ts'
 export { renderCoordinatorGuidance } from './prompt.ts'
 export type { CoordinatorCatalog, CoordinatorProfile } from './prompt.ts'
+export { CatalogDigest, PolicyDigest, ProfileName } from './identity.ts'
+export {
+  EXPLAIN_VIEW_V1_SCHEMA,
+  assertExplainViewV1,
+  compileExplainView,
+  explainCatalog,
+  materializeExplainViewV1,
+  renderExplainHuman,
+} from './explain.ts'
+export type {
+  ExplainOptions,
+  ExplainStatus,
+  ExplainSummary,
+  ExplainViewV1,
+  ProfileExplainView,
+  ProviderSnapshotSource,
+  RenderExplainOptions,
+} from './explain.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -53,6 +84,36 @@ interface ToolArgs {
   description: string
   prompt: string
   run_in_background?: boolean
+}
+
+function parseToolArgs(value: unknown): ToolArgs {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('dsh-legion: tool arguments must be an object')
+  }
+  const input = value as Record<string, unknown>
+  const allowed = new Set(['profile', 'description', 'prompt', 'run_in_background'])
+  const unknown = Object.keys(input).filter(key => !allowed.has(key))
+  if (unknown.length > 0) {
+    throw new Error(`dsh-legion: tool arguments contain unknown field(s): ${unknown.sort().join(', ')}`)
+  }
+  if (typeof input.description !== 'string' || input.description.length === 0) {
+    throw new Error('dsh-legion: description must be a non-empty string')
+  }
+  if (typeof input.prompt !== 'string' || input.prompt.length === 0) {
+    throw new Error('dsh-legion: prompt must be a non-empty string')
+  }
+  if (input.profile !== undefined && typeof input.profile !== 'string') {
+    throw new Error('dsh-legion: profile must be a string')
+  }
+  if (input.run_in_background !== undefined && typeof input.run_in_background !== 'boolean') {
+    throw new Error('dsh-legion: run_in_background must be a boolean')
+  }
+  return {
+    description: input.description,
+    prompt: input.prompt,
+    ...input.profile === undefined ? {} : { profile: input.profile },
+    ...input.run_in_background === undefined ? {} : { run_in_background: input.run_in_background },
+  }
 }
 
 function runtimeSnapshot(ctx: Context, config: Config): RuntimeSnapshot {
@@ -205,7 +266,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
     },
     isConcurrencySafe: () => true,
     async execute(rawArgs, exec) {
-      const args = rawArgs as unknown as ToolArgs
+      const args = parseToolArgs(rawArgs)
       const parent = exec.agent
       if (parent === undefined) {
         throw new Error('dsh-legion: tool requires a calling agent')
@@ -246,7 +307,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  validateConfig(config)
+  config = materializeConfig(config)
   let activeCatalog: CompiledCatalog | undefined
   let disposeTool: (() => void) | undefined
 

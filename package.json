@@ -1,10 +1,13 @@
 {
   "name": "dsh-legion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Configurable multi-model subagent profiles for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "bin": {
+    "dsh-legion": "./lib/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -23,7 +26,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "pnpm run clean && tsdown",
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
@@ -65,7 +68,8 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "js-yaml": "^4.2.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -93,7 +97,6 @@
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
-    "js-yaml": "^4.2.0",
     "node-addon-require-builtin": "^0.1.4",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",

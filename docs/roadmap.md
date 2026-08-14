@@ -17,7 +17,7 @@ Product principles:
 - [x] Tool schema, prompt, activation, and execution share one compiled catalog.
 - [x] Versioned `findings-v1` and `review-v1` foreground result contracts.
 - [x] Revalidate and leaf-project provider-owned structured output.
-- [ ] Human/JSON doctor CLI over the compiled catalog.
+- [x] Human/JSON doctor CLI over the compiled catalog and explicit provider fixtures.
 - [ ] Profile-scoped skill and prompt-fragment references with canonical path confinement.
 
 ## v0.3 — Deterministic pre-start route planning

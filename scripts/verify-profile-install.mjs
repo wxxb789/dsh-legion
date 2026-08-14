@@ -30,6 +30,14 @@ const run = (program, args, cwd) => {
   }
 }
 
+const runNode = (args, cwd) => {
+  const result = spawnSync(process.execPath, args, { cwd, stdio: 'inherit' })
+  if (result.error) throw result.error
+  if (result.status !== 0) {
+    throw new Error(`node ${args.join(' ')} failed with exit code ${String(result.status)}`)
+  }
+}
+
 let ctx
 try {
   const packDir = join(sandboxRoot, 'pack')
@@ -52,6 +60,7 @@ try {
     '--registry=https://registry.npmjs.org',
     tarball,
   ], profileDir)
+  runNode([join(profileDir, 'node_modules', 'dsh-legion', 'lib', 'bin.js'), '--help'], profileDir)
 
   await writeFile(join(profileDir, 'cordis.yml'), '[]\n')
   await writeFile(join(presetDir, 'agent.cordis.yml'), [

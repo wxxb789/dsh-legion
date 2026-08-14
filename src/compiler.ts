@@ -2,27 +2,50 @@ import { createHash } from 'node:crypto'
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { Config, LegionProfile, ResultContract } from './config.ts'
-import { Config as ConfigSchema, validateConfig } from './config.ts'
+import { materializeConfig } from './config.ts'
 import { outputSchemaFor } from './result-contract.ts'
+import {
+  CatalogDigest as catalogDigest,
+  PolicyDigest as policyDigest,
+  ProfileName as profileName,
+  type CatalogDigest,
+  type PolicyDigest,
+  type ProfileName,
+} from './identity.ts'
 
-export type DiagnosticSeverity = 'warning' | 'error'
+export const WARNING_DIAGNOSTIC_CODES = [
+  'PROFILE_PROVIDER_UNAVAILABLE',
+  'DEFAULT_PROFILE_INACTIVE',
+] as const
+export type WarningDiagnosticCode = (typeof WARNING_DIAGNOSTIC_CODES)[number]
 
-export type DiagnosticCode =
-  | 'PROFILE_PROVIDER_UNAVAILABLE'
-  | 'PROFILE_CONTINUABLE_UNSUPPORTED'
-  | 'PROFILE_DEPTH_UNSUPPORTED'
-  | 'PROFILE_PERSONA_UNSUPPORTED'
-  | 'PROFILE_TOOL_FILTER_UNSUPPORTED'
-  | 'PROFILE_OUTPUT_SCHEMA_UNSUPPORTED'
-  | 'PROFILE_STRUCTURED_BACKGROUND_UNSUPPORTED'
-  | 'DEFAULT_PROFILE_INACTIVE'
+export const ERROR_DIAGNOSTIC_CODES = [
+  'PROFILE_CONTINUABLE_UNSUPPORTED',
+  'PROFILE_DEPTH_UNSUPPORTED',
+  'PROFILE_PERSONA_UNSUPPORTED',
+  'PROFILE_TOOL_FILTER_UNSUPPORTED',
+  'PROFILE_OUTPUT_SCHEMA_UNSUPPORTED',
+  'PROFILE_STRUCTURED_BACKGROUND_UNSUPPORTED',
+] as const
+export type ErrorDiagnosticCode = (typeof ERROR_DIAGNOSTIC_CODES)[number]
 
-export interface Diagnostic {
-  readonly code: DiagnosticCode
-  readonly severity: DiagnosticSeverity
-  readonly message: string
-  readonly profile?: string
-}
+export type Diagnostic =
+  | {
+      readonly code: WarningDiagnosticCode
+      readonly severity: 'warning'
+      readonly message: string
+      readonly profile: ProfileName
+    }
+  | {
+      readonly code: ErrorDiagnosticCode
+      readonly severity: 'error'
+      readonly message: string
+      readonly profile: ProfileName
+    }
+
+export type DiagnosticCode = Diagnostic['code']
+export type DiagnosticSeverity = Diagnostic['severity']
+export type ErrorDiagnostic = Extract<Diagnostic, { severity: 'error' }>
 
 export interface ProviderFacts {
   readonly capabilities: SubagentCapabilities
@@ -36,7 +59,7 @@ export interface RuntimeSnapshot {
 export type EffectiveMode = 'foreground' | 'continuable'
 
 export interface EffectiveProfile extends LegionProfile {
-  readonly name: string
+  readonly name: ProfileName
   readonly active: boolean
   readonly defaultMode: EffectiveMode
   readonly allowedModes: readonly EffectiveMode[]
@@ -44,9 +67,9 @@ export interface EffectiveProfile extends LegionProfile {
 }
 
 export class CatalogCompileError extends Error {
-  readonly diagnostics: Diagnostic[]
+  readonly diagnostics: ErrorDiagnostic[]
 
-  constructor(diagnostics: Diagnostic[]) {
+  constructor(diagnostics: readonly ErrorDiagnostic[]) {
     super(`dsh-legion: invalid compiled catalog: ${diagnostics.map(item => `${item.code}: ${item.message}`).join('; ')}`)
     this.name = 'CatalogCompileError'
     this.diagnostics = diagnostics.map(item => ({ ...item }))
@@ -61,14 +84,14 @@ export interface DelegationInvocation {
 }
 
 export interface DelegationPlan {
-  readonly profile: string
+  readonly profile: ProfileName
   readonly mode: EffectiveMode
   readonly subagentProvider: string
   readonly label: string
   readonly prompt: string
   readonly result: ResultContract
-  readonly policyDigest: string
-  readonly catalogDigest: string
+  readonly policyDigest: PolicyDigest
+  readonly catalogDigest: CatalogDigest
   readonly agentOptions?: LegionProfile['agentOptions']
   readonly persona?: string
   readonly toolFilter?: LegionProfile['toolFilter']
@@ -89,19 +112,20 @@ export class DelegationPlanError extends Error {
 export interface CompiledCatalog {
   readonly toolName: string
   readonly enableRunInBackground: boolean
-  readonly defaultProfile?: string
+  readonly configuredDefaultProfile?: ProfileName
+  readonly defaultProfile?: ProfileName
   readonly guidance?: string
   readonly profiles: Record<string, EffectiveProfile>
   readonly activeProfiles: Record<string, EffectiveProfile>
   readonly diagnostics: Diagnostic[]
   /** Digest of authored policy after schema defaults, independent of live provider state. */
-  readonly policyDigest: string
+  readonly policyDigest: PolicyDigest
   /** Digest of policy plus the runtime provider snapshot used for this compilation. */
-  readonly catalogDigest: string
+  readonly catalogDigest: CatalogDigest
 }
 
 function copyProfile(
-  name: string,
+  name: ProfileName,
   profile: LegionProfile,
   active: boolean,
   defaultMode: EffectiveMode,
@@ -140,22 +164,26 @@ function canonical(value: unknown): unknown {
   )
 }
 
-function digest(value: unknown): string {
+function sha256(value: unknown): `sha256:${string}` {
   return `sha256:${createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')}`
 }
 
 function providerError(
   diagnostics: Diagnostic[],
-  profile: string,
-  code: DiagnosticCode,
+  profile: ProfileName,
+  code: ErrorDiagnosticCode,
   message: string,
 ): void {
   diagnostics.push({ code, severity: 'error', profile, message })
 }
 
+function isErrorDiagnostic(diagnostic: Diagnostic): diagnostic is ErrorDiagnostic {
+  return diagnostic.severity === 'error'
+}
+
 /** Reject a catalog whose present providers cannot satisfy configured defaults. */
 export function assertCatalogUsable(catalog: CompiledCatalog): void {
-  const errors = catalog.diagnostics.filter(item => item.severity === 'error')
+  const errors = catalog.diagnostics.filter(isErrorDiagnostic)
   if (errors.length > 0) throw new CatalogCompileError(errors)
 }
 
@@ -165,13 +193,13 @@ export function assertCatalogUsable(catalog: CompiledCatalog): void {
  * this seam.
  */
 export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): CompiledCatalog {
-  config = ConfigSchema(config)
-  validateConfig(config)
+  config = materializeConfig(config)
   const diagnostics: Diagnostic[] = []
   const profiles: Record<string, EffectiveProfile> = {}
   const activeProfiles: Record<string, EffectiveProfile> = {}
 
   for (const name of Object.keys(config.profiles).sort()) {
+    const identity = profileName(name)
     const profile = config.profiles[name]!
     const result = profile.result ?? 'text'
     const defaultMode: EffectiveMode = config.enableRunInBackground && profile.defaultRunInBackground
@@ -185,7 +213,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
       diagnostics.push({
         code: 'PROFILE_PROVIDER_UNAVAILABLE',
         severity: 'warning',
-        profile: name,
+        profile: identity,
         message: `profile "${name}" requires unavailable subagent provider "${profile.subagentProvider}"`,
       })
     } else {
@@ -200,7 +228,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (!provider.continuable) {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_CONTINUABLE_UNSUPPORTED',
             `provider "${profile.subagentProvider}" does not support continuable children`,
           )
@@ -208,7 +236,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (result !== 'text') {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_STRUCTURED_BACKGROUND_UNSUPPORTED',
             `structured result contract "${result}" is foreground-only`,
           )
@@ -217,7 +245,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (!depthSupported) {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_DEPTH_UNSUPPORTED',
             `provider "${profile.subagentProvider}" cannot enforce numeric maxDepth`,
           )
@@ -225,7 +253,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (!personaSupported) {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_PERSONA_UNSUPPORTED',
             `provider "${profile.subagentProvider}" does not support persona`,
           )
@@ -233,7 +261,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (!toolFilterSupported) {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_TOOL_FILTER_UNSUPPORTED',
             `provider "${profile.subagentProvider}" does not support toolFilter`,
           )
@@ -241,7 +269,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
         if (!outputSupported) {
           providerError(
             diagnostics,
-            name,
+            identity,
             'PROFILE_OUTPUT_SCHEMA_UNSUPPORTED',
             `provider "${profile.subagentProvider}" does not support structured output`,
           )
@@ -252,7 +280,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     const allowedModes: EffectiveMode[] = []
     if (foregroundSupported) allowedModes.push('foreground')
     if (continuableSupported) allowedModes.push('continuable')
-    const effective = copyProfile(name, profile, allowedModes.includes(defaultMode), defaultMode, allowedModes)
+    const effective = copyProfile(identity, profile, allowedModes.includes(defaultMode), defaultMode, allowedModes)
     profiles[name] = effective
     if (effective.active) activeProfiles[name] = effective
   }
@@ -261,7 +289,7 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     diagnostics.push({
       code: 'DEFAULT_PROFILE_INACTIVE',
       severity: 'warning',
-      profile: config.defaultProfile,
+      profile: profileName(config.defaultProfile),
       message: `default profile "${config.defaultProfile}" is not active in this runtime snapshot`,
     })
   }
@@ -277,21 +305,23 @@ export function compileCatalog(config: Config, snapshot: RuntimeSnapshot): Compi
     providers: Object.fromEntries(Object.keys(snapshot.providers).sort().map(name => [name, snapshot.providers[name]])),
   }
 
-  const activeDefaultProfile = config.defaultProfile !== undefined
-    && activeProfiles[config.defaultProfile] !== undefined
-    ? config.defaultProfile
-    : undefined
+  const activeDefaultProfile = config.defaultProfile === undefined
+    ? undefined
+    : activeProfiles[config.defaultProfile]?.name
 
   return {
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
+    ...config.defaultProfile === undefined
+      ? {}
+      : { configuredDefaultProfile: profileName(config.defaultProfile) },
     ...activeDefaultProfile === undefined ? {} : { defaultProfile: activeDefaultProfile },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
     profiles,
     activeProfiles,
     diagnostics,
-    policyDigest: digest(policy),
-    catalogDigest: digest({ policy, runtime }),
+    policyDigest: policyDigest(sha256({ version: 1, kind: 'legion-policy', policy })),
+    catalogDigest: catalogDigest(sha256({ version: 1, kind: 'legion-catalog', policy, runtime })),
   }
 }
 
@@ -332,7 +362,7 @@ export function compileDelegationPlan(
   }
   const schema = mode === 'foreground' ? outputSchemaFor(profile.result) : undefined
   return {
-    profile: selected,
+    profile: profile.name,
     mode,
     subagentProvider: profile.subagentProvider,
     label: invocation.description,

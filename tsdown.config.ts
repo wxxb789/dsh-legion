@@ -1,13 +1,25 @@
 import { defineConfig } from 'tsdown'
 
-export default defineConfig({
-  entry: ['src/index.ts'],
+const shared = {
   outDir: 'lib',
-  format: ['esm'],
-  platform: 'node',
+  format: ['esm'] as Array<'esm'>,
+  platform: 'node' as const,
   target: 'es2024',
   fixedExtension: false,
-  dts: true,
-  clean: true,
   deps: { neverBundle: [/^@deepseek-ai\//] },
-})
+}
+
+export default defineConfig([
+  {
+    ...shared,
+    entry: ['src/index.ts'],
+    dts: true,
+    clean: false,
+  },
+  {
+    ...shared,
+    entry: ['src/bin.ts'],
+    dts: false,
+    clean: false,
+  },
+])

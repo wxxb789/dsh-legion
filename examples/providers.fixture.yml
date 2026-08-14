@@ -1,0 +1,28 @@
+version: 1
+kind: legion-provider-snapshot
+
+# This is an explicit compatibility fixture, not live provider health.
+providers:
+  spawn:
+    continuable: true
+    capabilities:
+      outputSchema: true
+      depthLimit: true
+      toolFilter: true
+      persona: true
+
+  fork:
+    continuable: true
+    capabilities:
+      outputSchema: true
+      depthLimit: true
+      toolFilter: true
+      persona: true
+
+  codex:
+    continuable: false
+    capabilities:
+      outputSchema: false
+      depthLimit: false
+      toolFilter: false
+      persona: false

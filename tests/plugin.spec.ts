@@ -171,6 +171,17 @@ describe('dsh-legion', () => {
     expect(guidance).toContain('Omitting profile selects `quick`.')
   })
 
+  it('rejects unknown model tool arguments at the trust boundary', async () => {
+    const ctx = await setup(baseConfig)
+    const result = await execute(ctx, {
+      description: 'bad args',
+      prompt: 'Work.',
+      typo: true,
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('unknown field(s): typo')
+  })
+
   it('maps a foreground profile to the existing SubagentStartRequest seam', async () => {
     const { request, result } = await capturedForeground()
     expect(result.isError).toBe(false)
@@ -531,6 +542,30 @@ describe('dsh-legion', () => {
     })
     expect(forced.isError).toBe(true)
     expect(rendered(forced)).toContain('run_in_background is disabled')
+  })
+
+  it('rejects unknown config fields before publishing tool or prompt effects', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider(provider('spawn'))
+    await expect(ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        quick: {
+          description: 'Quick work.',
+          subagentProvider: 'spawn',
+          maxDepth: 1,
+          defaultRunInBackground: false,
+          typo: true,
+        },
+      },
+    } as never)).rejects.toThrow(/unknown field.*typo/)
+    expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
+    expect((await ctx.systemPrompt.assemble()).sections
+      .find(section => section.name === 'tool:legion')).toBeUndefined()
   })
 
   it('rejects invalid cross-field configuration during activation', async () => {

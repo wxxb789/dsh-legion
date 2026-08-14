@@ -61,6 +61,15 @@ describe('compileCatalog', () => {
     expect(base.profiles.review?.toolFilter?.deny).toEqual(['write'])
   })
 
+  it('rejects unknown authored fields before they can influence policy digests', () => {
+    expect(() => compileCatalog({
+      ...base,
+      profiles: {
+        quick: { ...base.profiles.quick!, typo: true },
+      },
+    } as unknown as Config, spawn)).toThrow(/unknown field.*typo/)
+  })
+
   it('materializes omitted result defaults before hashing', () => {
     const explicit = compileCatalog(base, spawn)
     const legacyQuick = { ...base.profiles.quick! }

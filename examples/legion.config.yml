@@ -1,0 +1,35 @@
+toolName: legion
+defaultProfile: quick
+enableRunInBackground: true
+
+profiles:
+  quick:
+    description: Translation, exploration, extraction, formatting, and summaries.
+    subagentProvider: spawn
+    agentOptions:
+      provider: deepseek-official
+      model: deepseek-v4-flash
+      maxTokens: 8192
+    maxDepth: 2
+    defaultRunInBackground: true
+
+  deep:
+    description: Complex architecture, difficult debugging, and end-to-end implementation.
+    subagentProvider: spawn
+    agentOptions:
+      provider: deepseek-official
+      model: deepseek-v4-pro
+    maxDepth: 3
+    defaultRunInBackground: true
+
+  review:
+    description: Independent correctness, security, and maintainability review.
+    subagentProvider: spawn
+    agentOptions:
+      provider: deepseek-official
+      model: deepseek-v4-pro
+    toolFilter:
+      deny: [write, edit]
+    maxDepth: 2
+    defaultRunInBackground: false
+    result: review-v1

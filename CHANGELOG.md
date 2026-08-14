@@ -6,11 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-15
+
 ### Added
 
 - Canonical customization-first domain model for user-defined Profiles, Teams, and Strategies.
 - ADR requiring the curated Default Catalog to use the same replaceable contracts as user configuration.
 - Type-driven contract rules for authored/validated/effective/compiled states, branded identities, discriminated unions, and runtime validation boundaries.
+- `dsh-legion doctor` and `explain` CLI with human and versioned JSON output over explicit provider fixtures.
+- Programmatic `ExplainViewV1`, deterministic profile states, configured/active default distinction, and stable summary diagnostics.
+- Branded ProfileName, PolicyDigest, and CatalogDigest values plus compile-time contract tests.
+
+### Fixed
+
+- Reject unknown configuration, provider-fixture, and model-tool fields before they enter policy digests or plugin effects.
+- Runtime-validate ExplainViewV1 JSON, digest, profile eligibility, diagnostic, default, and summary invariants.
+- Eliminate shared-output clean races by cleaning once before independent library and CLI builds.
 
 ## [0.2.0] - 2026-08-15
 
@@ -47,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/wxxb789/dsh-legion/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wxxb789/dsh-legion/releases/tag/v0.1.0

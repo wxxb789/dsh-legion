@@ -75,6 +75,84 @@ export const Config: z<Config> = z.object({
   guidance: z.string(),
 })
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function assertKnownKeys(value: unknown, allowed: readonly string[], at: string): void {
+  const source = record(value)
+  if (source === undefined) return
+  const known = new Set(allowed)
+  const unknown = Object.keys(source).filter(key => !known.has(key))
+  if (unknown.length > 0) {
+    throw new Error(`dsh-legion: ${at} contains unknown field(s): ${unknown.sort().join(', ')}`)
+  }
+}
+
+function assertKnownConfigKeys(input: unknown): void {
+  assertKnownKeys(
+    input,
+    ['toolName', 'profiles', 'defaultProfile', 'enableRunInBackground', 'guidance'],
+    'config',
+  )
+  const profiles = record(record(input)?.profiles)
+  if (profiles === undefined) return
+  for (const [name, profile] of Object.entries(profiles)) {
+    assertKnownKeys(
+      profile,
+      [
+        'description',
+        'subagentProvider',
+        'agentOptions',
+        'persona',
+        'toolFilter',
+        'maxDepth',
+        'defaultRunInBackground',
+        'result',
+      ],
+      `profiles.${name}`,
+    )
+    const profileRecord = record(profile)
+    assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `profiles.${name}.agentOptions`)
+    assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `profiles.${name}.toolFilter`)
+  }
+}
+
+/** Validate, materialize defaults, and detach one untrusted Legion config. */
+export function materializeConfig(input: unknown): Config {
+  assertKnownConfigKeys(input)
+  const parsed = Config(input as Config | null | undefined)
+  validateConfig(parsed)
+  return {
+    toolName: parsed.toolName,
+    enableRunInBackground: parsed.enableRunInBackground,
+    ...parsed.defaultProfile === undefined ? {} : { defaultProfile: parsed.defaultProfile },
+    ...parsed.guidance === undefined ? {} : { guidance: parsed.guidance },
+    profiles: Object.fromEntries(Object.keys(parsed.profiles).sort().map((name) => {
+      const profile = parsed.profiles[name]!
+      return [name, {
+        description: profile.description,
+        subagentProvider: profile.subagentProvider,
+        ...profile.agentOptions === undefined ? {} : { agentOptions: { ...profile.agentOptions } },
+        ...profile.persona === undefined ? {} : { persona: profile.persona },
+        ...profile.toolFilter === undefined
+          ? {}
+          : {
+              toolFilter: {
+                ...profile.toolFilter.allow === undefined ? {} : { allow: [...profile.toolFilter.allow] },
+                ...profile.toolFilter.deny === undefined ? {} : { deny: [...profile.toolFilter.deny] },
+              },
+            },
+        maxDepth: profile.maxDepth,
+        defaultRunInBackground: profile.defaultRunInBackground,
+        result: profile.result ?? 'text',
+      } satisfies LegionProfile]
+    })),
+  }
+}
+
 /** Validate cross-field facts Schemastery cannot express. */
 export function validateConfig(config: Config): void {
   if (config.toolName.trim().length === 0) {

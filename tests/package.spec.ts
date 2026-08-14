@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { access, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { load } from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 
@@ -12,6 +12,8 @@ interface PackageManifest {
   types?: string
   files?: string[]
   exports?: Record<string, unknown>
+  bin?: Record<string, string>
+  dependencies?: Record<string, string>
   dsh?: { bundle?: { patch?: string } }
 }
 
@@ -34,12 +36,20 @@ describe('published package contract', () => {
       'lib', 'cordis.patch.yml', 'examples', 'presets', 'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
+    expect(manifest.bin).toEqual({ 'dsh-legion': './lib/bin.js' })
+    expect(manifest.dependencies).toHaveProperty('js-yaml')
     await Promise.all([
       access(resolve(ROOT, manifest.main!)),
       access(resolve(ROOT, manifest.types!)),
+      access(resolve(ROOT, manifest.bin!['dsh-legion']!)),
       access(resolve(ROOT, 'presets/legion/agent.cordis.yml')),
       access(resolve(ROOT, 'presets/legion/preset.yml')),
       access(resolve(ROOT, 'examples/legion.agent.cordis.fragment.yml')),
     ])
+    expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))
+      .toMatch(/^#!\/usr\/bin\/env node/)
+    const rootExport = await import(pathToFileURL(resolve(ROOT, manifest.main!)).href)
+    expect(rootExport).toHaveProperty('compileCatalog')
+    expect(rootExport).toHaveProperty('explainCatalog')
   })
 })

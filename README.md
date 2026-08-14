@@ -34,7 +34,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.2.0` adds an explainable EffectiveProfile compiler and versioned foreground result contracts on top of semantic profile routing.
+`0.2.1` adds branded type-driven contracts and a fixture-based doctor/explain CLI to the EffectiveProfile compiler and versioned foreground result contracts.
 
 Supported:
 
@@ -167,6 +167,28 @@ Structured contracts are deliberately narrow:
 - the provider-owned `unknown` value is validated again and projected leaf-by-leaf into detached lossless JSON before Legion returns it;
 - continuable background children remain text/session oriented because DSH does not attach one activation-wide `outputSchema` contract.
 
+## Doctor and explain
+
+The CLI validates one standalone Legion config against an explicit provider capability fixture:
+
+```bash
+dsh-legion doctor examples/legion.config.yml \
+  --providers examples/providers.fixture.yml
+
+dsh-legion explain examples/legion.config.yml \
+  --providers examples/providers.fixture.yml --json
+```
+
+`doctor` prints a compact summary; `explain` adds every effective profile, allowed execution mode, selected model route, result contract, and diagnostic code. `--json` emits the versioned `legion-explain` view used by the programmatic `explainCatalog()` interface.
+
+A provider fixture proves only the supplied static capability facts. The CLI does not attach to a live DSH process and does not inspect credentials, network reachability, provider health, quota, billing, latency, or model availability. Omitting `--providers` uses an empty fixture and produces unavailable-profile warnings rather than a false health claim.
+
+Exit codes:
+
+- `0`: inputs parsed and no error-severity catalog diagnostic; warnings are allowed;
+- `1`: explain view generated with one or more capability errors;
+- `2`: usage, file read, YAML/JSON parse, or runtime schema validation failed.
+
 ## Development
 
 Requirements: Node `^22.19.0 || >=24` and pnpm.
@@ -185,6 +207,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0002: EffectiveProfile compiler](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0002-effective-profile-compiler.md)
 - [ADR 0003: Customization first; defaults as data](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0003-customization-first-defaults-as-data.md)
 - [ADR 0004: Type-driven orchestration contracts](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0004-type-driven-contracts.md)
+- [ADR 0005: Doctor explains fixtures, not health](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0005-doctor-explains-fixtures-not-health.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)
