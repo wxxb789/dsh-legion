@@ -78,8 +78,18 @@ try {
     roots: [{ path: presetRoot, trust: 'user' }],
     includeUserRoot: false,
   })
-  await ctx.agentPresets.standingKeyFor('legion-packed')
-  process.stdout.write('packed profile preset mounted successfully\n')
+  const standingKey = await ctx.agentPresets.standingKeyFor('legion-packed')
+  ctx.subagents.registerProvider({
+    name: 'spawn',
+    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    inheritsParentContext: false,
+    async start() { throw new Error('packed profile smoke does not execute a child') },
+    async prepareContinuable() { return {} },
+  })
+  if (!ctx.tools.schemas(standingKey).some(schema => schema.name === 'legion')) {
+    throw new Error('packed Legion plugin mounted but did not register its tool in the preset scope')
+  }
+  process.stdout.write('packed profile preset mounted and registered the Legion tool successfully\n')
 } finally {
   await ctx?.fiber.dispose()
   await rm(sandboxRoot, { recursive: true, force: true })

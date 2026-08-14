@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Validate the bundle manifest, patch, packed file inventory, and packed-tarball installation into a real profile preset mount.
 - Move self-contained non-empty and identifier constraints into the Schemastery Config while retaining cross-field guards in `apply()`.
 - Mark the pre-ADR Host runtime, team, and DAG design reports as superseded historical explorations.
+- Make `pnpm test` self-contained by building ignored runtime artifacts before unit tests.
+- Extend the packed-profile smoke through provider registration and preset-scoped Legion tool discovery.
 
 ## [0.1.0] - 2026-08-14
 

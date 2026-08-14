@@ -265,8 +265,8 @@ ADR 的核心 decision 与源码一致：
 **测试与 gate 风险：**
 
 - **高：CI gate 可能在测试前失败。** 仓库没有 `pnpm-lock.yaml`，但 CI 直接运行 `pnpm install`（`.github/workflows/ci.yml:18-26`），同时 manifest 固定 `packageManager: pnpm@11.21.0`（`package.json:60`）。审计中的 clean frozen install 实测报 `ERR_PNPM_NO_LOCKFILE`；当前仓库也没有通过 lockfile 保证依赖可复现。
-- **高：独立 test 与 ignored build artifact 耦合。** `lib/` 被 `.gitignore` 排除（`.gitignore:1-3`），但 package entry、exports 与 tarball 都依赖 `lib`（`package.json:6-16`）。`pnpm run check` 因顺序为 typecheck → build → test 而生成 `lib` 后再测（`package.json:28-34`），掩盖了 clean artifact 状态直接运行 `pnpm test` 时 package/distribution tests 的失败：审计实测 clean 状态 19/21，build 后 21/21；依赖点见 `tests/package.spec.ts:37-43`、`tests/distribution.spec.ts:24-34,60-61`。README 已要求 local checkout 先 build（`README.md:57-66`），Git dependency 则依赖 `prepare`（`README.md:68-81`, `package.json:33`），但这是安装前置条件而非独立 `test` script 的自洽 contract。
-- packed-install smoke 只证明 tarball 可安装、preset 可 mount（`scripts/verify-profile-install.mjs:43-82`）；它没有注册 provider 后验证 tool/prompt，也没有实际执行 delegation。CI 仅在 Node 24 运行该 smoke（`.github/workflows/ci.yml:27-28`）。
+- **审计发现并已在后续提交修复：独立 test 与 ignored build artifact 耦合。** `lib/` 被 `.gitignore` 排除，但 package entry、exports 与 tarball 都依赖 `lib`。审计时 clean 状态直接 `pnpm test` 为 19/21，build 后 21/21；随后 `test` script 改为先 build 再运行 `test:unit`，而 `check`/`prepack` 复用已构建的 unit gate。README 仍明确 local checkout 和 Git dependency 的构建前置条件。
+- packed-install smoke 证明 tarball 可安装、preset 可 mount，并在注册 scripted `spawn` provider 后验证 Legion tool 出现在该 preset scope；它仍不执行真实 delegation、LLM route或continuable lifecycle。CI 仅在 Node 24 运行该 smoke（`.github/workflows/ci.yml:27-28`）。
 
 **未覆盖或不存在：**
 
@@ -284,7 +284,7 @@ ADR 的核心 decision 与源码一致：
 
 - `pnpm run check`：typecheck、build、Vitest均完成；5 files / 21 tests passed。整体命令最初在最终 `npm pack --dry-run --ignore-scripts` 阶段达到120秒工具超时，因此随后单独执行 pack验证。
 - `pnpm run verify:pack`：通过；dry-run tarball为 `dsh-legion-0.1.0.tgz`，13 files，包含 `lib`、empty patch、examples、presets、README/CHANGELOG/SECURITY/LICENSE。该命令只验证清单，不等于安装或运行验证。
-- 子代理尝试 packed profile install 时遇到 registry TLS timeout，未完成；这是外部网络阻断，不能据此判定代码失败，也意味着本次没有获得 packed-install 成功的独立复验。
+- 本机独立 packed profile install 受 public registry TLS handshake failure 阻断；GitHub Actions Node 24 随后从公开 registry 完成真实 tarball install、preset mount与tool registration，因此分发路径有CI成功证据，但仍没有真实delegation/provider E2E。
 
 ## 10. Build、分发与安装事实
 
