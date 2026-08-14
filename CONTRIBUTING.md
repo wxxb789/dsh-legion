@@ -1,0 +1,30 @@
+# Contributing
+
+Thank you for helping improve dsh-legion.
+
+## Development setup
+
+1. Install Node `^22.19.0 || >=24` and pnpm.
+2. Run `pnpm install`.
+3. Run `pnpm run check` before opening a pull request.
+
+## Design rules
+
+- Reuse DeepSeek Harness seams; do not copy its Agent, Session, subagent, workflow, sandbox, or approval state machines.
+- Keep raw model ids in deployment configuration, not in model-facing tool calls.
+- Fail loudly when a selected provider lacks a configured capability.
+- Every registration and side effect must be owned by the current Cordis Fiber.
+- Do not serialize live Cordis, Agent, Session, Service, Event, or Slot objects.
+- New public configuration must serve at least two concrete profiles or use cases.
+- Preserve the single-tool interface unless measured evidence shows that a second entry point provides more leverage than schema cost.
+
+## Pull requests
+
+Include:
+
+- the problem and intended behavior;
+- tests through the public plugin interface;
+- compatibility impact for the supported DSH peer range;
+- documentation for new configuration or limitations.
+
+Use English for code, comments, documentation, commit messages, and pull request descriptions.

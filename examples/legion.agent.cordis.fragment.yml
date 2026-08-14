@@ -1,0 +1,49 @@
+# Append this row to a USER-OWNED copy of the DSH standard preset.
+# Do not edit the shipped preset installation.
+- id: tool-legion
+  name: dsh-legion
+  config:
+    toolName: legion
+    defaultProfile: quick
+    enableRunInBackground: true
+    guidance: >-
+      Prefer quick for routine work. Use deep only when the task needs sustained
+      reasoning or implementation. Use review after consequential changes.
+    profiles:
+      deep:
+        description: Complex architecture, difficult debugging, and end-to-end implementation.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+        persona: >-
+          Work autonomously. Inspect the repository, identify invariants, implement carefully,
+          and verify the result before reporting.
+        maxDepth: 3
+        defaultRunInBackground: true
+
+      quick:
+        description: Translation, codebase exploration, extraction, formatting, and summaries.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-flash
+          maxTokens: 8192
+        persona: >-
+          Finish the focused task quickly. Return concise evidence and exact source paths.
+        maxDepth: 2
+        defaultRunInBackground: true
+
+      review:
+        description: Independent correctness, security, and maintainability review.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+        persona: >-
+          Act as an adversarial reviewer. Report concrete findings with severity, evidence,
+          and a practical fix. Do not praise or restate the task.
+        toolFilter:
+          deny: [write, edit]
+        maxDepth: 2
+        defaultRunInBackground: true

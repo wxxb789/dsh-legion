@@ -1,0 +1,132 @@
+# Ready-to-copy Legion preset for DeepSeek Harness 0.1.x.
+# This is a USER preset template, not a Host composition.
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are Legion, a senior coding coordinator powered by the {{model}} model.
+      Your working directory is {{cwd}}. Solve small tasks directly. For focused
+      parallel work, delegate by semantic profile and integrate the evidence.
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+- id: tool-subagent-control
+  name: '@deepseek-ai/dsh-tool-subagent-control'
+
+- id: tool-subagent-list-agents
+  name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+- id: tool-legion
+  name: dsh-legion
+  config:
+    toolName: legion
+    defaultProfile: quick
+    enableRunInBackground: true
+    guidance: >-
+      Prefer quick for routine work. Use deep only for sustained reasoning or
+      implementation. Use review after consequential changes.
+    profiles:
+      deep:
+        description: Complex architecture, difficult debugging, and end-to-end implementation.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+        persona: >-
+          Work autonomously. Inspect the repository, identify invariants,
+          implement carefully, and verify the result before reporting.
+        maxDepth: 3
+        defaultRunInBackground: true
+
+      quick:
+        description: Translation, codebase exploration, extraction, formatting, and summaries.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-flash
+          maxTokens: 8192
+        persona: >-
+          Finish the focused task quickly. Return concise evidence and exact
+          source paths.
+        maxDepth: 2
+        defaultRunInBackground: true
+
+      review:
+        description: Independent correctness, security, and maintainability review.
+        subagentProvider: spawn
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+        persona: >-
+          Act as an adversarial reviewer. Report concrete findings with
+          severity, evidence, and a practical fix. Do not praise or restate.
+        toolFilter:
+          deny: [write, edit]
+        maxDepth: 2
+        defaultRunInBackground: true
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000

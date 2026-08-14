@@ -1,0 +1,3 @@
+# dsh-legion is an agent-plane plugin. Installing this bundle makes the package
+# resolvable from user-authored agent presets; it intentionally adds no Host row.
+[]
