@@ -23,7 +23,7 @@ semantic profile name
 
 但 OmO 的真正产品层还包括：
 
-- automatic/intent-aware routing；
+- LLM-selected semantic categories backed by deterministic model resolution；
 - live model resolution、fallback 和 capability normalization；
 - specialized role contracts 与 skill assembly；
 - bounded planning/execution/review protocols；
@@ -53,7 +53,7 @@ Legion 目前没有这些 opinionated orchestration policies。更准确的定�
 | 能力 | OmO | DSH 原生 | dsh-legion 当前状态 | 判定 |
 |---|---|---|---|---|
 | Semantic category/profile names | 8 built-in categories + custom categories | 无 semantic router | 静态 profile map + enum tool | **已实现基础接口** |
-| Automatic intent routing | IntentGate + orchestrator 按任务选 category/agent | 模型可自行调用工具，但无 classifier | coordinator 根据 prompt 显式选择 profile | **真实缺口** |
+| Category/profile selection | orchestrator LLM 根据 tool/prompt 选择 category；没有代码 classifier | 模型可根据工具描述选择调用 | coordinator 根据 prompt 显式选择 profile | **选择接口基本对等；不是 classifier 缺口** |
 | Exact child provider/model | 支持 agent/category model config | 原生 `AgentOptions.provider/model` | 直接透传 | **已实现 / 复用 DSH** |
 | Model availability preflight | live model/provider cache + dead-chain diagnostics | `ctx.llm` 有 catalog、`resolveModelInfo`、`resolveCallConfig` | 只检查 subagent backend；不检查 child LLM route/model | **P0 缺口** |
 | Model fallback chain | user override + category default + user fallback + built-in chain + default | 只在 exact route 内 retry，不跨 route | 每 profile 只有一个 route | **P0 缺口** |
@@ -101,7 +101,7 @@ args.profile ?? defaultProfile
 
 源码没有：
 
-- classifier；
+- code classifier（OmO 同样没有，故不是 parity 缺口）；
 - candidate scoring；
 - model catalog lookup；
 - fallback candidates；
@@ -122,11 +122,9 @@ Provider lifecycle filtering（`src/index.ts:211-250`）只回答“这个 **sub
 - provider 是否 rate-limited / quota-exhausted；
 - 另一个 route 是否更便宜、更快或更可靠。
 
-因此当前最大的命名风险是把 prompt-guided dispatch 叫成 automatic router。README 已写明“main DSH agent chooses a profile”，但项目后续文档和宣传应持续使用：
+在 semantic category 的“由主模型按任务语义选一个名字”这一层，Legion 与 OmO 基本对等：两者都依赖 orchestrator LLM 和 tool/prompt description，不存在独立代码 classifier。真正的差距发生在选名之后：OmO 会把 category 交给确定性的 model-chain resolver，而 Legion 只读取一个固定 route。
 
-> semantic profile dispatch / semantic delegation
-
-直到真正的 resolver 落地后，才使用 automatic/health-aware routing。
+因此项目可以准确使用 `semantic profile dispatch`；在 frozen fallback、candidate reasons 和 live model preflight 落地前，不应宣称 `health-aware model routing`。
 
 ## 5. DSH 已经覆盖、Legion 不应重造的部分
 
