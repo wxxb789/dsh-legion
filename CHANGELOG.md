@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-15
+
+### Added
+
+- Up to eight ordered exact Route Candidates per Profile, with legacy `agentOptions` compatibility.
+- Async DSH adapter/exact-model metadata observation and a pure immutable RoutePlan compiler.
+- Known context/effective-output constraint rejection and preserved unknown metadata semantics.
+- Route-specific additive instructions and branded RoutePlanDigest values.
+- Bounded selected/rejected/skipped route evidence returned with foreground and continuable tool results.
+
+### Changed
+
+- The curated Default Catalog now uses the same public ordered-route contract available to users.
+- Legion starts at most one selected child and never replays or switches routes after child failure.
+- Adapter defaults used for output-budget admission are frozen into the initial activation and explicitly scoped as non-durable across continuable cold resume.
+
+### Fixed
+
+- Fail loud on invalid adapter metadata instead of misclassifying an adapter contract bug as an exact-model rejection.
+- Bind selected route identity and bounded unknown causes into RoutePlanDigest and validate the plan before applying it.
+- Track LLM adapter lifecycle in profile activation, recover from transient tool-name conflicts, and recheck the selected adapter at the start edge.
+
 ## [0.2.2] - 2026-08-15
 
 ### Added
@@ -72,7 +94,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/wxxb789/dsh-legion/compare/v0.1.0...v0.2.0

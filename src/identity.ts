@@ -9,6 +9,7 @@ export type ProfileName = Brand<string, 'ProfileName'>
 export type PolicyDigest = Brand<`sha256:${string}`, 'PolicyDigest'>
 export type CatalogDigest = Brand<`sha256:${string}`, 'CatalogDigest'>
 export type ResourceDigest = Brand<`sha256:${string}`, 'ResourceDigest'>
+export type RoutePlanDigest = Brand<`sha256:${string}`, 'RoutePlanDigest'>
 
 /** Validate and brand one public profile identity. */
 export function ProfileName(value: string): ProfileName {
@@ -34,4 +35,10 @@ export function CatalogDigest(value: string): CatalogDigest {
 export function ResourceDigest(value: string): ResourceDigest {
   if (!SHA256_DIGEST.test(value)) throw new Error('dsh-legion: invalid resource digest')
   return value as ResourceDigest
+}
+
+/** Brand one internally computed exact route-plan digest. */
+export function RoutePlanDigest(value: string): RoutePlanDigest {
+  if (!SHA256_DIGEST.test(value)) throw new Error('dsh-legion: invalid route-plan digest')
+  return value as RoutePlanDigest
 }

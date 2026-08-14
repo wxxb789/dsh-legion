@@ -8,6 +8,14 @@ Legion lets a coordinator delegate one objective through user-defined worker cap
 A reusable worker capability template describing task fit, model-routing requirements, prompt behavior, visible capabilities, and result contract.
 _Avoid_: Agent, Worker instance, Role preset
 
+**Route Candidate**:
+One exact provider/model choice in a Profile's priority-ordered pre-start policy, with optional static constraints and additive instructions.
+_Avoid_: Runtime fallback, Retry target, Model class
+
+**Route Plan**:
+An immutable, evidence-bearing decision that selects at most one Route Candidate before a child starts and records every known rejection, unknown, and skipped lower-priority candidate.
+_Avoid_: Retry plan, Availability check, Model leaderboard
+
 **Prompt Fragment**:
 A bounded, deployment-authorized text resource that adds Profile-specific system instructions without becoming a user task or a Skill.
 _Avoid_: Skill, Prompt template, Arbitrary file

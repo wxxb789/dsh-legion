@@ -20,12 +20,28 @@ describe('shipped Legion preset template', () => {
       defaultProfile: 'quick',
       resourceRoots: { bundled: 'resources' },
       profiles: {
-        deep: { subagentProvider: 'spawn' },
-        quick: { subagentProvider: 'spawn' },
+        deep: {
+          subagentProvider: 'spawn',
+          routes: [
+            { id: 'primary', provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+            { id: 'fast-static', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+          ],
+        },
+        quick: {
+          subagentProvider: 'spawn',
+          routes: [
+            { id: 'primary', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+            { id: 'quality-static', provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+          ],
+        },
         review: {
           subagentProvider: 'spawn',
           defaultRunInBackground: false,
           result: 'review-v1',
+          routes: [
+            { id: 'primary', provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+            { id: 'fast-static', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+          ],
           promptFiles: [{ root: 'bundled', path: 'review.md' }],
         },
       },

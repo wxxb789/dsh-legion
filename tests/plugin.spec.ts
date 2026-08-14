@@ -4,11 +4,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId, MessageId } from '@deepseek-ai/dsh-llm'
+import {
+  CallId,
+  LlmAdapter,
+  LlmError,
+  LlmRuntime,
+  MessageId,
+  type GenerateOptions,
+  type LlmResolvedModelInfo,
+  type StreamChunk,
+} from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
@@ -19,6 +28,27 @@ import * as legion from '../src/index.ts'
 
 const signal = new AbortController().signal
 let callSequence = 0
+
+class RouteAdapter extends LlmAdapter {
+  constructor(
+    private readonly models: Readonly<Record<string, LlmResolvedModelInfo | Error>>,
+    private readonly onResolve?: () => void,
+  ) {
+    super()
+  }
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    this.onResolve?.()
+    const value = this.models[model]
+    return value instanceof Error
+      ? Promise.reject(value)
+      : Promise.resolve(value ?? { provider, id: model, name: model })
+  }
+
+  async * stream(_options: GenerateOptions): AsyncIterable<StreamChunk> {
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
 
 function parent(id = 'parent'): Agent {
   return { id: SessionId(id) } as unknown as Agent
@@ -205,6 +235,180 @@ describe('dsh-legion', () => {
       catalogDigest: expect.stringMatching(/^sha256:/),
       resourceDigest: expect.stringMatching(/^sha256:/),
     })
+  })
+
+  it('freezes one exact route before start and never replays another route', async () => {
+    const ctx = new Context()
+    let starts = 0
+    let request: ResolvedSubagentStartRequest | undefined
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({
+      small: {
+        provider: 'models', id: 'small', name: 'Small',
+        context: { contextWindow: 16_000 }, defaultMaxTokens: 2_000,
+      },
+      strong: {
+        provider: 'models', id: 'strong', name: 'Strong',
+        context: { contextWindow: 128_000 }, defaultMaxTokens: 32_000,
+      },
+    }))
+    ctx.subagents.registerProvider(provider('spawn', {
+      onStart: (value) => {
+        starts += 1
+        request = value
+      },
+    }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'Route-planned work.',
+          subagentProvider: 'spawn',
+          routes: [
+            {
+              id: 'small', provider: 'models', model: 'small',
+              constraints: { minContextTokens: 64_000, minEffectiveOutputTokens: 8_000 },
+            },
+            {
+              id: 'strong', provider: 'models', model: 'strong', maxTokens: 16_000,
+              constraints: { minContextTokens: 64_000, minEffectiveOutputTokens: 8_000 },
+              instructions: 'Use strong-route evidence.',
+            },
+          ],
+          persona: 'Base route persona.',
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const guidance = (await ctx.systemPrompt.assemble()).sections
+      .find(section => section.name === 'tool:legion')?.text
+    expect(guidance).toContain('small=models/small -> strong=models/strong')
+    const result = await execute(ctx, { description: 'route work', prompt: 'Work.' })
+    if (result.isError) throw new Error(rendered(result))
+    expect(result.isError).toBe(false)
+    expect(starts).toBe(1)
+    expect(rendered(result)).toContain('selected Legion route strong')
+    expect(request?.agentOptions).toEqual({ provider: 'models', model: 'strong', maxTokens: 16_000 })
+    expect(request?.persona).toBe('Base route persona.\n\nUse strong-route evidence.')
+    if (result.isError) throw new Error('expected route success')
+    expect(result.value).toMatchObject({
+      routePlan: {
+        kind: 'selected-route-plan',
+        selected: { id: 'strong', provider: 'models', model: 'strong' },
+        decisions: [
+          { kind: 'rejected', reasons: ['CONTEXT_CAPACITY_TOO_SMALL', 'EFFECTIVE_OUTPUT_BUDGET_TOO_SMALL'] },
+          { kind: 'selected' },
+        ],
+        liveAvailability: { auth: 'unknown', quota: 'unknown', health: 'unknown' },
+      },
+    })
+  })
+
+  it('rechecks the selected LLM adapter at the child start edge', async () => {
+    const ctx = new Context()
+    let starts = 0
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    let disposeAdapter: (() => void) | undefined
+    const adapter = new RouteAdapter({}, () => disposeAdapter?.())
+    disposeAdapter = ctx.llm.registerAdapter(['models'], adapter)
+    ctx.subagents.registerProvider(provider('spawn', { onStart: () => { starts += 1 } }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'Drifting route work.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'exact', provider: 'models', model: 'model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const result = await execute(ctx, { description: 'drift check', prompt: 'Work.' })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('disappeared before child start')
+    expect(starts).toBe(0)
+  })
+
+  it('fails before child start when every exact route has a known static rejection', async () => {
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({
+      model: new LlmError('unknown model', 'UNKNOWN_MODEL'),
+    }))
+    ctx.subagents.registerProvider(provider('spawn', { onStart: () => { starts += 1 } }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'Unroutable work.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'missing', provider: 'models', model: 'model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const result = await execute(ctx, { description: 'unroutable', prompt: 'Work.' })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('no exact model route passed static preflight')
+    expect(starts).toBe(0)
+  })
+
+  it('does not replay another route after a selected child fails', async () => {
+    const ctx = new Context()
+    let starts = 0
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
+    ctx.subagents.registerProvider(provider('spawn', {
+      stopReason: 'error',
+      onStart: () => { starts += 1 },
+    }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'No replay work.',
+          subagentProvider: 'spawn',
+          routes: [
+            { id: 'first', provider: 'models', model: 'first' },
+            { id: 'second', provider: 'models', model: 'second' },
+          ],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const result = await execute(ctx, { description: 'no replay', prompt: 'Work.' })
+    expect(result.isError).toBe(true)
+    expect(starts).toBe(1)
+    expect(rendered(result)).toContain('Legion child run failed')
   })
 
   it('loads confined prompt fragments before registration and installs them as child persona', async () => {
@@ -577,6 +781,79 @@ describe('dsh-legion', () => {
     expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
     expect((await ctx.systemPrompt.assemble()).sections
       .find(section => section.name === 'tool:legion')?.text).toBe('')
+  })
+
+  it('tracks LLM adapter lifecycle for routed profile activation', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.subagents.registerProvider(provider('spawn'))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'Routed lifecycle work.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'exact', provider: 'models', model: 'model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+    expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
+
+    const dispose = ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
+    expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(true)
+    await dispose()
+    expect(ctx.tools.schemas().some(schema => schema.name === 'legion')).toBe(false)
+  })
+
+  it('recovers routed tool registration after a transient same-name conflict', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.subagents.registerProvider(provider('spawn'))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        deep: {
+          description: 'Conflict recovery work.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'exact', provider: 'models', model: 'model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+    const disposeConflict = ctx.tools.register(defineTool({
+      name: 'legion',
+      description: 'conflicting tool',
+      parameters: {},
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { conflict: { type: 'boolean', required: true } },
+        },
+        render: () => [{ type: 'text', text: 'conflict' }],
+      },
+      execute: async () => ({ conflict: true }),
+    }))
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
+    expect(ctx.tools.schemas().find(schema => schema.name === 'legion')?.description)
+      .toBe('conflicting tool')
+
+    disposeConflict()
+    expect(ctx.tools.schemas().find(schema => schema.name === 'legion')?.description)
+      .toContain('configured Legion profile')
   })
 
   it('omits and enforces run_in_background when disabled', async () => {

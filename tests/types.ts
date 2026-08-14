@@ -12,6 +12,8 @@ import {
   type PolicyDigest,
   type ProfileName as ProfileNameType,
   type ResourceDigest,
+  type RoutePlan,
+  type RoutePlanDigest,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
 
@@ -38,6 +40,25 @@ const config: LegionConfig = {
   },
 }
 
+const routedConfig: LegionConfig = {
+  toolName: 'legion',
+  enableRunInBackground: true,
+  profiles: {
+    deep: {
+      description: 'Deep work.',
+      subagentProvider: 'spawn',
+      routes: [{
+        id: 'strong',
+        provider: 'provider',
+        model: 'model',
+        constraints: { minContextTokens: 64_000, minEffectiveOutputTokens: 8192 },
+      }],
+      maxDepth: 2,
+      defaultRunInBackground: false,
+    },
+  },
+}
+
 const invocation: DelegationInvocation = {
   profile: 'quick',
   description: 'fast work',
@@ -47,6 +68,7 @@ const invocation: DelegationInvocation = {
 const profile: ProfileNameType = ProfileName('quick')
 const profileAsString: string = profile
 void config
+void routedConfig
 void invocation
 void profileAsString
 
@@ -82,6 +104,25 @@ const invalidDiagnostic: Diagnostic = {
 }
 void invalidDiagnostic
 
+const invalidReasoningConfig: LegionConfig = {
+  ...routedConfig,
+  profiles: {
+    deep: {
+      ...routedConfig.profiles.deep!,
+      routes: [{
+        id: 'invalid',
+        provider: 'provider',
+        model: 'model',
+        constraints: {
+          // @ts-expect-error Reasoning constraints wait for an upstream per-child effort override seam.
+          reasoning: 'forbidden',
+        },
+      }],
+    },
+  },
+}
+void invalidReasoningConfig
+
 // @ts-expect-error Active profiles must expose at least one allowed mode.
 const invalidActiveProfile: ProfileExplainView = {
   kind: 'active-profile',
@@ -98,6 +139,14 @@ void invalidActiveProfile
 declare const explain: ExplainViewV1
 const explainPolicy: PolicyDigest = explain.policyDigest
 void explainPolicy
+
+export function routePlanIdentity(plan: RoutePlan): RoutePlanDigest {
+  if (plan.kind === 'selected-route-plan') {
+    const selectedId: string = plan.selected.id
+    void selectedId
+  }
+  return plan.planDigest
+}
 
 export function diagnosticCodeClass(diagnostic: Diagnostic): WarningDiagnosticCode | ErrorDiagnosticCode {
   if (diagnostic.severity === 'warning') {

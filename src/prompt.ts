@@ -1,6 +1,7 @@
 import type { Config, LegionProfile } from './config.ts'
 
-export interface CoordinatorProfile extends Omit<LegionProfile, 'toolFilter' | 'promptFiles'> {
+export interface CoordinatorProfile extends Omit<LegionProfile, 'routes' | 'toolFilter' | 'promptFiles'> {
+  readonly routes?: readonly Readonly<NonNullable<LegionProfile['routes']>[number]>[]
   readonly toolFilter?: {
     readonly allow?: readonly string[]
     readonly deny?: readonly string[]
@@ -17,7 +18,10 @@ export interface CoordinatorCatalog {
   readonly profiles: Readonly<Record<string, CoordinatorProfile>>
 }
 
-function routeLabel(profile: Pick<LegionProfile, 'agentOptions'>): string {
+function routeLabel(profile: Pick<CoordinatorProfile, 'agentOptions' | 'routes'>): string {
+  if (profile.routes !== undefined) {
+    return profile.routes.map(route => `${route.id}=${route.provider}/${route.model}`).join(' -> ')
+  }
   const route = profile.agentOptions
   if (route?.provider !== undefined && route.model !== undefined) {
     return `${route.provider}/${route.model}`

@@ -72,6 +72,28 @@ describe('explainCatalog', () => {
     expect(JSON.parse(JSON.stringify(view))).toEqual(view)
   })
 
+  it('shows the authored primary exact route without claiming invocation selection', () => {
+    const routed = explainCatalog(compileCatalog({
+      ...config,
+      profiles: {
+        quick: {
+          ...config.profiles.quick!,
+          agentOptions: undefined,
+          routes: [
+            { id: 'primary', provider: 'models', model: 'strong', maxTokens: 8192 },
+            { id: 'static', provider: 'models', model: 'fast' },
+          ],
+        } as never,
+      },
+    }, providers), { providerSnapshot: 'fixture' })
+    expect(routed.profiles[0]).toMatchObject({
+      name: 'quick',
+      route: { provider: 'models', model: 'strong', maxTokens: 8192 },
+    })
+    expect(renderExplainHuman(routed, { command: 'explain', detail: 'profiles' }))
+      .toContain('model route: models/strong')
+  })
+
   it('keeps configured and active defaults distinct for an empty fixture', () => {
     const view = explainCatalog(compileCatalog(config, { providers: {} }), {
       providerSnapshot: 'empty-fixture',

@@ -34,13 +34,14 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.2.2` adds confined Profile Prompt Fragments and immutable resource digests to the branded compiler and fixture-based doctor/explain CLI.
+`0.3.0` adds deterministic exact Route Candidates and immutable pre-start Route Plans without Legion-owned failure replay.
 
 Supported:
 
 - multiple named profiles in one Legion-enabled DSH agent preset;
 - independent subagent backend per profile (`spawn`, `fork`, `codex`, `claude-code`, or another registered provider);
-- independent child LLM `provider`, `model`, and `maxTokens` for in-process DSH children;
+- legacy fixed child LLM `provider`, `model`, and `maxTokens`, or up to eight ordered exact Route Candidates per Profile;
+- pre-start adapter/metadata observation with known constraint rejection, preserved unknowns, and no failure replay;
 - per-profile persona, tool allow/deny policy, depth limit, and foreground/background default;
 - continuable background children with normal DSH settlement notifications and follow-up support;
 - concurrent sibling calls through DSH's parallel tool execution;
@@ -108,19 +109,34 @@ The fragment starts with:
       deep:
         description: Complex architecture, debugging, and implementation.
         subagentProvider: spawn
-        agentOptions:
-          provider: deepseek-official
-          model: deepseek-v4-pro
+        routes:
+          - id: primary
+            provider: deepseek-official
+            model: deepseek-v4-pro
+            constraints:
+              minContextTokens: 65536
+              minEffectiveOutputTokens: 8192
+          - id: fast-static
+            provider: deepseek-official
+            model: deepseek-v4-flash
+            constraints:
+              minContextTokens: 65536
+              minEffectiveOutputTokens: 8192
         maxDepth: 3
         defaultRunInBackground: true
 
       quick:
         description: Translation, exploration, extraction, and summaries.
         subagentProvider: spawn
-        agentOptions:
-          provider: deepseek-official
-          model: deepseek-v4-flash
-          maxTokens: 8192
+        routes:
+          - id: primary
+            provider: deepseek-official
+            model: deepseek-v4-flash
+            maxTokens: 8192
+          - id: quality-static
+            provider: deepseek-official
+            model: deepseek-v4-pro
+            maxTokens: 8192
         maxDepth: 2
         defaultRunInBackground: true
 ```
@@ -153,7 +169,8 @@ Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider li
 | `subagentProvider` | `spawn` | Named DSH subagent backend. This is not an LLM provider. |
 | `agentOptions.provider` | inherited | Child LLM provider route. |
 | `agentOptions.model` | inherited | Child model id. |
-| `agentOptions.maxTokens` | inherited | Child output token limit. |
+| `agentOptions.maxTokens` | inherited | Legacy fixed child output token limit. `agentOptions` cannot be combined with `routes`. |
+| `routes` | none | Up to eight priority-ordered exact Route Candidates evaluated immediately before child start. |
 | `persona` | inherited | Child persona override. Foreground requires the provider's one-shot capability; continuable children are composed by the DSH manager. |
 | `toolFilter.allow` / `deny` | none | Child tool visibility restriction. Foreground requires provider support; the continuation manager installs it directly for background children. |
 | `maxDepth` | `3` | Absolute depth. Foreground numeric limits require `depthLimit`; the continuation manager enforces background limits. Use `provider-managed` for external one-shot products. |
@@ -162,6 +179,33 @@ Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider li
 | `promptFiles` | none | Ordered `{ root, path }` Prompt Fragments appended to the child persona after confinement and content validation. |
 
 For `codex` and `claude-code`, the external product owns its model selection. Use `maxDepth: provider-managed` and normally `defaultRunInBackground: false` because those providers are one-shot.
+
+### Exact Route Candidates
+
+Profiles may replace legacy `agentOptions` with an ordered static policy:
+
+```yaml
+routes:
+  - id: primary
+    provider: deepseek-official
+    model: deepseek-v4-pro
+    maxTokens: 16384
+    constraints:
+      minContextTokens: 65536
+      minEffectiveOutputTokens: 8192
+  - id: fast-static
+    provider: deepseek-official
+    model: deepseek-v4-flash
+    constraints:
+      minContextTokens: 65536
+    instructions: Preserve the Profile's evidence threshold on this route.
+```
+
+Immediately before starting a child, Legion snapshots whether each exact provider has a registered DSH adapter and asks that adapter for exact-model metadata. It selects the first candidate without a **known static contradiction**. An absent advisory model-catalog entry is never a rejection: adapters may accept unlisted model IDs. Missing metadata remains `unknown` and admissible rather than becoming an invented failure.
+
+Known missing adapters, exact-model rejection, insufficient context, or an insufficient effective request output budget reject a candidate. `minEffectiveOutputTokens` compares an explicit candidate `maxTokens` or the adapter default that Legion freezes into the selected start projection; it is not a claim about the model's hard output ceiling. Selectable reasoning efforts are included as evidence only: DSH does not yet expose a per-child reasoning-effort override, and absent reasoning metadata does not prove that a model cannot reason. Registration and metadata resolution never prove auth, quota, reachability, latency, or health.
+
+The frozen Route Plan records every selected, rejected, and lower-priority skipped candidate, includes a stable digest, and reports live availability as unknown. Its effective `maxTokens` applies to the initial child activation; DSH continuable cold resume intentionally restores provider/model/persona/tools but not a previous activation's token budget. The tool returns this bounded explain snapshot. Legion starts exactly one child: if that child later fails, no other Route Candidate is tried. Route-specific `instructions` are additive system/persona policy, not a replacement task and not a user-message fallback.
 
 ### Prompt Fragments
 
@@ -204,7 +248,7 @@ dsh-legion explain examples/legion.config.yml \
   --providers examples/providers.fixture.yml --json
 ```
 
-`doctor` prints a compact summary; `explain` adds every effective profile, allowed execution mode, selected model route, result contract, and diagnostic code. `--json` emits the versioned `legion-explain` view used by the programmatic `explainCatalog()` interface.
+`doctor` prints a compact catalog summary; `explain` adds every effective profile, allowed execution mode, authored primary model route, result contract, and diagnostic code. `--json` emits the versioned `legion-explain` catalog view used by `explainCatalog()`. Actual selected/rejected Route Candidate evidence is invocation-specific and is returned in that Legion tool result's `routePlan`.
 
 A provider fixture proves only the supplied static capability facts. The CLI does not attach to a live DSH process and does not inspect credentials, network reachability, provider health, quota, billing, latency, or model availability. Omitting `--providers` uses an empty fixture and produces unavailable-profile warnings rather than a false health claim.
 
@@ -234,6 +278,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0004: Type-driven orchestration contracts](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0004-type-driven-contracts.md)
 - [ADR 0005: Doctor explains fixtures, not health](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0005-doctor-explains-fixtures-not-health.md)
 - [ADR 0006: Confined Prompt Fragment snapshots](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0006-confined-prompt-resource-snapshots.md)
+- [ADR 0007: Pre-start exact Route Plans](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0007-pre-start-exact-route-plans.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

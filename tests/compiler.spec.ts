@@ -77,6 +77,45 @@ describe('compileCatalog', () => {
     } as unknown as Config, spawn)).toThrow(/unknown field.*typo/)
   })
 
+  it('rejects ambiguous or contradictory authored route candidates', () => {
+    const profile = base.profiles.quick!
+    expect(() => compileCatalog({
+      ...base,
+      profiles: {
+        quick: {
+          ...profile,
+          agentOptions: { provider: 'legacy', model: 'legacy-model' },
+          routes: [{ id: 'exact', provider: 'route', model: 'model' }],
+        },
+      },
+    }, spawn)).toThrow(/cannot combine routes with legacy agentOptions/)
+    const routeProfile = profile
+    expect(() => compileCatalog({
+      ...base,
+      profiles: {
+        quick: {
+          ...routeProfile,
+          routes: [
+            { id: 'same', provider: 'route', model: 'one' },
+            { id: 'same', provider: 'route', model: 'two' },
+          ],
+        },
+      },
+    }, spawn)).toThrow(/repeats route id/)
+    expect(() => compileCatalog({
+      ...base,
+      profiles: {
+        quick: {
+          ...routeProfile,
+          routes: [{
+            id: 'bad-output', provider: 'route', model: 'model', maxTokens: 100,
+            constraints: { minEffectiveOutputTokens: 200 },
+          }],
+        },
+      },
+    }, spawn)).toThrow(/maxTokens is below minEffectiveOutputTokens/)
+  })
+
   it('materializes omitted result defaults before hashing', () => {
     const explicit = compileCatalog(base, spawn)
     const legacyQuick = { ...base.profiles.quick! }
@@ -303,6 +342,62 @@ describe('compileCatalog', () => {
     }, resources)
     expect(continuable.activeProfiles.quick?.defaultMode).toBe('continuable')
     expect(continuable.activeProfiles.quick?.allowedModes).toEqual(['continuable'])
+  })
+
+  it('uses explicit LLM adapter topology to activate routed profiles without inventing offline facts', () => {
+    const profile = base.profiles.quick!
+    const routed: Config = {
+      ...base,
+      profiles: {
+        quick: {
+          ...profile,
+          routes: [{ id: 'exact', provider: 'models', model: 'model' }],
+        },
+      },
+    }
+    const offlineUnknown = compileCatalog(routed, spawn)
+    expect(offlineUnknown.activeProfiles.quick).toBeDefined()
+
+    const missing = compileCatalog(routed, { ...spawn, llmProviders: [] })
+    expect(missing.activeProfiles.quick).toBeUndefined()
+    expect(missing.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PROFILE_LLM_ADAPTER_UNAVAILABLE',
+      severity: 'warning',
+      profile: 'quick',
+    }))
+
+    const registered = compileCatalog(routed, { ...spawn, llmProviders: ['models'] })
+    expect(registered.activeProfiles.quick).toBeDefined()
+    expect(registered.policyDigest).toBe(missing.policyDigest)
+    expect(registered.catalogDigest).not.toBe(missing.catalogDigest)
+  })
+
+  it('requires foreground persona composition for route-specific instructions', () => {
+    const profile = base.profiles.quick!
+    const routed: Config = {
+      ...base,
+      profiles: {
+        quick: {
+          ...profile,
+          routes: [{
+            id: 'exact', provider: 'route', model: 'model', instructions: 'Route policy.',
+          }],
+          defaultRunInBackground: false,
+        },
+      },
+    }
+    const catalog = compileCatalog(routed, {
+      providers: {
+        spawn: {
+          continuable: false,
+          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+        },
+      },
+    })
+    expect(catalog.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'PROFILE_PERSONA_UNSUPPORTED',
+      profile: 'quick',
+    }))
   })
 
   it('changes only catalogDigest when provider runtime facts change', () => {

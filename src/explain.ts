@@ -354,10 +354,11 @@ export function compileExplainView(
 }
 
 function route(profile: EffectiveProfile): ProfileRouteView {
+  const authored = profile.routes?.[0] ?? profile.agentOptions
   return {
-    ...profile.agentOptions?.provider === undefined ? {} : { provider: profile.agentOptions.provider },
-    ...profile.agentOptions?.model === undefined ? {} : { model: profile.agentOptions.model },
-    ...profile.agentOptions?.maxTokens === undefined ? {} : { maxTokens: profile.agentOptions.maxTokens },
+    ...authored?.provider === undefined ? {} : { provider: authored.provider },
+    ...authored?.model === undefined ? {} : { model: authored.model },
+    ...authored?.maxTokens === undefined ? {} : { maxTokens: authored.maxTokens },
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-legion",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Configurable multi-model subagent profiles for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",

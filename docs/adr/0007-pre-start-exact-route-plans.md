@@ -1,0 +1,12 @@
+# Route candidates are resolved once before child start
+
+- Status: Accepted
+- Date: 2026-08-15
+
+A Profile may declare up to eight ordered exact Route Candidates. Immediately before child start, Legion observes the current DSH LLM adapter registry and calls the owning adapter's exact `resolveModelInfo(provider, model)` seam; it never rejects a model only because an advisory catalog omits it. A pure planner selects the first candidate without a known static contradiction, freezes one Route Plan, and starts exactly one child with that provider/model. Child failure does not trigger another candidate, replay, or retry in Legion.
+
+Known adapter absence, exact-model rejection, insufficient known context, and an insufficient effective request output budget reject a candidate. The output budget is either candidate-explicit or an adapter default frozen into the selected start projection; it is not a model hard ceiling. Missing context or output metadata stays `unknown` and remains admissible; it is never converted to zero, infinity, or unavailability. Selectable reasoning metadata is evidence only until DSH exposes a per-child reasoning-effort override. Adapter registration and successful metadata resolution do not prove credentials, authorization, quota, reachability, latency, or health, so every Route Plan reports those facts as `unknown`.
+
+Route-specific instructions are additive system/persona composition. They cannot replace the Profile task, tools, result contract, depth, or Prompt Fragments. A selected effective `maxTokens` budget is frozen for the initial child activation only; DSH deliberately omits activation budgets from the continuable descriptor, so a later cold resume uses that route's then-current adapter default rather than treating this Route Plan as a durable conversation-wide budget. The selected/rejected/skipped decisions, static evidence, unknowns, and a branded RoutePlanDigest are returned with the tool result as the bounded explain snapshot. The plan contains only Legion-owned detached JSON and no adapter, Agent, Session, or provider object.
+
+Cross-route recovery remains out of scope until DSH exposes one recovery owner that can share cancellation, attempt, deadline, token, and cost budgets with provider retry. An adapter registration can also change after planning; DSH remains the authoritative dispatcher for the selected exact route, and Legion does not claim to pin a live adapter instance.

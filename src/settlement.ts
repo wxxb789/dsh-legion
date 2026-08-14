@@ -12,6 +12,7 @@ export interface ForegroundResult {
   readonly policyDigest: DelegationPlan['policyDigest']
   readonly catalogDigest: DelegationPlan['catalogDigest']
   readonly resourceDigest: DelegationPlan['resourceDigest']
+  readonly routePlan?: JsonValue
   readonly output: JsonValue[]
   readonly structured?: JsonValue
 }
@@ -57,6 +58,9 @@ export async function settleForeground(
         policyDigest: plan.policyDigest,
         catalogDigest: plan.catalogDigest,
         resourceDigest: plan.resourceDigest,
+        ...plan.routePlan === undefined
+          ? {}
+          : { routePlan: plan.routePlan as unknown as JsonValue },
         output: result.output as unknown as JsonValue[],
         ...structured === undefined ? {} : { structured },
       }

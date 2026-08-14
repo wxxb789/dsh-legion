@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -15,6 +15,7 @@ import {
 } from './compiler.ts'
 import { renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
+import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
 
 export {
@@ -31,6 +32,8 @@ export type {
   MaterializedConfig,
   PromptFileReference,
   ResultContract,
+  RouteCandidate,
+  RouteConstraints,
 } from './config.ts'
 export {
   CatalogCompileError,
@@ -78,7 +81,34 @@ export type {
   ResourceLoadOptions,
   ResourceSnapshot,
 } from './resources.ts'
-export { CatalogDigest, PolicyDigest, ProfileName, ResourceDigest } from './identity.ts'
+export {
+  RoutePlanError,
+  applyRoutePlan,
+  compileRoutePlan,
+  materializeModelFactsSnapshot,
+  observeModelRoutes,
+} from './route.ts'
+export type {
+  EffectiveOutputBudget,
+  ExactModelFact,
+  MetadataUnknownCause,
+  ModelFactsSnapshot,
+  RouteDecision,
+  RouteEvidence,
+  RoutePlan,
+  RouteRejectCode,
+  RouteUnknownCode,
+  RoutableProfile,
+  SelectedRoutePlan,
+  UnroutableRoutePlan,
+} from './route.ts'
+export {
+  CatalogDigest,
+  PolicyDigest,
+  ProfileName,
+  ResourceDigest,
+  RoutePlanDigest,
+} from './identity.ts'
 export {
   EXPLAIN_VIEW_V1_SCHEMA,
   assertExplainViewV1,
@@ -153,7 +183,10 @@ function runtimeSnapshot(ctx: Context, config: Config): RuntimeSnapshot {
             }]]
       }),
   )
-  return { providers }
+  return {
+    providers,
+    llmProviders: ctx.get('llm')?.listProviders().map(provider => provider.id).sort() ?? [],
+  }
 }
 
 function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
@@ -194,6 +227,17 @@ function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
   return provider
 }
 
+function requireSelectedLlmAdapter(ctx: Context, plan: DelegationPlan): void {
+  const selected = plan.routePlan?.selected
+  if (selected === undefined) return
+  const registered = ctx.get('llm')?.listProviders().some(provider => provider.id === selected.provider) === true
+  if (!registered) {
+    throw new Error(
+      `dsh-legion: selected LLM adapter "${selected.provider}" disappeared before child start`,
+    )
+  }
+}
+
 function requestFor(
   parent: SubagentStartRequest['parent'],
   plan: DelegationPlan,
@@ -208,6 +252,13 @@ function requestFor(
     ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
     ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
   }
+}
+
+function selectedRouteId(value: JsonValue | undefined): string | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const selected = value.selected
+  if (typeof selected !== 'object' || selected === null || Array.isArray(selected)) return undefined
+  return typeof selected.id === 'string' ? selected.id : undefined
 }
 
 function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
@@ -261,6 +312,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
               policyDigest: { type: 'string', required: true },
               catalogDigest: { type: 'string', required: true },
               resourceDigest: { type: 'string', required: true },
+              routePlan: { type: 'json' },
             },
           },
           {
@@ -274,6 +326,7 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
               policyDigest: { type: 'string', required: true },
               catalogDigest: { type: 'string', required: true },
               resourceDigest: { type: 'string', required: true },
+              routePlan: { type: 'json' },
               output: { type: 'array', required: true, items: { type: 'json' } },
               structured: { type: 'json' },
             },
@@ -283,10 +336,13 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
       render: (_args, value) => [{
         type: 'text',
         text: value.kind === 'continuable'
-          ? `started Legion profile ${value.profile} as subagent ${value.subagentId}`
-          : value.structured === undefined
-            ? outputText(value.output)
-            : JSON.stringify(value.structured, null, 2),
+          ? `started Legion profile ${value.profile}`
+            + `${selectedRouteId(value.routePlan) === undefined ? '' : ` via route ${selectedRouteId(value.routePlan)}`}`
+            + ` as subagent ${value.subagentId}`
+          : `${selectedRouteId(value.routePlan) === undefined ? '' : `selected Legion route ${selectedRouteId(value.routePlan)}\n`}`
+            + (value.structured === undefined
+              ? outputText(value.output)
+              : JSON.stringify(value.structured, null, 2)),
       }],
     },
     isConcurrencySafe: () => true,
@@ -297,16 +353,28 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
         throw new Error('dsh-legion: tool requires a calling agent')
       }
 
-      const plan = compileDelegationPlan(catalog, {
+      let plan = compileDelegationPlan(catalog, {
         ...args.profile === undefined ? {} : { profile: args.profile },
         description: args.description,
         prompt: args.prompt,
         ...args.run_in_background === undefined ? {} : { runInBackground: args.run_in_background },
       })
+      const profile = catalog.activeProfiles[plan.profile]!
+      if (profile.routes !== undefined) {
+        const facts = await observeModelRoutes(ctx.get('llm'), profile.routes, exec.signal)
+        const routePlan = compileRoutePlan(
+          { ...profile, routes: profile.routes },
+          catalog.policyDigest,
+          facts,
+        )
+        if (routePlan.kind === 'unroutable-route-plan') throw new RoutePlanError(routePlan)
+        plan = applyRoutePlan(plan, routePlan)
+      }
       requireProvider(ctx, plan)
       const request = requestFor(parent, plan)
 
       if (plan.mode === 'continuable') {
+        requireSelectedLlmAdapter(ctx, plan)
         const started = await ctx.subagents.startContinuable({
           provider: plan.subagentProvider,
           label: plan.label,
@@ -320,9 +388,13 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
           policyDigest: plan.policyDigest,
           catalogDigest: plan.catalogDigest,
           resourceDigest: plan.resourceDigest,
+          ...plan.routePlan === undefined
+            ? {}
+            : { routePlan: plan.routePlan as unknown as JsonValue },
         }
       }
 
+      requireSelectedLlmAdapter(ctx, plan)
       const run = await ctx.subagents.start(plan.subagentProvider, {
         ...request,
         signal: exec.signal,
@@ -354,14 +426,31 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.fiber.assertActive()
   let activeCatalog: CompiledCatalog | undefined
   let disposeTool: (() => void) | undefined
+  let refreshing = false
+  let registrationFailed = false
 
   const refresh = (): void => {
-    const next = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
-    assertCatalogUsable(next)
-    disposeTool?.()
-    disposeTool = undefined
-    activeCatalog = next
-    if (Object.keys(next.activeProfiles).length > 0) disposeTool = registerTool(ctx, next)
+    if (refreshing) return
+    refreshing = true
+    registrationFailed = false
+    try {
+      const next = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
+      assertCatalogUsable(next)
+      disposeTool?.()
+      disposeTool = undefined
+      activeCatalog = undefined
+      if (Object.keys(next.activeProfiles).length > 0) {
+        try {
+          disposeTool = registerTool(ctx, next)
+        } catch (error: unknown) {
+          registrationFailed = true
+          throw error
+        }
+      }
+      activeCatalog = next
+    } finally {
+      refreshing = false
+    }
   }
 
   ctx.on('subagent/provider-added', (provider) => {
@@ -369,6 +458,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   })
   ctx.on('subagent/provider-removed', (providerName) => {
     if (Object.values(resolvedConfig.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
+  })
+  ctx.on('llm/adapters-updated', refresh)
+  ctx.on('tools/change', () => {
+    if (registrationFailed && !refreshing) refresh()
   })
   ctx.effect(() => () => {
     disposeTool?.()

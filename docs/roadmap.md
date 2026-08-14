@@ -23,14 +23,14 @@ Product principles:
 
 ## v0.3 — Deterministic pre-start route planning
 
-- [ ] Ordered exact route candidates per profile.
-- [ ] Registered LLM adapter and known model metadata snapshot.
-- [ ] Preserve `unknown` for unlisted models or unavailable metadata.
-- [ ] Validate known reasoning/context/output constraints.
-- [ ] Freeze one route plan before child start.
-- [ ] Select one route and start one child; no Legion-owned failure replay.
-- [ ] Route-specific additive prompt tuning.
-- [ ] Bounded explain snapshot with selected/rejected reasons.
+- [x] Ordered exact route candidates per profile.
+- [x] Registered LLM adapter and known exact-model metadata snapshot.
+- [x] Preserve `unknown` for unlisted models or unavailable metadata.
+- [x] Observe known reasoning controls and validate context/effective-output constraints.
+- [x] Freeze one route plan before child start.
+- [x] Select one route and start one child; no Legion-owned failure replay.
+- [x] Route-specific additive prompt tuning.
+- [x] Bounded tool-result explain snapshot with selected/rejected/skipped reasons.
 
 Cross-route recovery is not part of v0.3. It requires a unified DSH recovery seam so provider retry and route switching share one owner and one cancellation/attempt/time/token/cost budget.
 

@@ -8,28 +8,53 @@ profiles:
   quick:
     description: Translation, exploration, extraction, formatting, and summaries.
     subagentProvider: spawn
-    agentOptions:
-      provider: deepseek-official
-      model: deepseek-v4-flash
-      maxTokens: 8192
+    routes:
+      - id: primary
+        provider: deepseek-official
+        model: deepseek-v4-flash
+        maxTokens: 8192
+      - id: quality-static
+        provider: deepseek-official
+        model: deepseek-v4-pro
+        maxTokens: 8192
     maxDepth: 2
     defaultRunInBackground: true
 
   deep:
     description: Complex architecture, difficult debugging, and end-to-end implementation.
     subagentProvider: spawn
-    agentOptions:
-      provider: deepseek-official
-      model: deepseek-v4-pro
+    routes:
+      - id: primary
+        provider: deepseek-official
+        model: deepseek-v4-pro
+        constraints:
+          minContextTokens: 65536
+          minEffectiveOutputTokens: 8192
+      - id: fast-static
+        provider: deepseek-official
+        model: deepseek-v4-flash
+        constraints:
+          minContextTokens: 65536
+          minEffectiveOutputTokens: 8192
     maxDepth: 3
     defaultRunInBackground: true
 
   review:
     description: Independent correctness, security, and maintainability review.
     subagentProvider: spawn
-    agentOptions:
-      provider: deepseek-official
-      model: deepseek-v4-pro
+    routes:
+      - id: primary
+        provider: deepseek-official
+        model: deepseek-v4-pro
+        constraints:
+          minContextTokens: 65536
+          minEffectiveOutputTokens: 8192
+      - id: fast-static
+        provider: deepseek-official
+        model: deepseek-v4-flash
+        constraints:
+          minContextTokens: 65536
+          minEffectiveOutputTokens: 8192
     toolFilter:
       deny: [write, edit]
     maxDepth: 2

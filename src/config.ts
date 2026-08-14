@@ -10,6 +10,21 @@ export interface PromptFileReference {
   readonly path: string
 }
 
+export interface RouteConstraints {
+  readonly minContextTokens?: number
+  /** Minimum effective request output cap, not a model/provider hard ceiling. */
+  readonly minEffectiveOutputTokens?: number
+}
+
+export interface RouteCandidate {
+  readonly id: string
+  readonly provider: string
+  readonly model: string
+  readonly maxTokens?: number
+  readonly constraints?: RouteConstraints
+  readonly instructions?: string
+}
+
 export interface LegionProfile {
   /** Human-readable routing guidance shown to the coordinator. */
   readonly description: string
@@ -21,6 +36,8 @@ export interface LegionProfile {
     readonly model?: string
     readonly maxTokens?: number
   }
+  /** Ordered exact LLM routes evaluated immediately before child start. */
+  readonly routes?: RouteCandidate[]
   /** Optional child persona shadowing the preset persona. */
   readonly persona?: string
   /** Optional child tool visibility restriction. */
@@ -60,6 +77,20 @@ const PromptFileReferenceSchema: z<PromptFileReference> = z.object({
   path: z.string().min(1).required(),
 })
 
+const RouteConstraintsSchema: z<RouteConstraints> = z.object({
+  minContextTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+  minEffectiveOutputTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+})
+
+const RouteCandidateSchema: z<RouteCandidate> = z.object({
+  id: z.string().pattern(PROFILE_NAME).required(),
+  provider: z.string().min(1).required(),
+  model: z.string().min(1).required(),
+  maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
+  constraints: RouteConstraintsSchema,
+  instructions: z.string().min(1),
+})
+
 const AgentOptionsSchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1),
@@ -75,6 +106,7 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
   description: z.string().min(1).required(),
   subagentProvider: z.string().min(1).default('spawn'),
   agentOptions: AgentOptionsSchema,
+  routes: z.array(RouteCandidateSchema).default(undefined as unknown as RouteCandidate[]),
   persona: z.string(),
   toolFilter: ToolFilterSchema,
   maxDepth: z.union([
@@ -152,6 +184,7 @@ function assertKnownConfigKeys(input: unknown): void {
         'description',
         'subagentProvider',
         'agentOptions',
+        'routes',
         'persona',
         'toolFilter',
         'maxDepth',
@@ -164,6 +197,20 @@ function assertKnownConfigKeys(input: unknown): void {
     const profileRecord = record(profile)
     assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `profiles.${name}.agentOptions`)
     assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `profiles.${name}.toolFilter`)
+    if (Array.isArray(profileRecord?.routes)) {
+      profileRecord.routes.forEach((route, index) => {
+        assertKnownKeys(
+          route,
+          ['id', 'provider', 'model', 'maxTokens', 'constraints', 'instructions'],
+          `profiles.${name}.routes[${String(index)}]`,
+        )
+        assertKnownKeys(
+          record(route)?.constraints,
+          ['minContextTokens', 'minEffectiveOutputTokens'],
+          `profiles.${name}.routes[${String(index)}].constraints`,
+        )
+      })
+    }
     if (Array.isArray(profileRecord?.promptFiles)) {
       profileRecord.promptFiles.forEach((reference, index) => {
         assertKnownKeys(reference, ['root', 'path'], `profiles.${name}.promptFiles[${String(index)}]`)
@@ -190,6 +237,32 @@ export function materializeConfig(input: unknown): MaterializedConfig {
         description: profile.description,
         subagentProvider: profile.subagentProvider,
         ...profile.agentOptions === undefined ? {} : { agentOptions: { ...profile.agentOptions } },
+        ...profile.routes === undefined
+          ? {}
+          : {
+              routes: profile.routes.map(route => ({
+                id: route.id,
+                provider: route.provider,
+                model: route.model,
+                ...route.maxTokens === undefined ? {} : { maxTokens: route.maxTokens },
+                ...route.constraints === undefined
+                  ? {}
+                  : {
+                      constraints: {
+                        ...route.constraints.minContextTokens === undefined
+                          ? {}
+                          : { minContextTokens: route.constraints.minContextTokens },
+                        ...route.constraints.minEffectiveOutputTokens === undefined
+                          ? {}
+                          : {
+                              minEffectiveOutputTokens:
+                                route.constraints.minEffectiveOutputTokens,
+                            },
+                      },
+                    },
+                ...route.instructions === undefined ? {} : { instructions: route.instructions },
+              })),
+            },
         ...profile.persona === undefined ? {} : { persona: profile.persona },
         ...profile.toolFilter === undefined
           ? {}
@@ -238,6 +311,34 @@ export function validateConfig(config: Config): void {
     }
     if (profile.subagentProvider.trim().length === 0) {
       throw new Error(`dsh-legion: profile "${name}" subagentProvider must not be blank`)
+    }
+    if (profile.routes !== undefined && profile.agentOptions !== undefined) {
+      throw new Error(`dsh-legion: profile "${name}" cannot combine routes with legacy agentOptions`)
+    }
+    if (profile.routes !== undefined) {
+      if (profile.routes.length === 0 || profile.routes.length > 8) {
+        throw new Error(`dsh-legion: profile "${name}" routes must contain between 1 and 8 candidates`)
+      }
+      const routeIds = new Set<string>()
+      for (const route of profile.routes) {
+        if (routeIds.has(route.id)) {
+          throw new Error(`dsh-legion: profile "${name}" repeats route id "${route.id}"`)
+        }
+        routeIds.add(route.id)
+        if (route.provider.trim().length === 0 || route.model.trim().length === 0) {
+          throw new Error(`dsh-legion: profile "${name}" route "${route.id}" needs an exact provider and model`)
+        }
+        if (route.instructions !== undefined && route.instructions.trim().length === 0) {
+          throw new Error(`dsh-legion: profile "${name}" route "${route.id}" instructions must not be blank`)
+        }
+        if (route.maxTokens !== undefined
+          && route.constraints?.minEffectiveOutputTokens !== undefined
+          && route.maxTokens < route.constraints.minEffectiveOutputTokens) {
+          throw new Error(
+            `dsh-legion: profile "${name}" route "${route.id}" maxTokens is below minEffectiveOutputTokens`,
+          )
+        }
+      }
     }
     if (profile.toolFilter !== undefined
       && profile.toolFilter.allow === undefined

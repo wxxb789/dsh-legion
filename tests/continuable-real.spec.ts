@@ -56,7 +56,13 @@ describe('real DSH continuation manager integration', () => {
           deep: {
             description: 'Real continuable work.',
             subagentProvider: 'spawn',
-            agentOptions: { provider: 'mock', model: 'child-model' },
+            routes: [{
+              id: 'child',
+              provider: 'mock',
+              model: 'child-model',
+              constraints: { minContextTokens: 4096 },
+              instructions: 'Use the exact child route.',
+            }],
             persona: 'You are the real Legion child.',
             maxDepth: 2,
             defaultRunInBackground: true,
@@ -88,10 +94,15 @@ describe('real DSH continuation manager integration', () => {
         subagentId: string
         policyDigest: string
         resourceDigest: string
+        routePlan: { kind: string; selected: { id: string } }
       }
       expect(value.kind).toBe('continuable')
       expect(value.policyDigest).toMatch(/^sha256:/)
       expect(value.resourceDigest).toMatch(/^sha256:/)
+      expect(value.routePlan).toMatchObject({
+        kind: 'selected-route-plan',
+        selected: { id: 'child' },
+      })
       const childId = SessionId(value.subagentId)
 
       await vi.waitFor(() => expect(ctx.agents.get(childId)).toBeDefined())
@@ -109,6 +120,7 @@ describe('real DSH continuation manager integration', () => {
       expect(persona).toContain('You are the real Legion child.')
       expect(persona).toContain('## Legion profile instruction: local:deep.md')
       expect(persona).toContain('Use the loaded continuation instruction.')
+      expect(persona).toContain('Use the exact child route.')
       expect(child.session.events.some(event => event.type === 'assistant/message')).toBe(true)
     } finally {
       await ctx.fiber.dispose()

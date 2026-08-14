@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { Config, LegionProfile, ResultContract } from './config.ts'
+import type { Config, LegionProfile, ResultContract, RouteCandidate } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { outputSchemaFor } from './result-contract.ts'
+import type { SelectedRoutePlan } from './route.ts'
 import {
   EMPTY_RESOURCE_SNAPSHOT,
   assertResourceSnapshot,
@@ -23,6 +24,7 @@ import {
 
 export const WARNING_DIAGNOSTIC_CODES = [
   'PROFILE_PROVIDER_UNAVAILABLE',
+  'PROFILE_LLM_ADAPTER_UNAVAILABLE',
   'DEFAULT_PROFILE_INACTIVE',
 ] as const
 export type WarningDiagnosticCode = (typeof WARNING_DIAGNOSTIC_CODES)[number]
@@ -62,13 +64,16 @@ export interface ProviderFacts {
 
 export interface RuntimeSnapshot {
   readonly providers: Readonly<Record<string, ProviderFacts>>
+  /** Registered LLM adapter routes; absence means the observer has no topology evidence. */
+  readonly llmProviders?: readonly string[]
 }
 
 export type EffectiveMode = 'foreground' | 'continuable'
 
-export interface EffectiveProfile extends Omit<LegionProfile, 'agentOptions' | 'toolFilter' | 'promptFiles'> {
+export interface EffectiveProfile extends Omit<LegionProfile, 'agentOptions' | 'routes' | 'toolFilter' | 'promptFiles'> {
   readonly name: ProfileName
   readonly agentOptions?: Readonly<NonNullable<LegionProfile['agentOptions']>>
+  readonly routes?: readonly Readonly<RouteCandidate>[]
   readonly toolFilter?: {
     readonly allow?: readonly string[]
     readonly deny?: readonly string[]
@@ -114,6 +119,7 @@ export interface DelegationPlan {
   readonly toolFilter?: LegionProfile['toolFilter']
   readonly maxDepth?: number
   readonly outputSchema?: ObjectJsonSchema
+  readonly routePlan?: SelectedRoutePlan
 }
 
 export class DelegationPlanError extends Error {
@@ -159,6 +165,14 @@ function copyProfile(
   const agentOptions = profile.agentOptions === undefined
     ? undefined
     : Object.freeze({ ...profile.agentOptions })
+  const routes = profile.routes === undefined
+    ? undefined
+    : Object.freeze(profile.routes.map(route => Object.freeze({
+        ...route,
+        ...route.constraints === undefined
+          ? {}
+          : { constraints: Object.freeze({ ...route.constraints }) },
+      })))
   const toolFilter = profile.toolFilter === undefined
     ? undefined
     : Object.freeze({
@@ -177,6 +191,7 @@ function copyProfile(
     description: profile.description,
     subagentProvider: profile.subagentProvider,
     ...agentOptions === undefined ? {} : { agentOptions },
+    ...routes === undefined ? {} : { routes },
     ...profile.persona === undefined ? {} : { persona: profile.persona },
     ...toolFilter === undefined ? {} : { toolFilter },
     maxDepth: profile.maxDepth,
@@ -242,6 +257,9 @@ export function compileCatalog(
   const config = materializeConfig(input)
   assertResourceSnapshot(config, resources)
   const diagnostics: Diagnostic[] = []
+  const llmProviders = snapshot.llmProviders === undefined
+    ? undefined
+    : new Set(snapshot.llmProviders)
   const profiles: Record<string, EffectiveProfile> = {}
   const activeProfiles: Record<string, EffectiveProfile> = {}
 
@@ -254,6 +272,17 @@ export function compileCatalog(
       ? 'continuable'
       : 'foreground'
     const provider = snapshot.providers[profile.subagentProvider]
+    const llmAdapterUnavailable = profile.routes !== undefined
+      && llmProviders !== undefined
+      && profile.routes.every(route => !llmProviders.has(route.provider))
+    if (llmAdapterUnavailable) {
+      diagnostics.push({
+        code: 'PROFILE_LLM_ADAPTER_UNAVAILABLE',
+        severity: 'warning',
+        profile: identity,
+        message: `profile "${name}" has no Route Candidate with a registered LLM adapter`,
+      })
+    }
     let foregroundSupported = false
     let continuableSupported = false
 
@@ -266,8 +295,10 @@ export function compileCatalog(
       })
     } else {
       const depthSupported = typeof profile.maxDepth !== 'number' || provider.capabilities.depthLimit
-      const personaSupported = (profile.persona === undefined && promptFragments.length === 0)
-        || provider.capabilities.persona
+      const needsPersonaComposition = profile.persona !== undefined
+        || promptFragments.length > 0
+        || profile.routes?.some(route => route.instructions !== undefined) === true
+      const personaSupported = !needsPersonaComposition || provider.capabilities.persona
       const toolFilterSupported = profile.toolFilter === undefined || provider.capabilities.toolFilter
       const outputSupported = result === 'text' || provider.capabilities.outputSchema
       foregroundSupported = depthSupported && personaSupported && toolFilterSupported && outputSupported
@@ -326,6 +357,10 @@ export function compileCatalog(
       }
     }
 
+    if (llmAdapterUnavailable) {
+      foregroundSupported = false
+      continuableSupported = false
+    }
     const allowedModes: EffectiveMode[] = []
     if (foregroundSupported) allowedModes.push('foreground')
     if (continuableSupported) allowedModes.push('continuable')
@@ -361,6 +396,9 @@ export function compileCatalog(
   }
   const runtime = {
     providers: Object.fromEntries(Object.keys(snapshot.providers).sort().map(name => [name, snapshot.providers[name]])),
+    ...snapshot.llmProviders === undefined
+      ? {}
+      : { llmProviders: [...new Set(snapshot.llmProviders)].sort() },
     resourceDigest: resources.digest,
   }
 
