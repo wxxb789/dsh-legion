@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Cover foreground result, disposal, and combined failure settlement paths.
 - Clarify that a clean local checkout must build `lib/` before profile installation, without requiring profile-level build approval.
 - Validate the bundle manifest, patch, packed file inventory, and packed-tarball installation into a real profile preset mount.
+- Move self-contained non-empty and identifier constraints into the Schemastery Config while retaining cross-field guards in `apply()`.
+- Mark the pre-ADR Host runtime, team, and DAG design reports as superseded historical explorations.
 
 ## [0.1.0] - 2026-08-14
 

@@ -137,6 +137,19 @@ async function capturedForeground(): Promise<{
 }
 
 describe('dsh-legion', () => {
+  it('rejects self-contained string constraints in the Schemastery Config', () => {
+    const profile = { description: 'Focused work.' }
+    expect(() => legion.Config({ toolName: '', profiles: { quick: profile } } as never)).toThrow()
+    expect(() => legion.Config({ profiles: { quick: { description: '' } } } as never)).toThrow()
+    expect(() => legion.Config({ profiles: { quick: profile }, defaultProfile: '../escape' } as never)).toThrow()
+    expect(() => legion.Config({
+      profiles: { quick: { ...profile, agentOptions: { provider: '', model: 'model' } } },
+    } as never)).toThrow()
+    expect(() => legion.Config({
+      profiles: { quick: { ...profile, toolFilter: { allow: [''] } } },
+    } as never)).toThrow()
+  })
+
   it('publishes one semantic-profile tool and generated routing guidance', async () => {
     const ctx = await setup(baseConfig)
     const schema = ctx.tools.schemas().find(item => item.name === 'legion')

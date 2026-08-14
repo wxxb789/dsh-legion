@@ -1,6 +1,6 @@
 # dsh-legion 架构方案与外部 Interface 备选
 
-> 状态：MVP architecture recommendation
+> 状态：已被 [ADR 0001](../adr/0001-semantic-profile-router.md) 取代的历史方案比较；本文的 Mission Module 推荐不代表当前 v0.1 实现或验收标准
 > 范围：独立、可开源、可安装、可配置的 DeepSeek Harness extension
 > 目标：由 SOTA primary model 协调多个 model、多个 agent role 与多个 preset
 

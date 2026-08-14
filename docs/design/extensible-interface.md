@@ -1,5 +1,7 @@
 # Extensible Interface Design for DSH/Cordis Legion
 
+> **Status: superseded exploration.** The shipped v0.1 design is the single agent-plane semantic-profile tool recorded in [ADR 0001](../adr/0001-semantic-profile-router.md). The registries and third-party adapter ecosystem below are possible future directions, not current recommendations or acceptance criteria.
+
 ## 1. 目标与范围
 
 Legion 是一个可开源的 **module**，让一个 SOTA 主 agent 在 DSH/Cordis 中协调多个不同模型、角色和 preset。它不复制 DSH 的 agent loop、Session、工具注册、持久化或 subagent transport；它在这些正式扩展模式之上提供一个有策略、有预算、有可观测性的编排 **interface**。

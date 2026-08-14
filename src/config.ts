@@ -39,19 +39,19 @@ export interface Config {
 }
 
 const AgentOptionsSchema = z.object({
-  provider: z.string(),
-  model: z.string(),
+  provider: z.string().min(1),
+  model: z.string().min(1),
   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER),
 }).default(undefined as unknown as { provider: string; model: string; maxTokens: number })
 
 const ToolFilterSchema = z.object({
-  allow: z.array(z.string()).default(undefined as unknown as string[]),
-  deny: z.array(z.string()).default(undefined as unknown as string[]),
+  allow: z.array(z.string().min(1)).default(undefined as unknown as string[]),
+  deny: z.array(z.string().min(1)).default(undefined as unknown as string[]),
 }).default(undefined as unknown as { allow: string[]; deny: string[] })
 
 export const LegionProfileSchema: z<LegionProfile> = z.object({
-  description: z.string().required(),
-  subagentProvider: z.string().default('spawn'),
+  description: z.string().min(1).required(),
+  subagentProvider: z.string().min(1).default('spawn'),
   agentOptions: AgentOptionsSchema,
   persona: z.string(),
   toolFilter: ToolFilterSchema,
@@ -63,9 +63,9 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
 })
 
 export const Config: z<Config> = z.object({
-  toolName: z.string().default('legion'),
+  toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
-  defaultProfile: z.string(),
+  defaultProfile: z.string().pattern(PROFILE_NAME),
   enableRunInBackground: z.boolean().default(true),
   guidance: z.string(),
 })

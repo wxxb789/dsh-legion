@@ -1,5 +1,7 @@
 # DSH/Cordis Legion: Minimal Interface Design
 
+> **Status: superseded exploration.** The shipped v0.1 design is the single agent-plane semantic-profile tool recorded in [ADR 0001](../adr/0001-semantic-profile-router.md). The Host runtime and `ctx.legion.run()` below are retained as historical alternatives, not current recommendations or acceptance criteria.
+
 ## 1. 目标与设计结论
 
 Legion 是一个可开源的 orchestration **module**：由一个 SOTA 主 agent 把一个目标分派给多个不同 model、role 与 preset 的 worker，并将结果收敛为一个可消费的结论。
