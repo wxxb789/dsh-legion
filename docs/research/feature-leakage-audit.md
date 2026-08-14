@@ -247,6 +247,8 @@ Legion profile 当前只有 persona 与 toolFilter，至少缺：
 - explicit result/evidence contract；
 - optional role type（research/execution/review）。
 
+任何 profile-scoped skill 或 prompt file 都必须先 canonicalize/realpath，再验证它仍位于 deployment 允许的 root 内；symlink scope escape 必须 fail loud。Restricted skill 还应在读取/注入内容前完成权限裁决，不能先向模型暴露再补做校验。
+
 这是比完整 team runtime 更低成本、更直接的下一步。
 
 ## P1 — 让多个 profile 真正形成一个系统
