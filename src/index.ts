@@ -48,6 +48,17 @@ function requireProvider(
       `dsh-legion: profile "${profileName}" requires unavailable subagent provider "${profile.subagentProvider}"`,
     )
   }
+  if (runInBackground) {
+    if (provider.prepareContinuable === undefined) {
+      throw new Error(
+        `dsh-legion: profile "${profileName}" cannot run in the background because provider "${provider.name}" is not continuable`,
+      )
+    }
+    // Continuable children are composed by the DSH continuation manager, not
+    // SubagentProvider.start(). The manager itself enforces depth and installs
+    // persona/toolFilter, so one-shot capability flags do not apply here.
+    return provider
+  }
   if (typeof profile.maxDepth === 'number' && !provider.capabilities.depthLimit) {
     throw new Error(
       `dsh-legion: profile "${profileName}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
@@ -61,11 +72,6 @@ function requireProvider(
   if (profile.toolFilter !== undefined && !provider.capabilities.toolFilter) {
     throw new Error(
       `dsh-legion: profile "${profileName}" sets toolFilter but provider "${provider.name}" does not support it`,
-    )
-  }
-  if (runInBackground && provider.prepareContinuable === undefined) {
-    throw new Error(
-      `dsh-legion: profile "${profileName}" cannot run in the background because provider "${provider.name}" is not continuable`,
     )
   }
   return provider
@@ -205,7 +211,12 @@ function registerTool(ctx: Context, config: Config): () => void {
 function availableConfig(ctx: Context, config: Config): Config | undefined {
   const profiles = Object.fromEntries(
     Object.entries(config.profiles)
-      .filter(([, profile]) => ctx.subagents.getProvider(profile.subagentProvider) !== undefined),
+      .filter(([profileName, profile]) => {
+        if (ctx.subagents.getProvider(profile.subagentProvider) === undefined) return false
+        const defaultBackground = config.enableRunInBackground && profile.defaultRunInBackground
+        requireProvider(ctx, profileName, profile, defaultBackground)
+        return true
+      }),
   )
   if (Object.keys(profiles).length === 0) return undefined
   const { defaultProfile, ...rest } = config

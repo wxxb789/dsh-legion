@@ -129,7 +129,7 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 | `enableRunInBackground` | `true` | Expose and accept `run_in_background`. |
 | `guidance` | none | Additional coordinator guidance appended to the generated profile table. |
 
-Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider lifecycle: profiles whose `subagentProvider` is absent are omitted from the live tool schema, and the tool plus prompt guidance disappear when no configured provider is available. They return automatically when the provider is registered again.
+Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider lifecycle: profiles whose `subagentProvider` is absent are omitted from the live tool schema, and the tool plus prompt guidance disappear when no configured provider is available. They return automatically when the provider is registered again. When a provider is present, the profile's default execution mode is capability-checked immediately; an invalid default fails activation instead of waiting for the first tool call.
 
 ### Profile
 
@@ -140,9 +140,9 @@ Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider li
 | `agentOptions.provider` | inherited | Child LLM provider route. |
 | `agentOptions.model` | inherited | Child model id. |
 | `agentOptions.maxTokens` | inherited | Child output token limit. |
-| `persona` | inherited | Child persona override; requires provider support. |
-| `toolFilter.allow` / `deny` | none | Child tool visibility restriction; requires provider support. |
-| `maxDepth` | `3` | Absolute numeric depth, or `provider-managed` for product backends. |
+| `persona` | inherited | Child persona override. Foreground requires the provider's one-shot capability; continuable children are composed by the DSH manager. |
+| `toolFilter.allow` / `deny` | none | Child tool visibility restriction. Foreground requires provider support; the continuation manager installs it directly for background children. |
+| `maxDepth` | `3` | Absolute depth. Foreground numeric limits require `depthLimit`; the continuation manager enforces background limits. Use `provider-managed` for external one-shot products. |
 | `defaultRunInBackground` | `true` | Use a continuable child when the tool call omits the flag. |
 
 For `codex` and `claude-code`, the external product owns its model selection. Use `maxDepth: provider-managed` and normally `defaultRunInBackground: false` because those providers are one-shot.

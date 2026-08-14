@@ -27,6 +27,9 @@ function provider(
     stopReason?: 'completed' | 'error' | 'aborted' | 'max-tokens' | 'refusal'
     capabilities?: SubagentProvider['capabilities']
     continuable?: boolean
+    resultError?: Error
+    disposeError?: Error
+    onDispose?: () => void
     onStart?: (request: ResolvedSubagentStartRequest) => void
   } = {},
 ): SubagentProvider {
@@ -44,11 +47,16 @@ function provider(
       return {
         id: SessionId(`${name}-child`),
         localAgent: undefined,
-        result: Promise.resolve({
-          output: [{ type: 'text', text: options.reply ?? 'child result' }],
-          stopReason: options.stopReason ?? 'completed',
-        }),
-        async dispose() {},
+        result: options.resultError === undefined
+          ? Promise.resolve({
+              output: [{ type: 'text', text: options.reply ?? 'child result' }],
+              stopReason: options.stopReason ?? 'completed',
+            })
+          : Promise.reject(options.resultError),
+        async dispose() {
+          options.onDispose?.()
+          if (options.disposeError !== undefined) throw options.disposeError
+        },
       }
     },
   }
@@ -71,9 +79,14 @@ async function setup(
   return ctx
 }
 
-function execute(ctx: Context, args: unknown, agent: Agent | null = parent()) {
+function execute(
+  ctx: Context,
+  args: unknown,
+  agent: Agent | null = parent(),
+  callSignal: AbortSignal = signal,
+) {
   return ctx.tools.execute({
-    signal,
+    signal: callSignal,
     callId: CallId(`legion-${++callSequence}`),
     name: 'legion',
     arguments: args,
@@ -181,12 +194,51 @@ describe('dsh-legion', () => {
     expect(rendered(result)).toContain('started Legion profile deep as subagent durable-child')
   })
 
-  it('fails loud when a profile requests a capability its provider lacks', async () => {
+  it('lets the continuation manager own depth, persona, and tool filtering', async () => {
+    const continuable = provider('continuable-only', {
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      continuable: true,
+    })
+    const ctx = await setup({
+      profiles: {
+        managed: {
+          description: 'Continuable manager-owned composition.',
+          subagentProvider: 'continuable-only',
+          persona: 'Use the child-scoped persona.',
+          toolFilter: { deny: ['write'] },
+          maxDepth: 2,
+          defaultRunInBackground: true,
+        },
+      },
+      defaultProfile: 'managed',
+    }, [continuable])
+    const start = vi.spyOn(ctx.subagents, 'startContinuable').mockResolvedValue({
+      childId: SessionId('managed-child'),
+      messageId: MessageId('managed-message'),
+    })
+
+    const result = await execute(ctx, {
+      description: 'managed composition',
+      prompt: 'Complete the delegated task.',
+    })
+
+    expect(result.isError).toBe(false)
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'continuable-only',
+      request: expect.objectContaining({
+        persona: 'Use the child-scoped persona.',
+        toolFilter: { deny: ['write'] },
+        maxDepth: 2,
+      }),
+    }))
+  })
+
+  it('fails loud when a foreground profile requests a capability its provider lacks', async () => {
     const external = provider('external', {
       capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
       continuable: false,
     })
-    const ctx = await setup({
+    await expect(setup({
       profiles: {
         product: {
           description: 'External product worker.',
@@ -196,14 +248,7 @@ describe('dsh-legion', () => {
         },
       },
       defaultProfile: 'product',
-    }, [external])
-
-    const result = await execute(ctx, {
-      description: 'run product',
-      prompt: 'Do the work.',
-    })
-    expect(result.isError).toBe(true)
-    expect(rendered(result)).toContain('cannot enforce it; use provider-managed')
+    }, [external])).rejects.toThrow('cannot enforce it; use provider-managed')
   })
 
   it('treats abnormal child settlement as an error and preserves partial output', async () => {
@@ -219,6 +264,100 @@ describe('dsh-legion', () => {
     expect(result.isError).toBe(true)
     expect(rendered(result)).toContain('token limit')
     expect(rendered(result)).toContain('partial evidence')
+  })
+
+  it('preserves a result rejection and still disposes the foreground run', async () => {
+    let disposed = false
+    const ctx = await setup(baseConfig, [provider('spawn', {
+      resultError: new Error('result channel failed'),
+      onDispose: () => { disposed = true },
+    })])
+    const result = await execute(ctx, {
+      description: 'failing result',
+      prompt: 'Return a result.',
+      run_in_background: false,
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('result channel failed')
+    expect(disposed).toBe(true)
+  })
+
+  it('propagates foreground cancellation and still disposes the run', async () => {
+    let started = false
+    let observedAbort = false
+    let disposed = false
+    const cancelProvider: SubagentProvider = {
+      name: 'cancel-aware',
+      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      inheritsParentContext: false,
+      async start(request) {
+        started = true
+        const result = Promise.withResolvers<{
+          output: Array<{ type: 'text'; text: string }>
+          stopReason: 'aborted'
+        }>()
+        request.signal.addEventListener('abort', () => {
+          observedAbort = true
+          result.resolve({ output: [], stopReason: 'aborted' })
+        }, { once: true })
+        return {
+          id: SessionId('cancelled-child'),
+          localAgent: undefined,
+          result: result.promise,
+          async dispose() { disposed = true },
+        }
+      },
+    }
+    const ctx = await setup({
+      profiles: {
+        cancellable: {
+          description: 'Cancellation-aware worker.',
+          subagentProvider: 'cancel-aware',
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'cancellable',
+    }, [cancelProvider])
+    const controller = new AbortController()
+    const pending = execute(ctx, {
+      description: 'cancel work',
+      prompt: 'Wait for cancellation.',
+    }, parent(), controller.signal)
+    await vi.waitFor(() => { expect(started).toBe(true) })
+    controller.abort('test cancellation')
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(observedAbort).toBe(true)
+    expect(disposed).toBe(true)
+  })
+
+  it('reports a foreground disposal rejection after successful execution', async () => {
+    const ctx = await setup(baseConfig, [provider('spawn', {
+      disposeError: new Error('dispose channel failed'),
+    })])
+    const result = await execute(ctx, {
+      description: 'failing dispose',
+      prompt: 'Return a result.',
+      run_in_background: false,
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('dispose channel failed')
+  })
+
+  it('retains both foreground execution and disposal failures', async () => {
+    const ctx = await setup(baseConfig, [provider('spawn', {
+      resultError: new Error('execution exploded'),
+      disposeError: new Error('cleanup exploded'),
+    })])
+    const result = await execute(ctx, {
+      description: 'double failure',
+      prompt: 'Return a result.',
+      run_in_background: false,
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('execution exploded')
+    expect(rendered(result)).toContain('cleanup exploded')
   })
 
   it('exposes only profiles whose subagent provider is currently registered', async () => {

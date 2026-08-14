@@ -1,3 +1,5 @@
-# dsh-legion is an agent-plane plugin. Installing this bundle makes the package
-# resolvable from user-authored agent presets; it intentionally adds no Host row.
+# dsh-legion is an agent-plane plugin. DSH anchors a profile's Loader baseUrl at
+# that profile directory, so installing this bundle makes profile-local
+# node_modules/dsh-legion resolvable from user-authored agent presets. No Host
+# row is needed or desired.
 []
