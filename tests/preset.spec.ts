@@ -21,7 +21,11 @@ describe('shipped Legion preset template', () => {
       profiles: {
         deep: { subagentProvider: 'spawn' },
         quick: { subagentProvider: 'spawn' },
-        review: { subagentProvider: 'spawn' },
+        review: {
+          subagentProvider: 'spawn',
+          defaultRunInBackground: false,
+          result: 'review-v1',
+        },
       },
     })
     expect(named.some(row => row.name === '@deepseek-ai/dsh-subagent')).toBe(false)

@@ -1,5 +1,7 @@
 import z from '@deepseek-ai/schemastery'
 export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
+export const RESULT_CONTRACTS = ['text', 'findings-v1', 'review-v1'] as const
+export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
 export interface LegionProfile {
   /** Human-readable routing guidance shown to the coordinator. */
@@ -23,6 +25,8 @@ export interface LegionProfile {
   maxDepth: number | 'provider-managed'
   /** Whether an omitted run_in_background starts a continuable child. */
   defaultRunInBackground: boolean
+  /** Versioned child result contract; structured contracts are foreground-only. */
+  result?: ResultContract
 }
 
 export interface Config {
@@ -60,6 +64,7 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
     z.const('provider-managed' as const),
   ]).default(3),
   defaultRunInBackground: z.boolean().default(true),
+  result: z.union(RESULT_CONTRACTS).default('text'),
 })
 
 export const Config: z<Config> = z.object({

@@ -1,5 +1,17 @@
 import type { Config, LegionProfile } from './config.ts'
 
+export interface CoordinatorProfile extends LegionProfile {
+  readonly allowedModes?: readonly ('foreground' | 'continuable')[]
+}
+
+export interface CoordinatorCatalog {
+  readonly toolName: string
+  readonly enableRunInBackground: boolean
+  readonly defaultProfile?: string
+  readonly guidance?: string
+  readonly profiles: Readonly<Record<string, CoordinatorProfile>>
+}
+
 function routeLabel(profile: LegionProfile): string {
   const route = profile.agentOptions
   if (route?.provider !== undefined && route.model !== undefined) {
@@ -11,7 +23,9 @@ function routeLabel(profile: LegionProfile): string {
 }
 
 /** Render the stable coordinator guidance owned by the Legion tool. */
-export function renderCoordinatorGuidance(config: Config): string {
+export function renderCoordinatorGuidance(config: Config): string
+export function renderCoordinatorGuidance(config: CoordinatorCatalog): string
+export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
   const lines = [
     `Use \`${config.toolName}\` to delegate focused work through semantic profiles.`,
     'Choose a profile by task fit; do not choose raw models in tool calls.',
@@ -20,12 +34,16 @@ export function renderCoordinatorGuidance(config: Config): string {
   ]
 
   for (const [name, profile] of Object.entries(config.profiles)) {
-    const background = !config.enableRunInBackground
-      ? 'foreground only'
-      : profile.defaultRunInBackground ? 'background by default' : 'foreground by default'
+    const background = profile.allowedModes === undefined
+      ? !config.enableRunInBackground
+        ? 'foreground only'
+        : profile.defaultRunInBackground ? 'background by default' : 'foreground by default'
+      : profile.allowedModes.length === 1
+        ? `${profile.allowedModes[0]} only`
+        : `${profile.defaultRunInBackground ? 'background' : 'foreground'} by default; foreground/background allowed`
     lines.push(
       `- \`${name}\`: ${profile.description} `
-      + `(backend: ${profile.subagentProvider}; model: ${routeLabel(profile)}; ${background})`,
+      + `(backend: ${profile.subagentProvider}; model: ${routeLabel(profile)}; result: ${profile.result}; ${background})`,
     )
   }
 

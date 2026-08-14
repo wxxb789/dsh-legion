@@ -46,4 +46,5 @@
         toolFilter:
           deny: [write, edit]
         maxDepth: 2
-        defaultRunInBackground: true
+        defaultRunInBackground: false
+        result: review-v1

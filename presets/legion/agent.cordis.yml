@@ -115,7 +115,8 @@
         toolFilter:
           deny: [write, edit]
         maxDepth: 2
-        defaultRunInBackground: true
+        defaultRunInBackground: false
+        result: review-v1
 
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'

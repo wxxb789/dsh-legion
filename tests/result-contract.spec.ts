@@ -1,0 +1,48 @@
+import { describe, expect, it } from 'vitest'
+import { materializeStructuredResult, outputSchemaFor } from '../src/result-contract.ts'
+
+describe('versioned result contracts', () => {
+  it('projects findings-v1 into detached owned JSON', () => {
+    const input = {
+      summary: 'Found two modules.',
+      findings: [{
+        title: 'Router',
+        detail: 'The router is explicit.',
+        evidence: [{ source: 'src/router.ts:10', detail: 'Dispatch table.' }],
+      }],
+      decisions: ['Keep one tool.'],
+      verification: ['pnpm test'],
+      openRisks: ['No live provider E2E.'],
+    }
+    const result = materializeStructuredResult('findings-v1', input)
+    expect(result).toEqual(input)
+    expect(result).not.toBe(input)
+    ;(result as { findings: Array<{ evidence: Array<{ detail: string }> }> }).findings[0]!.evidence[0]!.detail = 'changed'
+    expect(input.findings[0]!.evidence[0]!.detail).toBe('Dispatch table.')
+  })
+
+  it('projects review-v1 and rejects undeclared or malformed data', () => {
+    const input = {
+      verdict: 'needs-changes',
+      summary: 'One issue.',
+      findings: [{
+        severity: 'high',
+        title: 'Unsafe retry',
+        detail: 'The retry replays mutations.',
+        evidence: [{ source: 'src/retry.ts:9', detail: 'Starts another child.' }],
+        recommendation: 'Use one recovery owner.',
+      }],
+      verification: ['unit test reproduced'],
+    }
+    expect(materializeStructuredResult('review-v1', input)).toEqual(input)
+    expect(() => materializeStructuredResult('review-v1', { ...input, extra: true }))
+      .toThrow(/violated review-v1/)
+    expect(() => materializeStructuredResult('review-v1', { ...input, verdict: 'maybe' }))
+      .toThrow(/violated review-v1/)
+  })
+
+  it('keeps text contract schema-free', () => {
+    expect(outputSchemaFor('text')).toBeUndefined()
+    expect(materializeStructuredResult('text', { ignored: true })).toBeUndefined()
+  })
+})

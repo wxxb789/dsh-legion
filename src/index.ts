@@ -1,16 +1,47 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { Config, type LegionProfile, validateConfig } from './config.ts'
+import { Config, validateConfig } from './config.ts'
+import {
+  assertCatalogUsable,
+  compileCatalog,
+  compileDelegationPlan,
+  type CompiledCatalog,
+  type DelegationPlan,
+  type RuntimeSnapshot,
+} from './compiler.ts'
 import { renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
 
-export { Config, LegionProfileSchema, PROFILE_NAME, validateConfig } from './config.ts'
-export type { Config as LegionConfig, LegionProfile } from './config.ts'
+export { Config, LegionProfileSchema, PROFILE_NAME, RESULT_CONTRACTS, validateConfig } from './config.ts'
+export type { Config as LegionConfig, LegionProfile, ResultContract } from './config.ts'
+export {
+  CatalogCompileError,
+  DelegationPlanError,
+  assertCatalogUsable,
+  compileCatalog,
+  compileDelegationPlan,
+} from './compiler.ts'
+export type {
+  CompiledCatalog,
+  DelegationInvocation,
+  DelegationPlan,
+  Diagnostic,
+  DiagnosticCode,
+  EffectiveProfile,
+  ProviderFacts,
+  RuntimeSnapshot,
+} from './compiler.ts'
+export {
+  FINDINGS_V1_SCHEMA,
+  REVIEW_V1_SCHEMA,
+  materializeStructuredResult,
+  outputSchemaFor,
+} from './result-contract.ts'
 export { renderCoordinatorGuidance } from './prompt.ts'
+export type { CoordinatorCatalog, CoordinatorProfile } from './prompt.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -24,97 +55,89 @@ interface ToolArgs {
   run_in_background?: boolean
 }
 
-function requireProfile(config: Config, name: string | undefined): [string, LegionProfile] {
-  const selected = name ?? config.defaultProfile
-  if (selected === undefined) {
-    throw new Error('dsh-legion: profile is required because no defaultProfile is configured')
-  }
-  const profile = config.profiles[selected]
-  if (profile === undefined) {
-    throw new Error(`dsh-legion: unknown profile "${selected}"`)
-  }
-  return [selected, profile]
+function runtimeSnapshot(ctx: Context, config: Config): RuntimeSnapshot {
+  const providers = Object.fromEntries(
+    [...new Set(Object.values(config.profiles).map(profile => profile.subagentProvider))]
+      .sort()
+      .flatMap((name) => {
+        const provider = ctx.subagents.getProvider(name)
+        return provider === undefined
+          ? []
+          : [[name, {
+              capabilities: { ...provider.capabilities },
+              continuable: provider.prepareContinuable !== undefined,
+            }]]
+      }),
+  )
+  return { providers }
 }
 
-function requireProvider(
-  ctx: Context,
-  profileName: string,
-  profile: LegionProfile,
-  runInBackground: boolean,
-): SubagentProvider {
-  const provider = ctx.subagents.getProvider(profile.subagentProvider)
+function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
+  const provider = ctx.subagents.getProvider(plan.subagentProvider)
   if (provider === undefined) {
     throw new Error(
-      `dsh-legion: profile "${profileName}" requires unavailable subagent provider "${profile.subagentProvider}"`,
+      `dsh-legion: profile "${plan.profile}" requires unavailable subagent provider "${plan.subagentProvider}"`,
     )
   }
-  if (runInBackground) {
+  if (plan.mode === 'continuable') {
     if (provider.prepareContinuable === undefined) {
       throw new Error(
-        `dsh-legion: profile "${profileName}" cannot run in the background because provider "${provider.name}" is not continuable`,
+        `dsh-legion: profile "${plan.profile}" cannot run in the background because provider "${provider.name}" is not continuable`,
       )
     }
-    // Continuable children are composed by the DSH continuation manager, not
-    // SubagentProvider.start(). The manager itself enforces depth and installs
-    // persona/toolFilter, so one-shot capability flags do not apply here.
     return provider
   }
-  if (typeof profile.maxDepth === 'number' && !provider.capabilities.depthLimit) {
+  if (plan.maxDepth !== undefined && !provider.capabilities.depthLimit) {
     throw new Error(
-      `dsh-legion: profile "${profileName}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
+      `dsh-legion: profile "${plan.profile}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
     )
   }
-  if (profile.persona !== undefined && !provider.capabilities.persona) {
+  if (plan.persona !== undefined && !provider.capabilities.persona) {
     throw new Error(
-      `dsh-legion: profile "${profileName}" sets persona but provider "${provider.name}" does not support it`,
+      `dsh-legion: profile "${plan.profile}" sets persona but provider "${provider.name}" does not support it`,
     )
   }
-  if (profile.toolFilter !== undefined && !provider.capabilities.toolFilter) {
+  if (plan.toolFilter !== undefined && !provider.capabilities.toolFilter) {
     throw new Error(
-      `dsh-legion: profile "${profileName}" sets toolFilter but provider "${provider.name}" does not support it`,
+      `dsh-legion: profile "${plan.profile}" sets toolFilter but provider "${provider.name}" does not support it`,
+    )
+  }
+  if (plan.outputSchema !== undefined && !provider.capabilities.outputSchema) {
+    throw new Error(
+      `dsh-legion: profile "${plan.profile}" requires structured output but provider "${provider.name}" does not support it`,
     )
   }
   return provider
 }
 
-function runInBackground(config: Config, profile: LegionProfile, args: ToolArgs): boolean {
-  if (!config.enableRunInBackground) {
-    if (args.run_in_background === true) {
-      throw new Error('dsh-legion: run_in_background is disabled for this plugin instance')
-    }
-    return false
-  }
-  return args.run_in_background ?? profile.defaultRunInBackground
-}
-
 function requestFor(
-  parent: Agent,
-  args: ToolArgs,
-  profile: LegionProfile,
+  parent: SubagentStartRequest['parent'],
+  plan: DelegationPlan,
 ): Omit<SubagentStartRequest, 'signal'> {
   return {
-    label: args.description,
-    prompt: [{ type: 'text', text: args.prompt }] as ContentBlock[],
+    label: plan.label,
+    prompt: [{ type: 'text', text: plan.prompt }] as ContentBlock[],
     parent,
-    ...profile.agentOptions === undefined ? {} : { agentOptions: profile.agentOptions },
-    ...profile.persona === undefined ? {} : { persona: profile.persona },
-    ...profile.toolFilter === undefined ? {} : { toolFilter: profile.toolFilter },
-    ...typeof profile.maxDepth === 'number' ? { maxDepth: profile.maxDepth } : {},
+    ...plan.agentOptions === undefined ? {} : { agentOptions: plan.agentOptions },
+    ...plan.persona === undefined ? {} : { persona: plan.persona },
+    ...plan.toolFilter === undefined ? {} : { toolFilter: plan.toolFilter },
+    ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
+    ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
   }
 }
 
-function registerTool(ctx: Context, config: Config): () => void {
-  const profileNames = Object.keys(config.profiles)
-  const profileRequired = config.defaultProfile === undefined
-  const profileDescription = config.defaultProfile === undefined
+function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
+  const profileNames = Object.keys(catalog.activeProfiles)
+  const profileRequired = catalog.defaultProfile === undefined
+  const profileDescription = catalog.defaultProfile === undefined
     ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
-    : `Configured semantic profile. Defaults to ${config.defaultProfile}.`
+    : `Configured semantic profile. Defaults to ${catalog.defaultProfile}.`
 
   return ctx.tools.register(defineTool({
-    name: config.toolName,
+    name: catalog.toolName,
     description:
       'Delegate focused work through a configured Legion profile. Each profile fixes the child backend, model route, persona, tools, and depth policy. '
-      + (config.enableRunInBackground
+      + (catalog.enableRunInBackground
         ? 'Background execution returns a durable child id immediately; foreground execution waits for the final result.'
         : 'This instance only allows foreground execution.'),
     parameters: {
@@ -134,7 +157,7 @@ function registerTool(ctx: Context, config: Config): () => void {
         required: true,
         description: 'A complete standalone task for a fresh profile, or focused follow-up context for an inheriting backend.',
       },
-      ...config.enableRunInBackground ? {
+      ...catalog.enableRunInBackground ? {
         run_in_background: {
           type: 'boolean' as const,
           description: 'Whether to return a durable child id immediately. When omitted, the selected profile decides.',
@@ -151,6 +174,8 @@ function registerTool(ctx: Context, config: Config): () => void {
               kind: { type: 'string', required: true, const: 'continuable' },
               profile: { type: 'string', required: true },
               subagentId: { type: 'string', required: true },
+              policyDigest: { type: 'string', required: true },
+              catalogDigest: { type: 'string', required: true },
             },
           },
           {
@@ -160,7 +185,11 @@ function registerTool(ctx: Context, config: Config): () => void {
               kind: { type: 'string', required: true, const: 'foreground' },
               profile: { type: 'string', required: true },
               runId: { type: 'string', required: true },
+              resultContract: { type: 'string', required: true },
+              policyDigest: { type: 'string', required: true },
+              catalogDigest: { type: 'string', required: true },
               output: { type: 'array', required: true, items: { type: 'json' } },
+              structured: { type: 'json' },
             },
           },
         ],
@@ -169,7 +198,9 @@ function registerTool(ctx: Context, config: Config): () => void {
         type: 'text',
         text: value.kind === 'continuable'
           ? `started Legion profile ${value.profile} as subagent ${value.subagentId}`
-          : outputText(value.output),
+          : value.structured === undefined
+            ? outputText(value.output)
+            : JSON.stringify(value.structured, null, 2),
       }],
     },
     isConcurrencySafe: () => true,
@@ -180,66 +211,52 @@ function registerTool(ctx: Context, config: Config): () => void {
         throw new Error('dsh-legion: tool requires a calling agent')
       }
 
-      const [profileName, profile] = requireProfile(config, args.profile)
-      const background = runInBackground(config, profile, args)
-      requireProvider(ctx, profileName, profile, background)
-      const request = requestFor(parent, args, profile)
+      const plan = compileDelegationPlan(catalog, {
+        ...args.profile === undefined ? {} : { profile: args.profile },
+        description: args.description,
+        prompt: args.prompt,
+        ...args.run_in_background === undefined ? {} : { runInBackground: args.run_in_background },
+      })
+      requireProvider(ctx, plan)
+      const request = requestFor(parent, plan)
 
-      if (background) {
+      if (plan.mode === 'continuable') {
         const started = await ctx.subagents.startContinuable({
-          provider: profile.subagentProvider,
-          label: args.description,
+          provider: plan.subagentProvider,
+          label: plan.label,
           request,
           signal: exec.signal,
         })
         return {
           kind: 'continuable' as const,
-          profile: profileName,
+          profile: plan.profile,
           subagentId: started.childId,
+          policyDigest: plan.policyDigest,
+          catalogDigest: plan.catalogDigest,
         }
       }
 
-      const run = await ctx.subagents.start(profile.subagentProvider, {
+      const run = await ctx.subagents.start(plan.subagentProvider, {
         ...request,
         signal: exec.signal,
       })
-      return settleForeground(profileName, run)
+      return settleForeground(plan, run)
     },
   }))
 }
 
-function availableConfig(ctx: Context, config: Config): Config | undefined {
-  const profiles = Object.fromEntries(
-    Object.entries(config.profiles)
-      .filter(([profileName, profile]) => {
-        if (ctx.subagents.getProvider(profile.subagentProvider) === undefined) return false
-        const defaultBackground = config.enableRunInBackground && profile.defaultRunInBackground
-        requireProvider(ctx, profileName, profile, defaultBackground)
-        return true
-      }),
-  )
-  if (Object.keys(profiles).length === 0) return undefined
-  const { defaultProfile, ...rest } = config
-  return {
-    ...rest,
-    profiles,
-    ...defaultProfile !== undefined && profiles[defaultProfile] !== undefined
-      ? { defaultProfile }
-      : {},
-  }
-}
-
 export function apply(ctx: Context, config: Config): void {
   validateConfig(config)
-  let activeConfig: Config | undefined
+  let activeCatalog: CompiledCatalog | undefined
   let disposeTool: (() => void) | undefined
 
   const refresh = (): void => {
-    const next = availableConfig(ctx, config)
+    const next = compileCatalog(config, runtimeSnapshot(ctx, config))
+    assertCatalogUsable(next)
     disposeTool?.()
     disposeTool = undefined
-    activeConfig = next
-    if (next !== undefined) disposeTool = registerTool(ctx, next)
+    activeCatalog = next
+    if (Object.keys(next.activeProfiles).length > 0) disposeTool = registerTool(ctx, next)
   }
 
   ctx.on('subagent/provider-added', (provider) => {
@@ -251,13 +268,21 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => () => {
     disposeTool?.()
     disposeTool = undefined
-    activeConfig = undefined
+    activeCatalog = undefined
   }, 'dsh-legion.activeTool()')
 
   ctx.systemPrompt.section({
     name: `tool:${config.toolName}`,
     order: PROMPT_ORDER,
-    text: () => activeConfig === undefined ? '' : renderCoordinatorGuidance(activeConfig),
+    text: () => activeCatalog === undefined || Object.keys(activeCatalog.activeProfiles).length === 0
+      ? ''
+      : renderCoordinatorGuidance({
+          toolName: activeCatalog.toolName,
+          enableRunInBackground: activeCatalog.enableRunInBackground,
+          profiles: activeCatalog.activeProfiles,
+          ...activeCatalog.defaultProfile === undefined ? {} : { defaultProfile: activeCatalog.defaultProfile },
+          ...activeCatalog.guidance === undefined ? {} : { guidance: activeCatalog.guidance },
+        }),
   })
   refresh()
 }

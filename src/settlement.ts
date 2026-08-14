@@ -1,12 +1,18 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
+import type { DelegationPlan } from './compiler.ts'
+import { materializeStructuredResult } from './result-contract.ts'
 
 export interface ForegroundResult {
   readonly kind: 'foreground'
   readonly profile: string
   readonly runId: SubagentRun['id']
+  readonly resultContract: DelegationPlan['result']
+  readonly policyDigest: string
+  readonly catalogDigest: string
   readonly output: JsonValue[]
+  readonly structured?: JsonValue
 }
 
 function stopReasonError(result: SubagentResult): string | undefined {
@@ -29,7 +35,7 @@ function textOf(output: ContentBlock[]): string {
 
 /** Settle and release one foreground run without losing either failure. */
 export async function settleForeground(
-  profile: string,
+  plan: DelegationPlan,
   run: SubagentRun,
 ): Promise<ForegroundResult> {
   const [execution] = await Promise.allSettled([
@@ -41,11 +47,16 @@ export async function settleForeground(
           ? failure
           : `${failure}\nPartial output before the run ended:\n${partial}`)
       }
+      const structured = materializeStructuredResult(plan.result, result.structured)
       return {
         kind: 'foreground',
-        profile,
+        profile: plan.profile,
         runId: run.id,
+        resultContract: plan.result,
+        policyDigest: plan.policyDigest,
+        catalogDigest: plan.catalogDigest,
         output: result.output as unknown as JsonValue[],
+        ...structured === undefined ? {} : { structured },
       }
     }),
   ])

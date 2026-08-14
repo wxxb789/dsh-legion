@@ -32,7 +32,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.1.0` is an MVP for semantic profile routing over DSH subagents.
+`0.2.0` adds an explainable EffectiveProfile compiler and versioned foreground result contracts on top of semantic profile routing.
 
 Supported:
 
@@ -43,6 +43,10 @@ Supported:
 - continuable background children with normal DSH settlement notifications and follow-up support;
 - concurrent sibling calls through DSH's parallel tool execution;
 - fail-loud provider and capability validation;
+- one deterministic compiled catalog shared by tool schema, prompt guidance, activation, and execution;
+- stable SHA-256 policy/catalog digests for bounded provenance;
+- versioned foreground result contracts: `text`, `findings-v1`, and `review-v1`;
+- detached revalidation/materialization of provider-owned structured output;
 - reversible Cordis lifecycle and HMR-safe registrations.
 
 Not yet supported:
@@ -50,7 +54,7 @@ Not yet supported:
 - model fallback chains or automatic provider health scoring;
 - a Legion-owned team/DAG runtime—the coordinator uses DSH's existing subagent and workflow capabilities;
 - selecting a different **DSH agent preset** for each child. Current in-process subagents inherit the parent's standing preset composition; Legion profiles can still vary model, persona, tools, and backend. A true per-child preset requires a small upstream DSH subagent composition seam and is tracked as a roadmap item;
-- a GUI settings card. External Host settings namespaces are not currently exposed by the DSH Web allowlist, so v0.1 keeps configuration in the user-owned agent preset.
+- a GUI settings card. External Host settings namespaces are not currently exposed by the DSH Web allowlist, so v0.2 keeps configuration in the user-owned agent preset.
 
 ## Install
 
@@ -149,8 +153,16 @@ Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider li
 | `toolFilter.allow` / `deny` | none | Child tool visibility restriction. Foreground requires provider support; the continuation manager installs it directly for background children. |
 | `maxDepth` | `3` | Absolute depth. Foreground numeric limits require `depthLimit`; the continuation manager enforces background limits. Use `provider-managed` for external one-shot products. |
 | `defaultRunInBackground` | `true` | Use a continuable child when the tool call omits the flag. |
+| `result` | `text` | `text`, `findings-v1`, or `review-v1`; structured contracts require foreground one-shot execution and provider `outputSchema` support. |
 
 For `codex` and `claude-code`, the external product owns its model selection. Use `maxDepth: provider-managed` and normally `defaultRunInBackground: false` because those providers are one-shot.
+
+Structured contracts are deliberately narrow:
+
+- `findings-v1` returns `summary`, evidence-backed `findings`, `decisions`, `verification`, and `openRisks`;
+- `review-v1` returns a `pass | needs-changes | block` verdict, evidence-backed severity findings, recommendations, and verification;
+- the provider-owned `unknown` value is validated again and projected leaf-by-leaf into detached lossless JSON before Legion returns it;
+- continuable background children remain text/session oriented because DSH does not attach one activation-wide `outputSchema` contract.
 
 ## Development
 
@@ -165,7 +177,9 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 
 ## Design notes
 
+- [Implementation roadmap](https://github.com/wxxb789/dsh-legion/blob/main/docs/roadmap.md)
 - [ADR 0001: Semantic profile router](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0001-semantic-profile-router.md)
+- [ADR 0002: EffectiveProfile compiler](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0002-effective-profile-compiler.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

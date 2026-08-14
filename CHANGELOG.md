@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- Deterministic EffectiveProfile compiler with stable diagnostics and SHA-256 policy/catalog digests.
+- One CompiledCatalog shared by tool schema, prompt guidance, activation, and execution, with detached per-invocation DelegationPlan compilation at the start edge.
+- Versioned foreground result contracts: `findings-v1` and `review-v1`.
+- Contract-specific revalidation and leaf projection for provider-owned structured output.
+- Real DSH continuation-manager integration coverage for durable child route, lineage, persona, and settlement.
+
 ### Fixed
 
 - Let the DSH continuation manager enforce depth and install persona/tool filters instead of incorrectly applying one-shot provider capability flags to continuable children.
@@ -31,5 +41,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/wxxb789/dsh-legion/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wxxb789/dsh-legion/releases/tag/v0.1.0

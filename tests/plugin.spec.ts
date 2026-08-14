@@ -28,6 +28,7 @@ function provider(
     capabilities?: SubagentProvider['capabilities']
     continuable?: boolean
     resultError?: Error
+    structured?: unknown
     disposeError?: Error
     onDispose?: () => void
     onStart?: (request: ResolvedSubagentStartRequest) => void
@@ -50,6 +51,7 @@ function provider(
         result: options.resultError === undefined
           ? Promise.resolve({
               output: [{ type: 'text', text: options.reply ?? 'child result' }],
+              ...options.structured === undefined ? {} : { structured: options.structured },
               stopReason: options.stopReason ?? 'completed',
             })
           : Promise.reject(options.resultError),
@@ -156,7 +158,7 @@ describe('dsh-legion', () => {
     expect(schema).toBeDefined()
     if (schema === undefined) throw new Error('expected Legion tool schema')
     const properties = (schema.parameters as { properties: Record<string, { enum?: string[]; required?: boolean }> }).properties
-    expect(properties.profile?.enum).toEqual(['quick', 'deep'])
+    expect(properties.profile?.enum).toEqual(['deep', 'quick'])
     expect(properties.profile?.required).not.toBe(true)
     expect(Object.keys(properties).sort()).toEqual([
       'description', 'profile', 'prompt', 'run_in_background',
@@ -180,7 +182,91 @@ describe('dsh-legion', () => {
     expect(request?.maxDepth).toBe(2)
     expect(rendered(result)).toBe('child result')
     if (result.isError) throw new Error('expected foreground success')
-    expect(result.value).toMatchObject({ kind: 'foreground', profile: 'quick' })
+    expect(result.value).toMatchObject({
+      kind: 'foreground',
+      profile: 'quick',
+      resultContract: 'text',
+      policyDigest: expect.stringMatching(/^sha256:/),
+      catalogDigest: expect.stringMatching(/^sha256:/),
+    })
+  })
+
+  it('passes a versioned output schema and returns detached structured review data', async () => {
+    let request: SubagentStartRequest | undefined
+    const structured = {
+      verdict: 'needs-changes',
+      summary: 'One issue.',
+      findings: [{
+        severity: 'high',
+        title: 'Unsafe retry',
+        detail: 'Replay may repeat mutation.',
+        evidence: [{ source: 'src/retry.ts:9', detail: 'Starts another child.' }],
+        recommendation: 'Use one recovery owner.',
+      }],
+      verification: ['reproduction test'],
+    }
+    const ctx = await setup({
+      profiles: {
+        review: {
+          description: 'Structured review.',
+          subagentProvider: 'spawn',
+          maxDepth: 2,
+          defaultRunInBackground: false,
+          result: 'review-v1',
+        },
+      },
+      defaultProfile: 'review',
+    }, [provider('spawn', {
+      structured,
+      onStart: value => { request = value },
+    })])
+
+    const result = await execute(ctx, {
+      description: 'review change',
+      prompt: 'Review the change.',
+    })
+
+    expect(result.isError).toBe(false)
+    expect(request?.outputSchema).toMatchObject({
+      type: 'object',
+      required: ['verdict', 'summary', 'findings', 'verification'],
+    })
+    if (result.isError) throw new Error('expected structured foreground success')
+    expect(result.value).toMatchObject({
+      kind: 'foreground',
+      profile: 'review',
+      resultContract: 'review-v1',
+      structured,
+    })
+    expect((result.value as { structured: unknown }).structured).not.toBe(structured)
+    expect(rendered(result)).toContain('"verdict": "needs-changes"')
+  })
+
+  it('rejects malformed provider-owned structured data and still disposes', async () => {
+    let disposed = false
+    const ctx = await setup({
+      profiles: {
+        review: {
+          description: 'Structured review.',
+          subagentProvider: 'spawn',
+          maxDepth: 2,
+          defaultRunInBackground: false,
+          result: 'review-v1',
+        },
+      },
+      defaultProfile: 'review',
+    }, [provider('spawn', {
+      structured: { verdict: 'maybe' },
+      onDispose: () => { disposed = true },
+    })])
+
+    const result = await execute(ctx, {
+      description: 'review change',
+      prompt: 'Review the change.',
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('violated review-v1')
+    expect(disposed).toBe(true)
   })
 
   it('starts the selected profile as a continuable child by default', async () => {
@@ -261,7 +347,7 @@ describe('dsh-legion', () => {
         },
       },
       defaultProfile: 'product',
-    }, [external])).rejects.toThrow('cannot enforce it; use provider-managed')
+    }, [external])).rejects.toThrow(/PROFILE_DEPTH_UNSUPPORTED/)
   })
 
   it('treats abnormal child settlement as an error and preserves partial output', async () => {
