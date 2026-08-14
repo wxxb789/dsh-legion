@@ -18,6 +18,8 @@ Before changing routing policy, profile configuration, result contracts, or DSH 
 
 DeepSeek Harness remains the sole owner of Agent, Session, subagent, workflow, goal, persistence, sandbox, approval, model adapter, and UI lifecycles. Legion contributes delegation policy and diagnostics through public DSH seams.
 
+Legion is customization-first. Profiles, Teams, Strategies, and the Default Catalog must use public replaceable contracts; do not hardcode default names or grant built-in strategies hidden privileges. Read `CONTEXT.md` when changing these domain concepts.
+
 ## Files and language
 
 Use English for code, comments, documentation, commit messages, and release notes. Public documentation must use repository-relative paths, generic placeholders, or URLs—never a developer machine's absolute path.

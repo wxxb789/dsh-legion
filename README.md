@@ -2,7 +2,9 @@
 
 Configurable multi-model subagent profiles for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Legion turns raw model and backend choices into semantic profiles such as `deep`, `quick`, `explore`, `translation`, and `review`. The main DSH agent chooses a profile by task fit; the plugin resolves that profile to a fixed subagent backend, child model route, persona, tool policy, depth limit, and background policy.
+Legion turns raw model and backend choices into semantic profiles such as `deep`, `quick`, `explore`, `translation`, and `review`. The main DSH agent chooses a profile by task fit; the plugin resolves that profile to a fixed subagent backend, child model route, persona, tool policy, depth limit, result contract, and background policy.
+
+Legion is customization-first: users can define their own Profiles and, on the v1.0 path, compose them into custom Teams with custom bounded orchestration Strategies. Legion will ship a polished Default Catalog, but every default uses the same replaceable public contracts and receives no hidden runtime privilege. Version 0.2 implements the Profile layer; Team and Strategy contracts are tracked in the [roadmap](docs/roadmap.md).
 
 ```text
 SOTA coordinator
@@ -181,6 +183,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [Implementation roadmap](https://github.com/wxxb789/dsh-legion/blob/main/docs/roadmap.md)
 - [ADR 0001: Semantic profile router](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0001-semantic-profile-router.md)
 - [ADR 0002: EffectiveProfile compiler](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0002-effective-profile-compiler.md)
+- [ADR 0003: Customization first; defaults as data](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0003-customization-first-defaults-as-data.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

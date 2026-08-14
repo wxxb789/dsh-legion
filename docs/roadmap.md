@@ -2,6 +2,8 @@
 
 This file tracks implementation status. Design rationale lives in ADRs and the OMO/Senpi research reports.
 
+Product principle: Legion is customization-first. Users can define Profiles, Teams, and Strategies; the curated Default Catalog must use the same replaceable contracts and carry no hidden runtime privileges.
+
 ## v0.2 — Explainable profile compiler
 
 - [x] Pure `Config + RuntimeSnapshot -> CompiledCatalog` seam.
@@ -37,17 +39,24 @@ Cross-route recovery is not part of v0.3. It requires a unified DSH recovery sea
 - [ ] Config migration and rollback contract.
 - [ ] Release/tag/tarball/SBOM/provenance automation.
 
-## v1.0 — Evidence-gated quality protocols
+## v1.0 — Custom Teams and evidence-gated Strategies
 
-These ship only after benchmarks show measurable value over direct delegation.
+Users can build their own Teams and orchestration Strategies. Legion ships a useful Default Catalog, but defaults are ordinary versioned data under the same public contracts.
 
-- [ ] `independent-review`: one executor result, one bounded reviewer, evidence contract.
-- [ ] `research-panel`: bounded independent findings and deterministic synthesis.
-- [ ] `plan-execute-review`: plan digest, execution evidence, bounded repair round.
-- [ ] Compile protocols to DSH workflow/subagent/goal primitives.
+- [ ] Public `TeamSpec`: named Member Slots reference Profiles and declare bounded participation constraints.
+- [ ] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal operations.
+- [ ] Strategy registration and validation shared by Legion defaults and third-party packages.
+- [ ] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
+- [ ] Default `independent-review`: one executor result, one bounded reviewer, evidence contract.
+- [ ] Default `research-panel`: bounded independent findings and deterministic synthesis.
+- [ ] Default `plan-execute-review`: plan digest, execution evidence, bounded repair round.
 - [ ] Hard member/round/deadline/output/token/cost limits.
 - [ ] Cancellation and partial/degraded result semantics.
+- [ ] Authority monotonicity: catalog customization can narrow directly; widening remains subject to DSH policy and approval.
+- [ ] Contract tests prove default entries can be recreated entirely through public user configuration.
 - [ ] Seeded interleaving tests: terminal first-wins, no lease leaks, stale generation cannot commit, every waiter settles.
+
+Default Strategies ship only after benchmarks show measurable value over direct delegation.
 
 ## Upstream DSH proposals
 
@@ -59,6 +68,6 @@ These ship only after benchmarks show measurable value over direct delegation.
 ## Non-goals
 
 - Another Agent/Session/subagent/workflow/goal runtime.
-- Senpi task store, residency manager, RPC runner, mailbox, Team runtime, or TTL sweeper.
+- Senpi task store, residency manager, RPC runner, mailbox, live Team runtime, or TTL sweeper; Legion Teams are declarative policy inputs compiled to DSH.
 - OMO hook injection, fixed mythology roles, current model leaderboard, or unbounded autonomy.
 - Credential storage, provider auth, model adapter registry, sandbox, approval, or telemetry exporter.

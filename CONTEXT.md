@@ -1,0 +1,37 @@
+# Legion Orchestration
+
+Legion lets a coordinator delegate one objective through user-defined worker capabilities, team shapes, and bounded orchestration policies while DeepSeek Harness owns execution lifecycle and authority.
+
+## Language
+
+**Profile**:
+A reusable worker capability template describing task fit, model-routing requirements, prompt behavior, visible capabilities, and result contract.
+_Avoid_: Agent, Worker instance, Role preset
+
+**Team**:
+A named composition of member slots available to one orchestration strategy.
+_Avoid_: Agent list, Fleet, Runtime
+
+**Member Slot**:
+A named position in a Team that references a Profile and may declare multiplicity or participation constraints; it is not a live child.
+_Avoid_: Agent, Process, Session
+
+**Strategy**:
+A bounded policy that turns an Objective and Team into orchestration decisions, artifact handoffs, completion rules, and limits.
+_Avoid_: Workflow runtime, Scheduler, Prompt
+
+**Team Run**:
+One execution of a Strategy against an Objective and Team, identified by the native DSH runs and artifacts it invokes.
+_Avoid_: Team, Mission database
+
+**Objective**:
+The user-owned outcome a Team Run is intended to achieve.
+_Avoid_: Prompt, Task message
+
+**Default Catalog**:
+Legion's curated Profiles, Teams, and Strategies, distributed as ordinary replaceable configuration under the same contracts available to users.
+_Avoid_: Built-in special cases, Hardcoded team
+
+**Effective Catalog**:
+The validated, normalized view of user and default catalog entries that are available for orchestration.
+_Avoid_: Raw config, Registry dump
