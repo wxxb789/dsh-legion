@@ -47,6 +47,7 @@ describe('profile-local package distribution', () => {
     ctx = new Context()
     ctx.baseUrl = pathToFileURL(profileDir).href + '/'
     await ctx.plugin(Loader)
+    expect(ctx.loader.internal).toBeDefined()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)

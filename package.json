@@ -87,6 +87,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "js-yaml": "^4.2.0",
+    "node-addon-require-builtin": "^0.1.4",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
