@@ -166,6 +166,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 ## Design notes
 
 - [ADR 0001: Semantic profile router](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0001-semantic-profile-router.md)
+- [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)
 - [Interface alternatives](https://github.com/wxxb789/dsh-legion/blob/main/docs/design/alternatives.md)
 
