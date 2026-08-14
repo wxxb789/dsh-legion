@@ -6,7 +6,7 @@ Thank you for helping improve dsh-legion.
 
 1. Install Node `^22.19.0 || >=24` and pnpm.
 2. Run `pnpm install`.
-3. Run `pnpm run check` before opening a pull request.
+3. Run `pnpm run check` before pushing code changes.
 
 ## Design rules
 
@@ -18,13 +18,15 @@ Thank you for helping improve dsh-legion.
 - New public configuration must serve at least two concrete profiles or use cases.
 - Preserve the single-tool interface unless measured evidence shows that a second entry point provides more leverage than schema cost.
 
-## Pull requests
+## Rapid development workflow
 
-Include:
+The project currently develops directly on `main`. Maintainer and agent changes are committed and pushed to `origin/main` after local gates pass; pull requests are not required unless a human explicitly requests one.
+
+Each pushed change should include:
 
 - the problem and intended behavior;
 - tests through the public plugin interface;
 - compatibility impact for the supported DSH peer range;
 - documentation for new configuration or limitations.
 
-Use English for code, comments, documentation, commit messages, and pull request descriptions.
+Use English for code, comments, documentation, commit messages, and release notes. Agent-specific execution rules are in [`AGENTS.md`](AGENTS.md).
