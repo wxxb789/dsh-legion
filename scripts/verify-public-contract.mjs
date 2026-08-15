@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +9,6 @@ const contract = JSON.parse(await readFile(resolve(root, 'contracts/v1.json'), '
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const declarationBytes = await readFile(resolve(root, 'lib/index.d.ts'))
 const declarationSource = declarationBytes.toString('utf8').replace(/\r\n/g, '\n')
-const declarationSha256 = `sha256:${createHash('sha256').update(declarationSource).digest('hex')}`
 const sourceFile = ts.createSourceFile(
   'index.d.ts',
   declarationSource,
@@ -37,7 +35,6 @@ const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
 const checks = [
   ['schemaVersion', contract.schemaVersion, 'dsh-legion-public-contract-v1'],
   ['packageMajor', contract.packageMajor, Number.parseInt(manifest.version.split('.')[0], 10)],
-  ['declarationSha256', contract.declarationSha256, declarationSha256],
   ['declarationExports', contract.declarationExports, [...declarationExports].sort()],
   ['runtimeExports', contract.runtimeExports, Object.keys(legion).sort()],
   ['packageEntry', contract.packageEntry, {

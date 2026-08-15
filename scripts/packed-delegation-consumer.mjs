@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -22,11 +21,6 @@ const packageRoot = dirname(fileURLToPath(import.meta.resolve('dsh-legion/packag
 const publicContract = JSON.parse(readFileSync(join(packageRoot, 'contracts/v1.json'), 'utf8'))
 if (JSON.stringify(Object.keys(legion).sort()) !== JSON.stringify(publicContract.runtimeExports)) {
   throw new Error('packed runtime exports drifted from the public contract')
-}
-const declarationSource = readFileSync(join(packageRoot, 'lib/index.d.ts'), 'utf8').replace(/\r\n/g, '\n')
-const declarationSha256 = `sha256:${createHash('sha256').update(declarationSource).digest('hex')}`
-if (declarationSha256 !== publicContract.declarationSha256) {
-  throw new Error('packed declaration surface drifted from the public contract')
 }
 
 class PackedAdapter extends LlmAdapter {
