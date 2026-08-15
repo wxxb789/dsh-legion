@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-15
+
+### Added
+
+- Versioned `configVersion: 1` documents with pure normalization and a lossless legacy-unversioned rollback export.
+- Committed pnpm 11 lockfile and frozen-install CI on Windows Node 22.19.0 and Ubuntu Node 24.
+- Minimum/latest-compatible DSH peer matrix using isolated packed-tarball consumers.
+- Harmless real packed delegation E2E through the official Agent loop and in-process spawn provider.
+- Tag/version/CHANGELOG release verification, SPDX SBOM, SHA-256 checksums, build attestation, npm provenance, and GitHub Release automation.
+
+### Changed
+
+- Raise the installable DSH peer floor to the published `0.1.0-rc.6` generation.
+- CI and release installs now require `pnpm install --frozen-lockfile`.
+- Packed compatibility resolves and verifies one exact DSH generation across the entire consumer graph.
+- Every workflow Action is commit-pinned; npm publishing uses OIDC Trusted Publishing without a long-lived token.
+
 ## [0.3.0] - 2026-08-15
 
 ### Added
@@ -94,7 +111,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/wxxb789/dsh-legion/compare/v0.2.0...v0.2.1

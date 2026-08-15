@@ -26,6 +26,8 @@ Keep filesystem access out of pure compilers. Prompt Fragment references must pa
 
 Route planning is pre-start only. Preserve unknown metadata, freeze one ADR 0007 Route Plan, and start at most one child. Never switch candidates or replay after child/provider failure; cross-route recovery requires a unified DSH recovery seam.
 
+Keep `pnpm-lock.yaml` synchronized and use frozen installs. Config migrations are pure and never overwrite user presets. Do not create a release tag unless package version, CHANGELOG, full gates, packed compatibility, and ADR 0009 release metadata all agree.
+
 ## Files and language
 
 Use English for code, comments, documentation, commit messages, and release notes. Public documentation must use repository-relative paths, generic placeholders, or URLs—never a developer machine's absolute path.

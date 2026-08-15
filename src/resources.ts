@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { lstat, open, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep, win32, posix } from 'node:path'
-import type { Config, MaterializedConfig } from './config.ts'
+import type { MaterializedConfig } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { ProfileName, ResourceDigest, type ProfileName as ProfileNameType, type ResourceDigest as ResourceDigestType } from './identity.ts'
 
@@ -414,7 +414,7 @@ export function assertResourceSnapshot(
 
 /** Load immutable prompt-fragment snapshots before entering the pure catalog compiler. */
 export async function loadProfileResources(
-  input: Config,
+  input: unknown,
   options: ResourceLoadOptions,
 ): Promise<ResourceSnapshot> {
   const config = materializeConfig(input)

@@ -34,7 +34,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.3.0` adds deterministic exact Route Candidates and immutable pre-start Route Plans without Legion-owned failure replay.
+`0.4.0` hardens config migration, frozen dependency installs, Windows/peer compatibility, packed real delegation, and provenance-bearing releases.
 
 Supported:
 
@@ -54,10 +54,10 @@ Supported:
 
 Not yet supported:
 
-- model fallback chains or automatic provider health scoring;
+- post-failure model fallback/replay or automatic provider health scoring;
 - a Legion-owned team/DAG runtime—the coordinator uses DSH's existing subagent and workflow capabilities;
 - selecting a different **DSH agent preset** for each child. Current in-process subagents inherit the parent's standing preset composition; Legion profiles can still vary model, persona, tools, and backend. A true per-child preset requires a small upstream DSH subagent composition seam and is tracked as a roadmap item;
-- a GUI settings card. External Host settings namespaces are not currently exposed by the DSH Web allowlist, so v0.2 keeps configuration in the user-owned agent preset.
+- a GUI settings card. External Host settings namespaces are not currently exposed by the DSH Web allowlist, so configuration remains in the user-owned agent preset.
 
 ## Install
 
@@ -68,7 +68,7 @@ A local checkout needs built `lib/` artifacts, but profile-level build approval 
 ```bash
 git clone https://github.com/wxxb789/dsh-legion.git
 cd dsh-legion
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run build
 dsh plugin --profile web add .
 ```
@@ -151,6 +151,7 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 
 | Field | Default | Meaning |
 |---|---:|---|
+| `configVersion` | `1` | Versioned document contract. Omission migrates the legacy unversioned v1 shape. |
 | `toolName` | `legion` | Model-facing tool name. |
 | `profiles` | required | Map from semantic profile name to fixed child policy. |
 | `defaultProfile` | none | Profile used when a call omits `profile`; otherwise `profile` is required. |
@@ -258,12 +259,24 @@ Exit codes:
 - `1`: explain view generated with one or more capability errors;
 - `2`: usage, I/O, Prompt Fragment confinement/content, YAML/JSON parse, or runtime schema validation failed.
 
+### Config migration and rollback
+
+`configVersion: 1` is the current runtime-validated document contract. Existing unversioned v0.3-and-earlier documents are interpreted as the same v1 shape and materialized with an explicit version. Unknown future versions fail before plugin effects.
+
+Programmatic callers can use `exportConfigDocument(input)` for normalized v1 output, or `exportConfigDocument(input, 'legacy-unversioned')` to remove only the version marker for rollback to a compatible pre-v0.4 Legion package. Both exports are detached; rollback is tested by rematerializing to the same effective config. File replacement, backup, and atomic rename remain the deployment owner's responsibility—Legion does not overwrite user presets.
+
+## Compatibility and releases
+
+The committed pnpm 11 lockfile is enforced with `--frozen-lockfile`. Required CI covers Windows at the exact Node 22.19.0 lower bound, Ubuntu Node 24, and isolated packed consumers at the minimum and latest-compatible DSH peer versions. The packed E2E installs the tarball into a clean consumer and executes one real, credential-free DSH child through the official in-process provider and a scripted LLM.
+
+Tags must equal `v<package.json version>` and have a dated CHANGELOG entry. The release workflow reruns all gates, creates one immutable tarball, an SPDX SBOM derived from that tarball, SHA-256 checksums, and a GitHub build attestation, then publishes npm provenance and creates a GitHub Release. Configure npm Trusted Publishing for this repository before creating a release tag; the workflow intentionally carries no long-lived npm token.
+
 ## Development
 
 Requirements: Node `^22.19.0 || >=24` and pnpm.
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run check
 ```
 
@@ -279,6 +292,8 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0005: Doctor explains fixtures, not health](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0005-doctor-explains-fixtures-not-health.md)
 - [ADR 0006: Confined Prompt Fragment snapshots](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0006-confined-prompt-resource-snapshots.md)
 - [ADR 0007: Pre-start exact Route Plans](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0007-pre-start-exact-route-plans.md)
+- [ADR 0008: Versioned config and rollback](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0008-versioned-config-and-rollback.md)
+- [ADR 0009: Reproducible provenance releases](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0009-reproducible-provenance-releases.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { Config, LegionProfile, ResultContract, RouteCandidate } from './config.ts'
+import type { LegionProfile, ResultContract, RouteCandidate } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import type { SelectedRoutePlan } from './route.ts'
@@ -250,7 +250,7 @@ export function assertCatalogUsable(catalog: CompiledCatalog): void {
  * this seam.
  */
 export function compileCatalog(
-  input: Config,
+  input: unknown,
   snapshot: RuntimeSnapshot,
   resources: ResourceSnapshot = EMPTY_RESOURCE_SNAPSHOT,
 ): CompiledCatalog {
@@ -386,6 +386,7 @@ export function compileCatalog(
   }
 
   const policy = {
+    configVersion: config.configVersion,
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
     ...config.defaultProfile === undefined ? {} : { defaultProfile: config.defaultProfile },

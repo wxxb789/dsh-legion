@@ -36,12 +36,12 @@ Cross-route recovery is not part of v0.3. It requires a unified DSH recovery sea
 
 ## v0.4 — Packaging and diagnostics hardening
 
-- [ ] Add and enforce a lockfile.
-- [ ] Windows CI and Node engines lower-bound job.
-- [ ] DSH peer minimum/latest compatibility matrix.
-- [ ] Packed harmless real delegation E2E with a faux provider.
-- [ ] Config migration and rollback contract.
-- [ ] Release/tag/tarball/SBOM/provenance automation.
+- [x] Add and enforce a lockfile.
+- [x] Windows CI and Node engines lower-bound job.
+- [x] DSH peer minimum/latest compatibility matrix.
+- [x] Packed harmless real delegation E2E with a scripted provider.
+- [x] Config migration and rollback contract.
+- [x] Release/tag/tarball/SBOM/provenance automation.
 
 ## v1.0 — Custom Teams and evidence-gated Strategies
 

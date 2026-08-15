@@ -14,6 +14,8 @@ interface PackageManifest {
   exports?: Record<string, unknown>
   bin?: Record<string, string>
   dependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  scripts?: Record<string, string>
   dsh?: { bundle?: { patch?: string } }
 }
 
@@ -38,6 +40,10 @@ describe('published package contract', () => {
     expect(manifest.exports).toHaveProperty('.')
     expect(manifest.bin).toEqual({ 'dsh-legion': './lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
+    expect(manifest.peerDependencies?.['@deepseek-ai/dsh-agent'])
+      .toBe('>=0.1.0-rc.6 <0.2.0')
+    expect(manifest.scripts?.['test:packed-delegation'])
+      .toBe('node scripts/verify-packed-delegation.mjs')
     await Promise.all([
       access(resolve(ROOT, manifest.main!)),
       access(resolve(ROOT, manifest.types!)),

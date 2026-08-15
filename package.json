@@ -1,6 +1,6 @@
 {
   "name": "dsh-legion",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Configurable multi-model subagent profiles for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -32,7 +32,9 @@
     "test:unit": "vitest run",
     "test": "pnpm run build && pnpm run test:unit",
     "verify:pack": "npm pack --dry-run --ignore-scripts",
+    "verify:release": "node scripts/verify-release.mjs",
     "test:profile-install": "node scripts/verify-profile-install.mjs",
+    "test:packed-delegation": "node scripts/verify-packed-delegation.mjs",
     "check": "pnpm run typecheck && pnpm run build && pnpm run test:unit && pnpm run verify:pack",
     "prepare": "pnpm run build",
     "prepack": "pnpm run typecheck && pnpm run build && pnpm run test:unit"

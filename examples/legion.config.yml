@@ -1,3 +1,4 @@
+configVersion: 1
 toolName: legion
 defaultProfile: quick
 enableRunInBackground: true

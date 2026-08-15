@@ -22,7 +22,7 @@ import {
   type EffectiveProfile,
   type RuntimeSnapshot,
 } from './compiler.ts'
-import type { Config, ResultContract } from './config.ts'
+import type { ResultContract } from './config.ts'
 import type { ResourceSnapshot } from './resources.ts'
 
 export type ExplainStatus = 'ok' | 'warnings' | 'errors'
@@ -345,7 +345,7 @@ export function materializeExplainViewV1(value: unknown): ExplainViewV1 {
 
 /** Compile and explain one config/snapshot pair through the canonical compiler. */
 export function compileExplainView(
-  config: Config,
+  config: unknown,
   snapshot: RuntimeSnapshot,
   options: ExplainOptions,
   resources?: ResourceSnapshot,

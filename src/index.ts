@@ -19,15 +19,19 @@ import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } 
 import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
 
 export {
+  CURRENT_CONFIG_VERSION,
   Config,
   LegionProfileSchema,
   PROFILE_NAME,
   RESULT_CONTRACTS,
+  exportConfigDocument,
   materializeConfig,
   validateConfig,
 } from './config.ts'
 export type {
   Config as LegionConfig,
+  ConfigExportTarget,
+  ConfigVersion,
   LegionProfile,
   MaterializedConfig,
   PromptFileReference,

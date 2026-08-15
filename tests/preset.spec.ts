@@ -17,6 +17,7 @@ describe('shipped Legion preset template', () => {
     const legion = named.find(row => row.id === 'tool-legion')
     expect(legion).toMatchObject({ name: 'dsh-legion' })
     expect(legion?.config).toMatchObject({
+      configVersion: 1,
       defaultProfile: 'quick',
       resourceRoots: { bundled: 'resources' },
       profiles: {

@@ -4,6 +4,10 @@ Legion lets a coordinator delegate one objective through user-defined worker cap
 
 ## Language
 
+**Config Document**:
+A versioned authored description of Profiles and deployment policy that can be normalized or exported for a compatible rollback target.
+_Avoid_: Effective Catalog, Runtime state
+
 **Profile**:
 A reusable worker capability template describing task fit, model-routing requirements, prompt behavior, visible capabilities, and result contract.
 _Avoid_: Agent, Worker instance, Role preset

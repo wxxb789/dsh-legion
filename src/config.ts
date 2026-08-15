@@ -1,5 +1,8 @@
 import z from '@deepseek-ai/schemastery'
 export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
+export const CURRENT_CONFIG_VERSION = 1 as const
+export type ConfigVersion = typeof CURRENT_CONFIG_VERSION
+export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = ['text', 'findings-v1', 'review-v1'] as const
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
@@ -56,6 +59,8 @@ export interface LegionProfile {
 }
 
 export interface Config {
+  /** Explicit document version; omission is the pre-v0.4 unversioned v1 shape. */
+  readonly configVersion?: ConfigVersion
   /** Model-facing tool name. */
   toolName: string
   /** Semantic profiles selected by the coordinator instead of raw model ids. */
@@ -119,11 +124,13 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
 })
 
 export interface MaterializedConfig extends Config {
+  configVersion: ConfigVersion
   resourceRoots: Record<string, string>
   maxResourceBytes: number
 }
 
 export const Config: z<Config> = z.object({
+  configVersion: z.const(CURRENT_CONFIG_VERSION).default(CURRENT_CONFIG_VERSION),
   toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
@@ -162,9 +169,17 @@ function assertPortableRelativePath(path: string, at: string): void {
 }
 
 function assertKnownConfigKeys(input: unknown): void {
+  const source = record(input)
+  if (source !== undefined
+    && Object.hasOwn(source, 'configVersion')
+    && source.configVersion !== undefined
+    && source.configVersion !== CURRENT_CONFIG_VERSION) {
+    throw new Error(`dsh-legion: unsupported configVersion ${String(source.configVersion)}`)
+  }
   assertKnownKeys(
     input,
     [
+      'configVersion',
       'toolName',
       'profiles',
       'defaultProfile',
@@ -225,6 +240,7 @@ export function materializeConfig(input: unknown): MaterializedConfig {
   const parsed = Config(input as Config | null | undefined)
   validateConfig(parsed)
   return {
+    configVersion: CURRENT_CONFIG_VERSION,
     toolName: parsed.toolName,
     enableRunInBackground: parsed.enableRunInBackground,
     resourceRoots: { ...parsed.resourceRoots },
@@ -281,6 +297,17 @@ export function materializeConfig(input: unknown): MaterializedConfig {
       } satisfies LegionProfile]
     })),
   }
+}
+
+/** Export one normalized current document or a rollback-compatible unversioned document. */
+export function exportConfigDocument(
+  input: unknown,
+  target: ConfigExportTarget = CURRENT_CONFIG_VERSION,
+): Config {
+  const current = materializeConfig(input)
+  if (target === CURRENT_CONFIG_VERSION) return current
+  const { configVersion: _configVersion, ...legacy } = current
+  return legacy
 }
 
 /** Validate cross-field facts Schemastery cannot express. */
