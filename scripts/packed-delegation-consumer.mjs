@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { basename, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -17,8 +18,8 @@ if (process.env.DSH_LEGION_PACKED_CONSUMER !== '1'
   || consumerManifest.name !== 'dsh-legion-packed-delegation-consumer') {
   throw new Error('refusing to run packed consumer fixture outside its isolated sandbox')
 }
-const packageRoot = dirname(fileURLToPath(import.meta.resolve('dsh-legion/package.json')))
-const publicContract = JSON.parse(readFileSync(join(packageRoot, 'contracts/v1.json'), 'utf8'))
+const require = createRequire(import.meta.url)
+const publicContract = require('dsh-legion/contracts/v1.json')
 if (JSON.stringify(Object.keys(legion).sort()) !== JSON.stringify(publicContract.runtimeExports)) {
   throw new Error('packed runtime exports drifted from the public contract')
 }

@@ -393,6 +393,8 @@ describe('real-model quality campaign scorer', () => {
       const rightAdjudicator = generateKeyPairSync('ed25519')
       const leftExecutor = generateKeyPairSync('ed25519')
       const rightExecutor = generateKeyPairSync('ed25519')
+      const leftPackIssuer = generateKeyPairSync('ed25519')
+      const rightPackIssuer = generateKeyPairSync('ed25519')
       const trustStorePath = join(root, 'trusted-adjudicators.json')
       const openPack = JSON.parse(
         readFileSync(join(ROOT, 'benchmarks/quality/review-v1.json'), 'utf8'),
@@ -405,21 +407,32 @@ describe('real-model quality campaign scorer', () => {
       const rightPackBytes = JSON.stringify(rightPack, null, 2)
       writeFileSync(leftPackPath, leftPackBytes)
       writeFileSync(rightPackPath, rightPackBytes)
+      const signPackTrust = <Payload extends Record<string, unknown>>(
+        payload: Payload,
+        privateKey: KeyObject,
+      ) => ({
+        ...payload,
+        signature: signPayload(null, Buffer.from(canonical(payload)), privateKey).toString('base64'),
+      })
+      const leftPackSha256 = sha256(leftPackBytes)
+      const rightPackSha256 = sha256(rightPackBytes)
       const heldOutPacks = {
-        [sha256(leftPackBytes)]: {
+        [leftPackSha256]: signPackTrust({
           packId: leftPack.id,
+          packSha256: leftPackSha256,
           issuer: 'benchmark-issuer-a',
           commitmentId: 'pack-commitment-a',
           committedAt: '2026-07-01T00:00:00.000Z',
           unsealedAt: '2026-08-02T00:00:00.000Z',
-        },
-        [sha256(rightPackBytes)]: {
+        }, leftPackIssuer.privateKey),
+        [rightPackSha256]: signPackTrust({
           packId: rightPack.id,
+          packSha256: rightPackSha256,
           issuer: 'benchmark-issuer-b',
           commitmentId: 'pack-commitment-b',
           committedAt: '2026-07-01T00:00:00.000Z',
           unsealedAt: '2026-08-04T00:00:00.000Z',
-        },
+        }, rightPackIssuer.privateKey),
       }
       const writeTrustStore = (
         adjudicators: Record<string, string>,
@@ -428,6 +441,10 @@ describe('real-model quality campaign scorer', () => {
         schemaVersion: 'legion-adjudicator-trust-v1',
         adjudicators,
         executors,
+        packIssuers: {
+          'benchmark-issuer-a': leftPackIssuer.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+          'benchmark-issuer-b': rightPackIssuer.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        },
         heldOutPacks,
       }))
       const leftAdjudicatorPem = leftAdjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString()
@@ -466,10 +483,29 @@ describe('real-model quality campaign scorer', () => {
       expect(eligible.status).toBe(0)
       expect(JSON.parse(eligible.stdout)).toMatchObject({ eligible: true })
 
+      const mutableLeftPackTrust = heldOutPacks[leftPackSha256]
+      if (mutableLeftPackTrust === undefined) throw new Error('missing left pack trust fixture')
+      const originalCommittedAt = mutableLeftPackTrust.committedAt
+      mutableLeftPackTrust.committedAt = '2026-06-01T00:00:00.000Z'
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
+      const tamperedPackTrust = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(tamperedPackTrust.status).not.toBe(0)
+      expect(tamperedPackTrust.stderr).toContain('lacks authenticated commitment')
+      mutableLeftPackTrust.committedAt = originalCommittedAt
+
       writeFileSync(trustStorePath, JSON.stringify({
         schemaVersion: 'legion-adjudicator-trust-v1',
         adjudicators: { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
         executors: { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+        packIssuers: {
+          'benchmark-issuer-a': leftPackIssuer.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+          'benchmark-issuer-b': rightPackIssuer.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        },
         heldOutPacks: {},
       }))
       const uncommittedPack = spawnSync(process.execPath, [

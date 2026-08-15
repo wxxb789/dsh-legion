@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -10,6 +10,12 @@ const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 const outputArgument = process.argv.slice(2).find(argument => argument !== '--')
 const outputDirectory = outputArgument === undefined ? undefined : resolve(outputArgument)
 const sandbox = await mkdtemp(join(tmpdir(), 'dsh-legion-reproducible-pack-'))
+const canonicalTempRoot = await realpath(tmpdir())
+const canonicalSandboxRoot = await realpath(sandbox)
+const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
+if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
+  throw new Error(`refusing to use unexpected temporary path: ${sandbox}`)
+}
 
 function run(program, args) {
   const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : program

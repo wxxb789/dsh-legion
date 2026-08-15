@@ -13,6 +13,8 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./contracts/v1.json": "./contracts/v1.json",
+    "./contracts/compatibility.json": "./contracts/compatibility.json",
     "./package.json": "./package.json"
   },
   "files": [

@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Stable machine-verified v1 runtime, declaration, package-entry, request, result, receipt, and authority contracts.
 - Shared ChildRunLifecycle with cancellation-aware admission, late-publication ownership, execution/cleanup phase separation, and explicit cleanup-pending evidence.
-- Trusted executor and blind-adjudicator receipts, pre-execution held-out pack commitments with post-run embargo, canonical disjoint campaign principals/identities, and exact compatibility closure receipts.
+- Trusted executor and blind-adjudicator receipts, issuer-signed pre-execution held-out pack commitments with post-run embargo, canonical disjoint campaign principals/identities, and exact compatibility closure receipts.
 
 ### Changed
 

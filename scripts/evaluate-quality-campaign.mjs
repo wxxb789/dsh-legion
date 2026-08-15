@@ -293,6 +293,7 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
     && (trustStore?.schemaVersion !== 'legion-adjudicator-trust-v1'
       || typeof trustStore.adjudicators !== 'object'
       || typeof trustStore.executors !== 'object'
+      || typeof trustStore.packIssuers !== 'object'
       || typeof trustStore.heldOutPacks !== 'object')) {
     throw new Error('held-out campaign requires a valid trusted adjudicator/executor store')
   }
@@ -312,7 +313,17 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       publicContract.heldOutPackTrustFields,
       'held-out pack trust entry',
     )
+    const packCommitmentPayload = {
+      packId: heldOutPackTrust.packId,
+      packSha256: heldOutPackTrust.packSha256,
+      issuer: heldOutPackTrust.issuer,
+      commitmentId: heldOutPackTrust.commitmentId,
+      committedAt: heldOutPackTrust.committedAt,
+      unsealedAt: heldOutPackTrust.unsealedAt,
+    }
+    const packIssuerKey = trustStore.packIssuers[heldOutPackTrust.issuer]
     if (heldOutPackTrust.packId !== casePack.id
+      || heldOutPackTrust.packSha256 !== casePackSha256
       || typeof heldOutPackTrust.issuer !== 'string'
       || heldOutPackTrust.issuer.length === 0
       || typeof heldOutPackTrust.commitmentId !== 'string'
@@ -320,8 +331,16 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       || !Number.isFinite(Date.parse(heldOutPackTrust.committedAt))
       || !Number.isFinite(Date.parse(heldOutPackTrust.unsealedAt))
       || Date.parse(heldOutPackTrust.committedAt) >= Date.parse(campaign.campaign.startedAt)
-      || Date.parse(heldOutPackTrust.unsealedAt) < Date.parse(campaign.campaign.endedAt)) {
-      throw new Error('held-out pack trust entry does not prove pre-execution commitment and embargo')
+      || Date.parse(heldOutPackTrust.unsealedAt) < Date.parse(campaign.campaign.endedAt)
+      || typeof packIssuerKey !== 'string'
+      || typeof heldOutPackTrust.signature !== 'string'
+      || !verify(
+        null,
+        Buffer.from(canonical(packCommitmentPayload)),
+        createPublicKey(packIssuerKey),
+        Buffer.from(heldOutPackTrust.signature, 'base64'),
+      )) {
+      throw new Error('held-out pack trust entry lacks authenticated commitment or embargo evidence')
     }
   }
   if (casePack.track !== track || casePack.cases.length !== thresholds.caseCount) {

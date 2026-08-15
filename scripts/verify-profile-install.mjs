@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,7 +13,9 @@ import AgentPresets from '@deepseek-ai/dsh-agent-presets'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
 const sandboxRoot = await mkdtemp(join(tmpdir(), 'dsh-legion-packed-profile-'))
-const relativeSandbox = relative(tmpdir(), sandboxRoot)
+const canonicalTempRoot = await realpath(tmpdir())
+const canonicalSandboxRoot = await realpath(sandboxRoot)
+const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
 if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
   throw new Error(`refusing to use unexpected temporary path: ${sandboxRoot}`)
 }

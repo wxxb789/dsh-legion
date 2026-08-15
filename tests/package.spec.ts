@@ -38,6 +38,10 @@ describe('published package contract', () => {
       'lib', 'cordis.patch.yml', 'examples', 'presets', 'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
+    expect(manifest.exports).toMatchObject({
+      './contracts/v1.json': './contracts/v1.json',
+      './contracts/compatibility.json': './contracts/compatibility.json',
+    })
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
     expect(manifest.peerDependencies?.['@deepseek-ai/dsh-agent'])
@@ -60,6 +64,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/verify-compatibility-receipts.mjs')),
       access(resolve(ROOT, 'scripts/verify-reproducible-pack.mjs')),
       access(resolve(ROOT, 'contracts/v1.json')),
+      access(resolve(ROOT, 'contracts/compatibility.json')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))
       .toMatch(/^#!\/usr\/bin\/env node/)
