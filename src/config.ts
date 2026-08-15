@@ -221,6 +221,16 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+function assertNoNull(value: unknown, at = 'config'): void {
+  if (value === null) throw new Error(`dsh-legion: ${at} must not be null`)
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => assertNoNull(child, `${at}[${String(index)}]`))
+    return
+  }
+  if (typeof value !== 'object') return
+  for (const [key, child] of Object.entries(value)) assertNoNull(child, `${at}.${key}`)
+}
+
 function assertKnownKeys(value: unknown, allowed: readonly string[], at: string): void {
   if (value === undefined || value === null) return
   const source = record(value)
@@ -352,6 +362,7 @@ function assertKnownConfigKeys(input: unknown): void {
 /** Validate, materialize defaults, and detach one untrusted Legion config. */
 export function materializeConfig(input: unknown): MaterializedConfig {
   const authored = cloneAuthoredValue(input)
+  assertNoNull(authored)
   assertKnownConfigKeys(authored)
   const parsed = Config(authored as Config | null | undefined)
   const layerIds = new Set((parsed.catalogLayers ?? []).map(layer => layer.id))

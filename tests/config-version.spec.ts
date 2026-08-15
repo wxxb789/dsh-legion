@@ -87,9 +87,49 @@ describe('versioned config migration and rollback', () => {
     expect(() => materializeConfig(circular)).toThrow(/circular references/)
   })
 
+  it('rejects null for optional authored fields instead of treating it as omission', () => {
+    expect(() => materializeConfig({
+      configVersion: 2,
+      profiles: authored.profiles,
+      teams: {
+        reviewers: {
+          description: 'Reviewers.',
+          members: { reviewer: { profile: 'deep', minParticipants: null } },
+          limits: { maxMembers: 1, maxConcurrentMembers: 1 },
+        },
+      },
+    })).toThrow(/config\.teams\.reviewers\.members\.reviewer\.minParticipants must not be null/)
+
+    expect(() => materializeConfig({
+      configVersion: 2,
+      profiles: authored.profiles,
+      teams: {
+        reviewers: {
+          description: 'Reviewers.',
+          members: { reviewer: { profile: 'deep' } },
+          limits: { maxMembers: 1, maxConcurrentMembers: 1 },
+        },
+      },
+      strategies: {
+        review: {
+          description: 'Review.',
+          team: 'reviewers',
+          stages: [{
+            kind: 'delegate', id: 'review', member: 'reviewer',
+            inputs: [{ artifact: 'objective', contract: 'objective-v1', optional: null }],
+            output: { artifact: 'result', contract: 'text' }, prompt: 'Review.',
+          }],
+          completion: { artifact: 'result', contract: 'text' },
+          limits: { maxAgents: 1, maxConcurrent: 1, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+          memberFailure: 'fail',
+        },
+      },
+    })).toThrow(/config\.strategies\.review\.stages\[0\]\.inputs\[0\]\.optional must not be null/)
+  })
+
   it('rejects null and unknown future versions instead of guessing or partially migrating', () => {
     expect(() => materializeConfig({ ...authored, configVersion: null }))
-      .toThrow(/unsupported configVersion null/)
+      .toThrow(/config\.configVersion must not be null/)
     expect(() => materializeConfig({ ...authored, configVersion: 3 }))
       .toThrow(/unsupported configVersion 3/)
   })

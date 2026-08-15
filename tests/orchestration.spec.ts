@@ -135,7 +135,9 @@ describe('Team and Strategy compiler', () => {
     expect(() => assertCompiledStrategyPlan({
       ...first.plan,
       objective: 'tampered objective',
-    })).toThrow(/digest does not match/)
+    })).toThrow(/not produced by this compiler generation/)
+    const forged = JSON.parse(JSON.stringify(first.plan))
+    expect(() => assertCompiledStrategyPlan(forged)).toThrow(/not produced by this compiler generation/)
     expect(compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Implement and verify the change.',

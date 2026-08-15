@@ -156,7 +156,7 @@ export interface StrategyCompileRequest {
   readonly limits?: Partial<StrategyLimits>
 }
 
-declare const compiledStrategyPlanBrand: unique symbol
+const compiledStrategyPlanBrand: unique symbol = Symbol('dsh-legion.compiled-strategy-plan')
 
 export interface CompiledStrategyPlan {
   readonly [compiledStrategyPlanBrand]: true
@@ -696,6 +696,9 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
 }
 
 export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
+  if (typeof plan !== 'object' || plan === null || plan[compiledStrategyPlanBrand] !== true) {
+    throw new Error('dsh-legion: Strategy Plan was not produced by this compiler generation')
+  }
   const objectiveDigest = sha256Digest({ version: 1, kind: 'legion-objective', objective: plan.objective })
   const identity = {
     version: 1,
@@ -819,7 +822,7 @@ export function compileStrategy(
     limits,
     memberFailure: strategy.memberFailure,
   }
-  const plan = deepFreeze({
+  const plan = {
     kind: 'compiled-strategy-plan',
     strategy: strategy.name,
     team: strategy.team,
@@ -832,6 +835,13 @@ export function compileStrategy(
     completion: strategy.completion,
     limits,
     memberFailure: strategy.memberFailure,
-  }) as CompiledStrategyPlan
+  } as unknown as CompiledStrategyPlan
+  Object.defineProperty(plan, compiledStrategyPlanBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  })
+  deepFreeze(plan)
   return deepFreeze({ ok: true, plan, diagnostics })
 }
