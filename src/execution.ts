@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JsonValue } from '@deepseek-ai/dsh-tools'
@@ -12,9 +13,12 @@ import type {
   DshPrimitive,
   FanoutPrimitive,
 } from './orchestration.ts'
+import { TeamRunId, type TeamRunId as TeamRunIdType } from './identity.ts'
 import { materializeStructuredResult } from './result-contract.ts'
 import { applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+
+export const TEAM_RUN_OUTCOMES = ['completed', 'degraded', 'cancelled', 'failed'] as const
 
 export interface StrategyExecutionSnapshot {
   readonly kind: 'strategy-execution-snapshot'
@@ -45,12 +49,14 @@ export interface StrategyMemberFailure {
 export type TeamRunOutcome =
   | {
       readonly kind: 'completed'
+      readonly runId: TeamRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly final: MaterializedStrategyArtifact
     }
   | {
       readonly kind: 'degraded'
+      readonly runId: TeamRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly final: MaterializedStrategyArtifact
@@ -58,12 +64,14 @@ export type TeamRunOutcome =
     }
   | {
       readonly kind: 'cancelled'
+      readonly runId: TeamRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly reason: string
     }
   | {
       readonly kind: 'failed'
+      readonly runId: TeamRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly failure: StrategyMemberFailure
@@ -422,6 +430,7 @@ export async function executeStrategyPlan(
   if (plan.profilePolicyDigest !== catalog.policyDigest) {
     throw new Error('dsh-legion: Strategy Plan Profile policy does not match execution catalog')
   }
+  const runId = TeamRunId(`team-run-${randomUUID()}`)
   const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
   const terminal = new TerminalArbiter()
   const claimCancellation = () => { terminal.claim('cancelled') }
@@ -494,14 +503,15 @@ export async function executeStrategyPlan(
     if (!terminal.claim(kind)) {
       return deepFreeze({
         kind: 'cancelled',
+        runId,
         planDigest: plan.planDigest,
         artifacts: list,
         reason: boundedMessage(deadline.signal.reason),
       })
     }
     return deepFreeze(kind === 'completed'
-      ? { kind, planDigest: plan.planDigest, artifacts: list, final }
-      : { kind, planDigest: plan.planDigest, artifacts: list, final, failures })
+      ? { kind, runId, planDigest: plan.planDigest, artifacts: list, final }
+      : { kind, runId, planDigest: plan.planDigest, artifacts: list, final, failures })
   } catch (error: unknown) {
     const list = [...artifacts.values()]
     if (terminal.value === 'cancelled'
@@ -509,6 +519,7 @@ export async function executeStrategyPlan(
       terminal.claim('cancelled')
       return deepFreeze({
         kind: 'cancelled',
+        runId,
         planDigest: plan.planDigest,
         artifacts: list,
         reason: boundedMessage(deadline.signal.reason),
@@ -523,7 +534,7 @@ export async function executeStrategyPlan(
           message: boundedMessage(error),
         }
     terminal.claim('failed')
-    return deepFreeze({ kind: 'failed', planDigest: plan.planDigest, artifacts: list, failure: memberFailure })
+    return deepFreeze({ kind: 'failed', runId, planDigest: plan.planDigest, artifacts: list, failure: memberFailure })
   } finally {
     deadline.signal.removeEventListener('abort', claimCancellation)
     deadline.dispose()

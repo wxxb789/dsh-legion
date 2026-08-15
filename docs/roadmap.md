@@ -19,7 +19,6 @@ Product principles:
 - [x] Revalidate and leaf-project provider-owned structured output.
 - [x] Human/JSON doctor CLI over the compiled catalog and explicit provider fixtures.
 - [x] Profile-scoped prompt-fragment references with canonical path confinement and immutable content snapshots.
-- [ ] Profile-scoped Skill contributions after DSH exposes one child-setup seam for one-shot, continuable activation, and cold resume.
 
 ## v0.3 — Deterministic pre-start route planning
 
@@ -53,12 +52,9 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
 - [x] Blocking deterministic direct-vs-strategy protocol benchmark with versioned thresholds; it is not model-quality evidence.
 - [x] Frozen 12-case review/research development packs plus offline paired-bootstrap campaign and exposure scorers.
-- [ ] Complete two paired held-out real-model quality campaigns per Strategy with safety/cost/latency gates.
 - [x] Default-off `enableStrategies` authority gate exposes active user/default Strategies through the single Legion tool only by explicit deployment opt-in.
-- [ ] Automatically model-enable default `independent-review` after real-model benchmarks. (Explicit opt-in remains available.)
-- [ ] Automatically model-enable default `research-panel` after real-model benchmarks. (Explicit opt-in remains available.)
 - [x] Execute default `plan-execute-review`: plan, execution evidence, structured review, and one bounded repair delegate.
-- [ ] Hard member/concurrency/deadline/output limits are compiled and execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
+- [x] Hard member/agent, concurrency, deadline, and accepted-output limits are compiled and enforced.
 - [x] Direct/fanout cancellation, degraded outcomes, bounded disposal, and terminal first-wins normalization.
 - [x] Authority monotonicity: invocation customization only narrows limits; final widening remains subject to DSH policy and approval.
 - [x] Contract tests prove default entries can be recreated entirely through public user configuration.
@@ -69,12 +65,17 @@ Default Strategies ship as ordinary off-by-default data; automatic model exposur
 ## Type-system gates
 
 - [x] Distinct authored Config/Spec, materialized catalog, Effective Profile/Team, and Compiled Plan types at catalog boundaries.
-- [ ] Branded Profile, Team, Strategy, Member Slot, and Artifact identities are complete; Role/Decision/Attempt arrive with execution.
-- [ ] Discriminated Strategy stages and compile results are complete; lifecycle observations and terminal outcomes await execution.
+- [x] Branded Profile, Team, Strategy, Member Slot, Artifact, Team Run, Route/Strategy decision digests; Member Slot replaces a separate Role identity.
+- [x] Discriminated Strategy stages, compile results, and completed/degraded/cancelled/failed Team Run outcomes.
 - [x] Generic Strategy artifact input/output contracts reject forward, duplicate, contract, and cardinality wiring at compile time.
 - [x] Default Catalog declared with `as const satisfies` the public user catalog contract.
 - [x] Type-level tests for valid inference and expected compile failures.
 - [x] Runtime schema parity tests for external Team/Strategy config contracts.
+
+## Post-v1 evidence activation
+
+- [ ] Complete two paired held-out real-model quality campaigns per curated Strategy with safety/cost/latency gates.
+- [ ] Automatically expose `independent-review` and `research-panel` only after their signed evidence passes; explicit deployment opt-in remains available.
 
 ## Upstream DSH proposals
 
@@ -83,6 +84,7 @@ Default Strategies ship as ordinary off-by-default data; automatic model exposur
 - Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling profile-local DSH Skill registrations.
 - Redacted provider health only if startup-time health becomes a real requirement.
 - Unified recovery seam before Legion attempts cross-route fallback.
+- Host-owned Team budget admission/reservation/reconciliation seam before Legion declares aggregate token or monetary-cost limits.
 
 ## Non-goals
 

@@ -269,7 +269,7 @@ The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-revi
 
 When enabled, the same `legion` tool accepts a strict Strategy branch: `{ "kind": "strategy", "strategy": "independent-review", "objective": "...", "limits": { "deadlineMs": 60000 } }`. Profile calls retain the legacy `{ profile?, description, prompt, run_in_background? }` shape; fields cannot be mixed across branches.
 
-`createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
+`createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. `maxConcurrent` is a hard per-Team-Run ceiling for the current serial-stage/single-fanout IR; separate concurrent tool calls own separate Team Runs. Deployment-global admission requires the Host authority described by ADR 0013. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
 ### Prompt Fragments
 
@@ -360,6 +360,8 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0010: Declarative Team/Strategy IR](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0010-declarative-team-strategy-ir.md)
 - [ADR 0011: Two-tier Strategy benchmark gate](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0011-two-tier-strategy-benchmark-gate.md)
 - [ADR 0012: Explicit model Strategy authority](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
+- [ADR 0013: Aggregate budgets require Host admission authority](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0013-aggregate-budgets-require-host-admission-authority.md)
+- [Public contract v1 candidate](https://github.com/wxxb789/dsh-legion/blob/main/docs/public-contract-v1.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

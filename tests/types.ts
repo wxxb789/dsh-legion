@@ -4,6 +4,7 @@ import {
   ProfileName,
   StrategyName,
   TeamName,
+  TeamRunId,
   defineStrategy,
   defineStrategyFor,
   defineTeam,
@@ -24,6 +25,7 @@ import {
   type RoutePlanDigest,
   type StrategyName as StrategyNameType,
   type TeamName as TeamNameType,
+  type TeamRunId as TeamRunIdType,
   type TeamRunOutcome,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
@@ -81,6 +83,7 @@ const team: TeamNameType = TeamName('coding')
 const strategy: StrategyNameType = StrategyName('independent-review')
 const artifact: ArtifactNameType = ArtifactName('evidence')
 const member = MemberSlotName('executor')
+const teamRun: TeamRunIdType = TeamRunId('team-run-123')
 const profileAsString: string = profile
 void config
 void routedConfig
@@ -90,6 +93,7 @@ void team
 void strategy
 void artifact
 void member
+void teamRun
 
 declare const policy: PolicyDigest
 declare const catalog: CatalogDigest
@@ -100,6 +104,10 @@ const resourceAsString: string = resource
 void policyAsString
 void catalogAsString
 void resourceAsString
+
+// @ts-expect-error TeamRunId and TeamName are distinct identities.
+const teamFromRun: TeamNameType = teamRun
+void teamFromRun
 
 // @ts-expect-error CatalogDigest and PolicyDigest are distinct identities.
 const wrongPolicy: PolicyDigest = catalog

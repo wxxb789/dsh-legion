@@ -8,6 +8,10 @@ export const ARTIFACT_CONTRACTS = [
   'findings-v1',
   'review-v1',
 ] as const
+export const STRATEGY_STAGE_KINDS = ['delegate', 'fanout', 'synthesize'] as const
+export const STRATEGY_LIMIT_FIELDS = [
+  'maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes',
+] as const
 export type ArtifactContract = (typeof ARTIFACT_CONTRACTS)[number]
 
 export interface MemberSlotSpec {

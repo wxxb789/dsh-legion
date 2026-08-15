@@ -128,6 +128,7 @@ export {
   StrategyName,
   StrategyPlanDigest,
   TeamName,
+  TeamRunId,
 } from './identity.ts'
 export {
   EXPLAIN_VIEW_V1_SCHEMA,
@@ -155,6 +156,8 @@ export type {
 export {
   ARTIFACT_CONTRACTS,
   ORCHESTRATION_NAME,
+  STRATEGY_LIMIT_FIELDS,
+  STRATEGY_STAGE_KINDS,
   StrategySpecSchema,
   TeamSpecSchema,
   defineStrategy,
@@ -203,7 +206,11 @@ export type {
   StrategyCompileResult,
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
-export { createStrategyExecutionSnapshot, executeStrategyPlan } from './execution.ts'
+export {
+  TEAM_RUN_OUTCOMES,
+  createStrategyExecutionSnapshot,
+  executeStrategyPlan,
+} from './execution.ts'
 export type {
   MaterializedStrategyArtifact,
   StrategyExecutionSnapshot,

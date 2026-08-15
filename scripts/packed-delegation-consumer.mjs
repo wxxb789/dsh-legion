@@ -62,9 +62,10 @@ try {
   const adapter = new PackedAdapter()
   ctx.llm.registerAdapter(['packed-mock'], adapter)
   await ctx.plugin(legion, {
-    configVersion: 1,
+    configVersion: 2,
     toolName: 'legion',
     enableRunInBackground: true,
+    enableStrategies: true,
     resourceRoots: { local: resourceRootName },
     profiles: {
       packed: {
@@ -87,8 +88,52 @@ try {
       },
     },
     defaultProfile: 'packed',
+    teams: {
+      'packed-team': {
+        description: 'Packed two-stage Team.',
+        members: { worker: { profile: 'packed' } },
+        limits: { maxMembers: 1, maxConcurrentMembers: 1 },
+      },
+    },
+    strategies: {
+      'packed-strategy': {
+        description: 'Packed draft and verification Strategy.',
+        team: 'packed-team',
+        stages: [
+          {
+            kind: 'delegate',
+            id: 'draft',
+            member: 'worker',
+            inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+            output: { artifact: 'draft', contract: 'text' },
+            prompt: 'Produce the harmless packed draft.',
+          },
+          {
+            kind: 'delegate',
+            id: 'verify',
+            member: 'worker',
+            inputs: [{ artifact: 'draft', contract: 'text' }],
+            output: { artifact: 'final', contract: 'text' },
+            prompt: 'Verify the harmless packed draft.',
+          },
+        ],
+        completion: { artifact: 'final', contract: 'text' },
+        limits: {
+          maxAgents: 2,
+          maxConcurrent: 1,
+          deadlineMs: 60000,
+          maxOutputBytes: 65536,
+        },
+        memberFailure: 'fail',
+      },
+    },
   })
 
+  const schema = ctx.tools.schemas().find(item => item.name === 'legion')
+  const strategyNames = schema?.parameters?.properties?.strategy?.enum
+  if (!Array.isArray(strategyNames) || !strategyNames.includes('packed-strategy')) {
+    throw new Error('packed Config v2 Strategy is absent from the Legion tool schema')
+  }
   const parent = ctx.agentLoop.create(SessionId('packed-parent'), {
     provider: 'packed-mock',
     model: 'parent-model',
@@ -98,29 +143,34 @@ try {
     callId: CallId('packed-legion-call'),
     name: 'legion',
     arguments: {
-      description: 'packed real delegation',
-      prompt: 'Return the harmless packed result.',
+      kind: 'strategy',
+      strategy: 'packed-strategy',
+      objective: 'Return and verify the harmless packed result.',
     },
     agent: parent,
   })
   if (result.isError) throw new Error(result.content.map(block => block.type === 'text' ? block.text : '').join(''))
-  if (adapter.calls.length !== 1) throw new Error(`expected one model call, got ${String(adapter.calls.length)}`)
-  const call = adapter.calls[0]
-  if (call.provider !== 'packed-mock' || call.model !== 'packed-model' || call.maxTokens !== 16_000) {
-    throw new Error(`packed route mismatch: ${JSON.stringify(call)}`)
-  }
-  if (!call.system?.includes('You are the packed child.')
-    || !call.system.includes('Use the packed artifact instruction.')
-    || !call.system.includes('Use the exact packed route.')) {
-    throw new Error('packed child system composition is incomplete')
+  if (adapter.calls.length !== 2) throw new Error(`expected two model calls, got ${String(adapter.calls.length)}`)
+  for (const call of adapter.calls) {
+    if (call.provider !== 'packed-mock' || call.model !== 'packed-model' || call.maxTokens !== 16_000) {
+      throw new Error(`packed route mismatch: ${JSON.stringify(call)}`)
+    }
+    if (!call.system?.includes('You are the packed child.')
+      || !call.system.includes('Use the packed artifact instruction.')
+      || !call.system.includes('Use the exact packed route.')) {
+      throw new Error('packed child system composition is incomplete')
+    }
   }
   const value = result.value
-  if (value.kind !== 'foreground'
-    || value.routePlan?.selected?.id !== 'exact'
-    || !value.output.some(block => block.type === 'text' && block.text === 'packed delegation ok')) {
-    throw new Error('packed delegation returned an unexpected Legion result')
+  if (value.kind !== 'strategy'
+    || value.strategy !== 'packed-strategy'
+    || !/^sha256:[a-f0-9]{64}$/.test(value.planDigest)
+    || value.outcome?.kind !== 'completed'
+    || value.outcome.final?.name !== 'final'
+    || value.outcome.final?.value !== 'packed delegation ok') {
+    throw new Error('packed Strategy returned an unexpected Legion result')
   }
-  process.stdout.write('packed tarball completed one harmless real DSH delegation successfully\n')
+  process.stdout.write('packed tarball completed one harmless real Config v2 Team Strategy successfully\n')
 } finally {
   await ctx.fiber.dispose()
   rmSync(sessionRoot, { recursive: true, force: true })

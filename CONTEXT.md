@@ -49,7 +49,7 @@ An immutable objective-bound graph of DSH primitive IR, artifacts, completion, a
 _Avoid_: Team Run, WorkflowRun, Scheduler state
 
 **Team Run**:
-One execution of a Strategy against an Objective and Team, identified by the native DSH runs and artifacts it invokes.
+One execution of a Strategy against an Objective and Team, with one stable Team Run identity plus the native DSH runs and artifacts it invokes.
 _Avoid_: Team, Mission database
 
 **Objective**:

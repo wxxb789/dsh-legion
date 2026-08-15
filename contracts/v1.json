@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "dsh-legion-public-contract-v1",
+  "configVersion": 2,
+  "modelStrategyExposureDefault": false,
+  "resultContracts": ["text", "findings-v1", "review-v1"],
+  "artifactContracts": ["objective-v1", "text", "findings-v1", "review-v1"],
+  "strategyStageKinds": ["delegate", "fanout", "synthesize"],
+  "strategyLimitFields": ["maxAgents", "maxConcurrent", "deadlineMs", "maxOutputBytes"],
+  "teamRunOutcomes": ["completed", "degraded", "cancelled", "failed"],
+  "profileRequestFields": ["kind", "profile", "description", "prompt", "run_in_background"],
+  "strategyRequestFields": ["kind", "strategy", "objective", "limits"],
+  "catalogLayerSemantics": ["add-new-name", "replace-same-name", "disable-tombstone", "revive-later"],
+  "authorityOwners": {
+    "modelStrategyExposure": "deployment",
+    "childLifecycle": "dsh-subagent",
+    "sandboxApproval": "dsh-host",
+    "aggregateTokenCost": "unavailable-without-host-admission"
+  }
+}

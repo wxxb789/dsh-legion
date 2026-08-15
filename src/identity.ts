@@ -15,6 +15,7 @@ export type StrategyName = Brand<string, 'StrategyName'>
 export type MemberSlotName = Brand<string, 'MemberSlotName'>
 export type ArtifactName = Brand<string, 'ArtifactName'>
 export type StrategyPlanDigest = Brand<`sha256:${string}`, 'StrategyPlanDigest'>
+export type TeamRunId = Brand<string, 'TeamRunId'>
 
 /** Validate and brand one public profile identity. */
 export function ProfileName(value: string): ProfileName {
@@ -69,6 +70,10 @@ export function MemberSlotName(value: string): MemberSlotName {
 
 export function ArtifactName(value: string): ArtifactName {
   return namedIdentity(value, 'ArtifactName')
+}
+
+export function TeamRunId(value: string): TeamRunId {
+  return namedIdentity(value, 'TeamRunId')
 }
 
 export function StrategyPlanDigest(value: string): StrategyPlanDigest {

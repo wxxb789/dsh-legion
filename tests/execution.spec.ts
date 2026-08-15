@@ -140,6 +140,7 @@ describe('bounded Strategy execution adapter', () => {
     )
     expect(outcome).toMatchObject({
       kind: 'completed',
+      runId: expect.stringMatching(/^team-run-/),
       final: { name: 'review', contract: 'review-v1', value: review },
       artifacts: [
         { name: 'execution', value: 'execution evidence' },
@@ -185,6 +186,41 @@ describe('bounded Strategy execution adapter', () => {
     expect(runtime.starts[3]).toContain('finding one')
     expect(runtime.starts[3]).toContain('finding three')
     expect(runtime.disposed).toHaveLength(4)
+  })
+
+  it('enforces maxConcurrent within one Team Run fanout admission scope', async () => {
+    let active = 0
+    let peak = 0
+    let entered = 0
+    const gate = Promise.withResolvers<void>()
+    const runtime = setup(async (prompt) => {
+      if (!prompt.includes('Panel member:')) return completed('synthesis')
+      active += 1
+      entered += 1
+      peak = Math.max(peak, active)
+      if (entered === 3) gate.resolve()
+      await gate.promise
+      active -= 1
+      return completed(`finding-${String(entered)}`)
+    })
+    await runtime.ctx.plugin(SubagentRuntime)
+    runtime.ctx.subagents.registerProvider(runtime.provider)
+    const { orchestration, snapshot } = catalogs()
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'research-panel',
+      objective: 'Bound one Team Run.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const outcome = await executeStrategyPlan(
+      runtime.ctx,
+      snapshot,
+      compiled.plan,
+      parent,
+      new AbortController().signal,
+    )
+    expect(outcome.kind).toBe('completed')
+    expect(peak).toBe(3)
+    expect(peak).toBeLessThanOrEqual(compiled.plan.limits.maxConcurrent)
   })
 
   it('keeps fanout artifacts canonical across seeded settlement interleavings', async () => {
