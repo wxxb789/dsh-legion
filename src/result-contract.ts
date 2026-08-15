@@ -18,7 +18,7 @@ const findingItem = {
   properties: {
     title: { type: 'string' as const },
     detail: { type: 'string' as const },
-    evidence: { type: 'array' as const, items: evidenceItem, minItems: 1 },
+    evidence: { type: 'array' as const, items: evidenceItem },
   },
   required: ['title', 'detail', 'evidence'],
 }
@@ -30,7 +30,7 @@ const reviewFindingItem = {
     severity: { type: 'string' as const, enum: ['low', 'medium', 'high', 'critical'] },
     title: { type: 'string' as const },
     detail: { type: 'string' as const },
-    evidence: { type: 'array' as const, items: evidenceItem, minItems: 1 },
+    evidence: { type: 'array' as const, items: evidenceItem },
     recommendation: { type: 'string' as const },
   },
   required: ['severity', 'title', 'detail', 'evidence', 'recommendation'],
