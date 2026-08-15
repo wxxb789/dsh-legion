@@ -265,6 +265,8 @@
             id: repair
             member: executor
             inputs:
+              - { artifact: objective, contract: objective-v1 }
+              - { artifact: plan, contract: text }
               - { artifact: execution, contract: text }
               - { artifact: review, contract: review-v1 }
             output: { artifact: final, contract: text }

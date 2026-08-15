@@ -12,7 +12,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 
 ## Stable invocation and results
 
-- Legacy Profile tool calls remain `{ profile?, description, prompt, run_in_background? }`; explicit `kind: profile` is accepted.
+- Profile requests allow only `kind?, profile?, description, prompt, run_in_background?`; `description` and `prompt` are required, while legacy calls may omit the explicit `kind: profile` discriminator.
 - Strategy tool calls require `{ kind: strategy, strategy, objective, limits? }` and deployment `enableStrategies: true`.
 - Branch fields cannot be mixed and invocation limits can only narrow authored limits.
 - Team Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.

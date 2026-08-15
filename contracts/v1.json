@@ -20,7 +20,9 @@
   "strategyLimitFields": ["maxAgents", "maxConcurrent", "deadlineMs", "maxOutputBytes"],
   "teamRunOutcomes": ["completed", "degraded", "cancelled", "failed"],
   "profileRequestFields": ["kind", "profile", "description", "prompt", "run_in_background"],
+  "profileRequiredFields": ["description", "prompt"],
   "strategyRequestFields": ["kind", "strategy", "objective", "limits"],
+  "strategyRequiredFields": ["kind", "strategy", "objective"],
   "catalogLayerSemantics": ["add-new-name", "replace-same-name", "disable-tombstone", "revive-later"],
   "authorityOwners": {
     "modelStrategyExposure": "deployment",

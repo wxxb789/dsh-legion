@@ -141,6 +141,8 @@ export const DEFAULT_CATALOG_LAYER = {
           id: 'repair',
           member: 'executor',
           inputs: [
+            { artifact: 'objective', contract: 'objective-v1' },
+            { artifact: 'plan', contract: 'text' },
             { artifact: 'execution', contract: 'text' },
             { artifact: 'review', contract: 'review-v1' },
           ],

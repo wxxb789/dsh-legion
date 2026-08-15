@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The pre-1 generic `resolveCatalogLayers` package-root export is removed; untrusted callers must use the strict `materializeConfig` ingestion seam.
 - CI and tag releases share reusable gates; one exact tarball passes packed matrices before SBOM, attestation, checksums, and publication.
 - Build entries run sequentially and are stress-tested for deterministic `lib` output.
+- Profile request contracts distinguish allowed fields from required fields, and the default repair stage receives Objective, Plan, Execution, and Review evidence explicitly.
 
 ## [0.6.0] - 2026-08-15
 
