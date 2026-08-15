@@ -157,6 +157,7 @@ export interface StrategyCompileRequest {
 }
 
 const compiledStrategyPlanBrand: unique symbol = Symbol('dsh-legion.compiled-strategy-plan')
+const compiledStrategyPlans = new WeakSet<object>()
 
 export interface CompiledStrategyPlan {
   readonly [compiledStrategyPlanBrand]: true
@@ -696,7 +697,10 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
 }
 
 export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
-  if (typeof plan !== 'object' || plan === null || plan[compiledStrategyPlanBrand] !== true) {
+  if (typeof plan !== 'object'
+    || plan === null
+    || plan[compiledStrategyPlanBrand] !== true
+    || !compiledStrategyPlans.has(plan)) {
     throw new Error('dsh-legion: Strategy Plan was not produced by this compiler generation')
   }
   const objectiveDigest = sha256Digest({ version: 1, kind: 'legion-objective', objective: plan.objective })
@@ -842,6 +846,7 @@ export function compileStrategy(
     configurable: false,
     writable: false,
   })
+  compiledStrategyPlans.add(plan)
   deepFreeze(plan)
   return deepFreeze({ ok: true, plan, diagnostics })
 }

@@ -138,6 +138,12 @@ describe('Team and Strategy compiler', () => {
     })).toThrow(/not produced by this compiler generation/)
     const forged = JSON.parse(JSON.stringify(first.plan))
     expect(() => assertCompiledStrategyPlan(forged)).toThrow(/not produced by this compiler generation/)
+    const reflectiveCopy = { ...first.plan } as Record<PropertyKey, unknown>
+    for (const symbol of Object.getOwnPropertySymbols(first.plan)) {
+      reflectiveCopy[symbol] = (first.plan as unknown as Record<PropertyKey, unknown>)[symbol]
+    }
+    expect(() => assertCompiledStrategyPlan(reflectiveCopy as never))
+      .toThrow(/not produced by this compiler generation/)
     expect(compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Implement and verify the change.',
