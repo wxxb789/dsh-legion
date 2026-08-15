@@ -52,7 +52,7 @@ jobs:
         dsh:
           - channel: minimum
             version: 0.1.0-rc.6
-          - channel: latest-compatible
+          - channel: latest-tested
             version: 0.1.0-rc.6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

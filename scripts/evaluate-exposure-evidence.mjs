@@ -60,6 +60,19 @@ const leftExecutionSigners = new Set(left.evidence.executionSigners)
 if (right.evidence.executionSigners.some(signerId => leftExecutionSigners.has(signerId))) {
   reasons.push('campaigns reuse one or more executor trust principals')
 }
+const leftTrustKeys = new Set([
+  left.evidence.casePack.issuerKeySha256,
+  left.evidence.adjudicationSignerKeySha256,
+  ...left.evidence.executionSignerKeySha256s,
+])
+const rightTrustKeys = [
+  right.evidence.casePack.issuerKeySha256,
+  right.evidence.adjudicationSignerKeySha256,
+  ...right.evidence.executionSignerKeySha256s,
+]
+if (rightTrustKeys.some(key => leftTrustKeys.has(key))) {
+  reasons.push('campaigns reuse one or more trust keys across roles')
+}
 if (left.evidence.rubricSha256 !== right.evidence.rubricSha256
   || left.evidence.thresholdsSha256 !== right.evidence.thresholdsSha256) {
   reasons.push('campaign rubric or thresholds differ')

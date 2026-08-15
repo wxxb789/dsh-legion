@@ -25,7 +25,7 @@ function fixture(root: string): void {
   const tarball = Buffer.from('exact release tarball')
   writeFileSync(join(root, `dsh-legion-${manifest.version}.tgz`), tarball)
   const tarballSha256 = `sha256:${createHash('sha256').update(tarball).digest('hex')}`
-  for (const channel of ['minimum', 'latest-compatible']) {
+  for (const channel of ['minimum', 'latest-tested']) {
     for (const node of ['22.19.0', '24.19.0']) {
       const resolved = channel === 'minimum'
         ? compatibilityPolicy.minimumDshVersion
@@ -79,7 +79,7 @@ describe('release compatibility receipt verifier', () => {
     try {
       fixture(root)
       const copied = readFileSync(join(root, 'compatibility-minimum-22.19.0.json'))
-      writeFileSync(join(root, 'compatibility-latest-compatible-24.19.0.json'), copied)
+      writeFileSync(join(root, 'compatibility-latest-tested-24.19.0.json'), copied)
       expect(verify(root).status).not.toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })

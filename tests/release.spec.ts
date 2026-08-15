@@ -36,13 +36,19 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('24.19.0')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     expect(workflow).toContain('channel: minimum')
-    expect(workflow).toContain('channel: latest-compatible')
+    expect(workflow).toContain('channel: latest-tested')
     expect(workflow).not.toContain('>=0.1.0-rc.6 <0.2.0')
     expect(workflow).toContain('pnpm run test:packed-delegation')
     expect(workflow).toContain('DSH_LEGION_TARBALL')
     expect(workflow).toContain('DSH_COMPATIBILITY_RECEIPT')
     expect(workflow).toContain('actions/upload-artifact@')
-    for (const name of ['ci.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml']) {
+    const canary = readFileSync(join(ROOT, '.github/workflows/compatibility-canary.yml'), 'utf8')
+    expect(() => load(canary)).not.toThrow()
+    expect(canary).toContain("DSH_VERSION: '>=0.1.0-rc.6 <0.2.0'")
+    expect(canary).toContain('compatibility-rolling-compatible-24.19.0')
+    for (const name of [
+      'ci.yml', 'compatibility-canary.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml',
+    ]) {
       const source = readFileSync(join(ROOT, '.github/workflows', name), 'utf8')
       const refs = [...source.matchAll(/uses:\s+([^\s#]+)/g)]
         .map(match => match[1])

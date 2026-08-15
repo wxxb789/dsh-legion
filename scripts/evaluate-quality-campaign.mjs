@@ -425,9 +425,12 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
   if (casePackVisibility === 'held-out') {
     const publicKey = trustStore.adjudicators[adjudication.signerId]
     const executorKeys = [...executionSignerIds].map(signerId => trustStore.executors[signerId])
+    const packIssuerKey = trustStore.packIssuers[heldOutPackTrust.issuer]
     if (executionSignerIds.has(adjudication.signerId)
-      || (typeof publicKey === 'string' && executorKeys.includes(publicKey))) {
-      throw new Error('held-out executor and adjudicator trust roles must use distinct keys')
+      || (typeof publicKey === 'string' && executorKeys.includes(publicKey))
+      || (typeof packIssuerKey === 'string'
+        && (packIssuerKey === publicKey || executorKeys.includes(packIssuerKey)))) {
+      throw new Error('held-out pack issuer, executor, and adjudicator trust roles must use distinct keys')
     }
     if (typeof publicKey !== 'string'
       || typeof adjudication.signature !== 'string'
@@ -584,7 +587,15 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       adjudicationReceiptSha256: campaign.campaign.adjudicationReceipt.sha256,
       adjudicationBatch: adjudication.batchId,
       adjudicationSigner: adjudication.signerId,
+      adjudicationSignerKeySha256: casePackVisibility === 'held-out'
+        ? sha256(trustStore.adjudicators[adjudication.signerId])
+        : null,
       executionSigners: [...executionSignerIds].sort(),
+      executionSignerKeySha256s: casePackVisibility === 'held-out'
+        ? [...executionSignerIds]
+            .map(signerId => sha256(trustStore.executors[signerId]))
+            .sort()
+        : [],
       catalogDigest: campaign.environment?.catalogDigest,
       executionCommit: campaign.environment?.executionCommit,
       executionIds,

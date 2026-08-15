@@ -330,7 +330,7 @@ Programmatic callers can use `exportConfigDocument(input)` for normalized v2 out
 
 ## Compatibility and releases
 
-The committed pnpm 11 lockfile is enforced with `--frozen-lockfile`. Required CI covers Windows at exact Node 22.19.0, Ubuntu 24.04 at exact Node 24.19.0, and isolated packed consumers at the committed minimum and latest-tested compatible DSH generations. Two independent build/pack rounds must produce the same tarball digest before release packaging continues. The packed E2E installs the tarball into a clean consumer and executes one real, credential-free DSH child through the official in-process provider and a scripted LLM.
+The committed pnpm 11 lockfile is enforced with `--frozen-lockfile`. Required CI covers Windows at exact Node 22.19.0, Ubuntu 24.04 at exact Node 24.19.0, and isolated packed consumers at the committed minimum and latest-tested compatible DSH generations. Two isolated build/pack rounds must produce the same tarball digest, and that verified artifact is the one released. A scheduled rolling canary resolves the full peer range; release gates remain pinned to committed minimum and latest-tested generations. The packed E2E installs the tarball into a clean consumer and executes one real, credential-free DSH child through the official in-process provider and a scripted LLM.
 
 Tags must equal `v<package.json version>` and have a dated CHANGELOG entry. The release workflow reruns all gates, creates one immutable tarball, an SPDX SBOM derived from that tarball, SHA-256 checksums, and a GitHub build attestation, then publishes npm provenance and creates a GitHub Release. Configure npm Trusted Publishing for this repository before creating a release tag; the workflow intentionally carries no long-lived npm token.
 
