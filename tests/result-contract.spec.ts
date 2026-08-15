@@ -57,7 +57,14 @@ describe('versioned result contracts', () => {
     expect(() => materializeStructuredResult('review-v1', {
       ...input,
       findings: [{ ...input.findings[0], evidence: [] }],
-    })).toThrow(/violated review-v1|must not be empty/)
+    })).toThrow(/must not be empty/)
+    expect(() => materializeStructuredResult('review-v1', {
+      ...input,
+      findings: [{
+        ...input.findings[0],
+        evidence: [{ source: '   ', detail: 'No source identity.' }],
+      }],
+    })).toThrow(/must not be blank/)
   })
 
   it('keeps text contract schema-free', () => {

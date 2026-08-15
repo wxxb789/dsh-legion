@@ -35,22 +35,29 @@ function observeWithAbort<Value>(
   })
 }
 
-async function cleanupRun(run: SubagentRun, timeoutMs: number): Promise<ChildCleanup> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const disposal = run.dispose().then(
+function beginCleanup(run: SubagentRun, timeoutMs: number): {
+  readonly observed: Promise<ChildCleanup>
+  readonly done: Promise<ChildCleanup>
+} {
+  const done = run.dispose().then(
     () => ({ kind: 'quiescent' as const }),
     (error: unknown) => ({ kind: 'failed' as const, error }),
   )
-  try {
-    return await Promise.race([
-      disposal,
-      new Promise<{ readonly kind: 'pending' }>(resolve => {
-        timer = setTimeout(() => resolve({ kind: 'pending' }), timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+  const observed = new Promise<ChildCleanup>(resolve => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve({ kind: 'pending' })
+    }, timeoutMs)
+    void done.then(cleanup => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(cleanup)
+    })
+  })
+  return { observed, done }
 }
 
 /**
@@ -79,7 +86,7 @@ export async function settleChildRun(options: {
   const admission = await observeWithAbort(started, options.signal)
   if (admission.kind === 'aborted') {
     const cleanupDone = started.then(async result => result.kind === 'published'
-      ? cleanupRun(result.run, cleanupTimeoutMs)
+      ? beginCleanup(result.run, cleanupTimeoutMs).done
       : { kind: 'quiescent' as const })
     if (options.onLateCleanup !== undefined) void cleanupDone.then(options.onLateCleanup)
     const execution: ChildExecution = { kind: 'cancelled', reason: admission.reason }
@@ -113,9 +120,15 @@ export async function settleChildRun(options: {
     }
   }
   options.onExecution?.(execution)
+  const cleanupLifecycle = beginCleanup(run, cleanupTimeoutMs)
+  const cleanup = await cleanupLifecycle.observed
+  if (cleanup.kind === 'pending' && options.onLateCleanup !== undefined) {
+    void cleanupLifecycle.done.then(options.onLateCleanup)
+  }
   return {
     execution,
-    cleanup: await cleanupRun(run, cleanupTimeoutMs),
+    cleanup,
     run,
+    ...(cleanup.kind === 'pending' ? { cleanupDone: cleanupLifecycle.done } : {}),
   }
 }

@@ -67,7 +67,7 @@ describe('ChildRunLifecycle', () => {
     })
   })
 
-  it('reports cleanup pending without leaking a late disposal rejection', async () => {
+  it('reports cleanup pending while retaining final disposal ownership', async () => {
     const disposal = Promise.withResolvers<void>()
     const settlement = await settleChildRun({
       signal: new AbortController().signal,
@@ -77,9 +77,13 @@ describe('ChildRunLifecycle', () => {
     expect(settlement).toMatchObject({
       execution: { kind: 'completed' },
       cleanup: { kind: 'pending' },
+      cleanupDone: expect.any(Promise),
     })
+    if (settlement.cleanupDone === undefined) throw new Error('missing cleanup completion owner')
     disposal.reject(new Error('late cleanup rejection'))
-    await Promise.resolve()
+    await expect(settlement.cleanupDone).resolves.toMatchObject({
+      kind: 'failed', error: expect.any(Error),
+    })
   })
 
   it('retains abnormal execution and cleanup failures separately', async () => {

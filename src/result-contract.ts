@@ -78,6 +78,14 @@ function text(value: unknown, at: string): string {
   return value
 }
 
+function nonEmptyText(value: unknown, at: string): string {
+  const result = text(value, at)
+  if (result.trim().length === 0) {
+    throw new Error(`dsh-legion: structured result ${at} must not be blank`)
+  }
+  return result
+}
+
 function textArray(value: unknown, at: string): string[] {
   if (!Array.isArray(value)) throw new Error(`dsh-legion: structured result ${at} is not an array`)
   return value.map((item, index) => text(item, `${at}[${String(index)}]`))
@@ -89,8 +97,8 @@ function evidence(value: unknown, at: string): JsonValue[] {
   return value.map((item, index) => {
     const source = record(item)
     return {
-      source: text(source.source, `${at}[${String(index)}].source`),
-      detail: text(source.detail, `${at}[${String(index)}].detail`),
+      source: nonEmptyText(source.source, `${at}[${String(index)}].source`),
+      detail: nonEmptyText(source.detail, `${at}[${String(index)}].detail`),
     }
   })
 }

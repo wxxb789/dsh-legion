@@ -146,6 +146,9 @@ try {
     ...dshPackages,
   ], consumerDir)
   const dshDependencies = await verifyDshGeneration(consumerDir, dshVersion)
+  runNode([
+    join('node_modules', 'dsh-legion', 'scripts', 'verify-public-contract.mjs'),
+  ], consumerDir)
 
   await copyFile(
     join(projectRoot, 'scripts', 'packed-delegation-consumer.mjs'),

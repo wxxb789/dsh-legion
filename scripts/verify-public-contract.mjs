@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import ts from 'typescript'
 import * as legion from '../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -13,28 +12,14 @@ const compatibilityPolicy = JSON.parse(await readFile(
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const declarationBytes = await readFile(resolve(root, 'lib/index.d.ts'))
 const declarationSource = declarationBytes.toString('utf8').replace(/\r\n/g, '\n')
-const sourceFile = ts.createSourceFile(
-  'index.d.ts',
-  declarationSource,
-  ts.ScriptTarget.Latest,
-  true,
-  ts.ScriptKind.TS,
-)
-const declarationExports = new Set()
-for (const statement of sourceFile.statements) {
-  const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword) === true
-  if (exported && statement.name?.text !== undefined) declarationExports.add(statement.name.text)
-  if (exported && statement.declarationList !== undefined) {
-    for (const declaration of statement.declarationList.declarations) {
-      if (declaration.name?.text !== undefined) declarationExports.add(declaration.name.text)
-    }
-  }
-  if (ts.isExportDeclaration(statement)
-    && statement.exportClause !== undefined
-    && ts.isNamedExports(statement.exportClause)) {
-    for (const element of statement.exportClause.elements) declarationExports.add(element.name.text)
-  }
+const exportLists = [...declarationSource.matchAll(/(?:^|\n)export\s*\{([\s\S]*?)\};/gu)]
+if (exportLists.length !== 1 || exportLists[0]?.[1] === undefined) {
+  throw new Error(`expected one generated declaration export list, found ${String(exportLists.length)}`)
 }
+const declarationExports = new Set(exportLists[0][1].split(',').map(specifier => {
+  const withoutType = specifier.trim().replace(/^type\s+/u, '')
+  return withoutType.split(/\s+as\s+/u).at(-1)?.trim()
+}).filter(name => name !== undefined && name.length > 0))
 const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
 const checks = [
   ['schemaVersion', contract.schemaVersion, 'dsh-legion-public-contract-v1'],

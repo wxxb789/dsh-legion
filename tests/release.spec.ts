@@ -70,6 +70,7 @@ describe('reproducible CI and release contracts', () => {
     expect(consumer).toContain("kind: 'strategy'")
     expect(consumer).toContain("strategy: 'packed-strategy'")
     expect(script).toContain('await verifyDshGeneration(consumerDir, dshVersion)')
+    expect(script).toContain("'verify-public-contract.mjs'")
   })
 
   it('gates tag releases on metadata, SBOM, checksums, attestation, and npm provenance', () => {
