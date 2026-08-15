@@ -14,12 +14,12 @@ const contract = JSON.parse(readFileSync(join(ROOT, 'contracts/v1.json'), 'utf8'
 }
 const compatibilityPolicy = JSON.parse(
   readFileSync(join(ROOT, 'contracts/compatibility.json'), 'utf8'),
-) as { minimumDshVersion: string; latestTestedDshVersion: string }
-const DSH_PACKAGES = [
-  'dsh-agent', 'dsh-agent-loop', 'dsh-agent-loop-testkit', 'dsh-llm', 'dsh-session',
-  'dsh-session-persistence-jsonl', 'dsh-subagent', 'dsh-subagent-spawn-in-process',
-  'dsh-system-prompt', 'dsh-tools',
-]
+) as {
+  minimumDshVersion: string
+  latestTestedDshVersion: string
+  dshPackageClosure: string[]
+}
+const DSH_PACKAGES = compatibilityPolicy.dshPackageClosure
 
 function fixture(root: string): void {
   const tarball = Buffer.from('exact release tarball')
@@ -86,15 +86,22 @@ describe('release compatibility receipt verifier', () => {
     }
   })
 
-  it('rejects dependency entries that are absent from the captured lockfile', () => {
+  it('rejects extra DSH dependencies even when they are added to the captured lockfile', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-compatibility-closure-'))
     try {
       fixture(root)
       const path = join(root, 'compatibility-minimum-22.19.0.json')
       const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
         resolvedDshVersion: string
+        consumerLockfileFile: string
+        consumerLockfileSha256: string
         dshDependencies: Array<{ name: string; version: string }>
       }
+      const lockfilePath = join(root, receipt.consumerLockfileFile)
+      const lockfile = readFileSync(lockfilePath, 'utf8')
+        + `  '@deepseek-ai/dsh-evil-extra@${receipt.resolvedDshVersion}': {}\n`
+      writeFileSync(lockfilePath, lockfile)
+      receipt.consumerLockfileSha256 = sha256(lockfile)
       receipt.dshDependencies.push({ name: 'dsh-evil-extra', version: receipt.resolvedDshVersion })
       writeFileSync(path, JSON.stringify(receipt))
       expect(verify(root).status).not.toBe(0)

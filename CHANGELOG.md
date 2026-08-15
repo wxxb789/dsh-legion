@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Model route facts are explicitly point observations pending a Host generation lease; the misleading pre-1 `ModelFactsSnapshot` name is replaced by `ModelFactsObservations`.
 - The pre-1 generic `resolveCatalogLayers` package-root export is removed; untrusted callers must use the strict `materializeConfig` ingestion seam.
 - CI and tag releases share reusable gates; one exact tarball passes packed matrices before SBOM, attestation, checksums, and publication.
-- Exact Node/OS/DSH release inputs are committed; two isolated `git archive HEAD` source/build/pack rounds must match, the compared tarball is released unchanged, and a scheduled canary tracks the rolling peer range.
+- Exact Node/OS/DSH release inputs are committed; two isolated `git archive HEAD` source/build/pack rounds must match, the compared tarball is released unchanged, and a scheduled canary tracks the rolling peer range, and compatibility receipts match the exact committed DSH package closure.
 - Profile request contracts distinguish allowed fields from required fields, and the default repair stage receives Objective, Plan, Execution, and Review evidence explicitly.
 
 ## [0.6.0] - 2026-08-15

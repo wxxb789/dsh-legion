@@ -20,11 +20,7 @@ const tarballSha256 = `sha256:${createHash('sha256').update(tarballBytes).digest
 const receiptNames = names.filter(name => /^compatibility-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.test(name)).sort()
 if (receiptNames.length !== 4) throw new Error(`release requires four compatibility receipts, found ${String(receiptNames.length)}`)
 const expectedFields = [...contract.compatibilityReceiptFields].sort()
-const expectedDshPackages = [
-  'dsh-agent', 'dsh-agent-loop', 'dsh-agent-loop-testkit', 'dsh-llm', 'dsh-session',
-  'dsh-session-persistence-jsonl', 'dsh-subagent', 'dsh-subagent-spawn-in-process',
-  'dsh-system-prompt', 'dsh-tools',
-]
+const expectedDshPackages = [...compatibilityPolicy.dshPackageClosure].sort()
 for (const name of receiptNames) {
   const slot = /^compatibility-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.exec(name)
   if (slot === null) throw new Error(`invalid compatibility receipt filename ${name}`)
@@ -44,6 +40,10 @@ for (const name of receiptNames) {
     ...Object.keys(typeof lockRecord.snapshots === 'object' && lockRecord.snapshots !== null
       ? lockRecord.snapshots : {}),
   ]
+  const lockfileDshDependencies = [...new Set(packageKeys.flatMap(key => {
+    const match = /(?:^|\/)@deepseek-ai\/(dsh-[^@/:(]+)@([^(/:]+)(?:$|\()/u.exec(key)
+    return match === null ? [] : [`${match[1]}@${match[2]}`]
+  }))].sort()
   const lockfileSha256 = `sha256:${createHash('sha256').update(lockfileBytes).digest('hex')}`
   const fields = Object.keys(receipt).sort()
   const expectedRequest = channel === 'minimum'
@@ -53,6 +53,12 @@ for (const name of receiptNames) {
   const dependencyNames = Array.isArray(receipt.dshDependencies)
     ? receipt.dshDependencies.map(item => item?.name).sort()
     : []
+  const receiptDshDependencies = Array.isArray(receipt.dshDependencies)
+    ? receipt.dshDependencies.map(item => `${String(item?.name)}@${String(item?.version)}`).sort()
+    : []
+  const expectedDshDependencies = expectedDshPackages
+    .map(packageName => `${packageName}@${receipt.resolvedDshVersion}`)
+    .sort()
   if (JSON.stringify(fields) !== JSON.stringify(expectedFields)
     || receipt.schemaVersion !== contract.compatibilityReceiptVersion
     || receipt.requestedDshVersion !== expectedRequest
@@ -68,7 +74,9 @@ for (const name of receiptNames) {
     || receipt.status !== 'passed'
     || !Array.isArray(receipt.dshDependencies)
     || new Set(dependencyNames).size !== dependencyNames.length
-    || expectedDshPackages.some(name => !dependencyNames.includes(name))
+    || JSON.stringify(dependencyNames) !== JSON.stringify(expectedDshPackages)
+    || JSON.stringify(receiptDshDependencies) !== JSON.stringify(expectedDshDependencies)
+    || JSON.stringify(lockfileDshDependencies) !== JSON.stringify(expectedDshDependencies)
     || receipt.dshDependencies.some(item =>
       typeof item?.name !== 'string'
       || item.version !== receipt.resolvedDshVersion

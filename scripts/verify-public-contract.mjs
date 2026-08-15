@@ -45,6 +45,7 @@ const checks = [
     .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
   ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.0-rc.6'],
   ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.0-rc.6'],
+  ['compatibilityPolicy.dshPackageClosure', compatibilityPolicy.dshPackageClosure, [...new Set(compatibilityPolicy.dshPackageClosure)].sort()],
   ['packageMajor', contract.packageMajor, Number.parseInt(manifest.version.split('.')[0], 10)],
   ['declarationExports', contract.declarationExports, [...declarationExports].sort()],
   ['runtimeExports', contract.runtimeExports, Object.keys(legion).sort()],

@@ -2,5 +2,28 @@
   "schemaVersion": "dsh-legion-compatibility-policy-v1",
   "dshPeerRange": ">=0.1.0-rc.6 <0.2.0",
   "minimumDshVersion": "0.1.0-rc.6",
-  "latestTestedDshVersion": "0.1.0-rc.6"
+  "latestTestedDshVersion": "0.1.0-rc.6",
+  "dshPackageClosure": [
+    "dsh-agent",
+    "dsh-agent-loop",
+    "dsh-agent-loop-testkit",
+    "dsh-attachment",
+    "dsh-brand",
+    "dsh-code-runtime",
+    "dsh-invariants",
+    "dsh-llm",
+    "dsh-scope",
+    "dsh-session",
+    "dsh-session-persistence",
+    "dsh-session-persistence-jsonl",
+    "dsh-settings",
+    "dsh-subagent",
+    "dsh-subagent-in-process-driver",
+    "dsh-subagent-spawn-in-process",
+    "dsh-system-prompt",
+    "dsh-timeout",
+    "dsh-tools",
+    "dsh-typert-protocol",
+    "dsh-user-approval"
+  ]
 }
