@@ -558,7 +558,10 @@ describe('real-model quality campaign scorer', () => {
       writeFileSync(right, JSON.stringify(rightDocument, null, 2))
       writeTrustStore(
         { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
-        { 'execution-lab-a': leftAdjudicatorPem, 'execution-lab-b': rightAdjudicatorPem },
+        {
+          'execution-lab-a': leftAdjudicatorPem.replace(/\n/g, '\r\n'),
+          'execution-lab-b': rightAdjudicatorPem.replace(/\n/g, '\r\n'),
+        },
       )
       const sharedRole = spawnSync(process.execPath, [
         'scripts/evaluate-exposure-evidence.mjs', ...args,

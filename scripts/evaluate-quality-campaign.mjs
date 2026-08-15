@@ -24,6 +24,11 @@ function sha256(bytes) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 }
 
+function publicKeySha256(value) {
+  if (typeof value !== 'string') throw new Error('trusted public key must be a PEM string')
+  return sha256(createPublicKey(value).export({ type: 'spki', format: 'der' }))
+}
+
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
   if (typeof value === 'object' && value !== null) {
@@ -426,10 +431,13 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
     const publicKey = trustStore.adjudicators[adjudication.signerId]
     const executorKeys = [...executionSignerIds].map(signerId => trustStore.executors[signerId])
     const packIssuerKey = trustStore.packIssuers[heldOutPackTrust.issuer]
+    const publicKeyDigest = publicKeySha256(publicKey)
+    const executorKeyDigests = executorKeys.map(publicKeySha256)
+    const packIssuerKeyDigest = publicKeySha256(packIssuerKey)
     if (executionSignerIds.has(adjudication.signerId)
-      || (typeof publicKey === 'string' && executorKeys.includes(publicKey))
-      || (typeof packIssuerKey === 'string'
-        && (packIssuerKey === publicKey || executorKeys.includes(packIssuerKey)))) {
+      || executorKeyDigests.includes(publicKeyDigest)
+      || packIssuerKeyDigest === publicKeyDigest
+      || executorKeyDigests.includes(packIssuerKeyDigest)) {
       throw new Error('held-out pack issuer, executor, and adjudicator trust roles must use distinct keys')
     }
     if (typeof publicKey !== 'string'
@@ -576,7 +584,7 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
         visibility: casePackVisibility,
         issuer: heldOutPackTrust?.issuer ?? null,
         issuerKeySha256: casePackVisibility === 'held-out'
-          ? sha256(trustStore.packIssuers[heldOutPackTrust.issuer])
+          ? publicKeySha256(trustStore.packIssuers[heldOutPackTrust.issuer])
           : null,
         commitmentId: heldOutPackTrust?.commitmentId ?? null,
         committedAt: heldOutPackTrust?.committedAt ?? null,
@@ -588,12 +596,12 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       adjudicationBatch: adjudication.batchId,
       adjudicationSigner: adjudication.signerId,
       adjudicationSignerKeySha256: casePackVisibility === 'held-out'
-        ? sha256(trustStore.adjudicators[adjudication.signerId])
+        ? publicKeySha256(trustStore.adjudicators[adjudication.signerId])
         : null,
       executionSigners: [...executionSignerIds].sort(),
       executionSignerKeySha256s: casePackVisibility === 'held-out'
         ? [...executionSignerIds]
-            .map(signerId => sha256(trustStore.executors[signerId]))
+            .map(signerId => publicKeySha256(trustStore.executors[signerId]))
             .sort()
         : [],
       catalogDigest: campaign.environment?.catalogDigest,

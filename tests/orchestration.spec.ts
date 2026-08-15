@@ -176,6 +176,18 @@ describe('Team and Strategy compiler', () => {
     })
   })
 
+  it('accepts compiler-owned Plans across duplicate ESM module instances', async () => {
+    const { orchestration } = compiled()
+    const result = compileStrategy(orchestration, {
+      strategy: 'independent-review',
+      objective: 'Review across module instances.',
+    })
+    if (!result.ok) throw new Error('expected compiled strategy')
+    const alternateUrl = `${new URL('../src/orchestration.ts', import.meta.url).href}?instance=alternate`
+    const alternate = await import(/* @vite-ignore */ alternateUrl) as typeof import('../src/orchestration.ts')
+    expect(() => alternate.assertCompiledStrategyPlan(result.plan)).not.toThrow()
+  })
+
   it('treats Team/Strategy limits as ceilings while enforcing stage participant demand', () => {
     const materialized = materializeConfig({
       configVersion: 2,

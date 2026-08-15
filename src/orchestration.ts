@@ -156,8 +156,14 @@ export interface StrategyCompileRequest {
   readonly limits?: Partial<StrategyLimits>
 }
 
-const compiledStrategyPlanBrand: unique symbol = Symbol('dsh-legion.compiled-strategy-plan')
-const compiledStrategyPlans = new WeakSet<object>()
+declare const compiledStrategyPlanBrand: unique symbol
+const compiledStrategyPlansKey = Symbol.for('dsh-legion.compiled-strategy-plans.v1')
+const globalRegistry = globalThis as unknown as Record<PropertyKey, unknown>
+const existingCompiledStrategyPlans = globalRegistry[compiledStrategyPlansKey]
+const compiledStrategyPlans = existingCompiledStrategyPlans instanceof WeakSet
+  ? existingCompiledStrategyPlans as WeakSet<object>
+  : new WeakSet<object>()
+globalRegistry[compiledStrategyPlansKey] = compiledStrategyPlans
 
 export interface CompiledStrategyPlan {
   readonly [compiledStrategyPlanBrand]: true
@@ -699,7 +705,6 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
 export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
   if (typeof plan !== 'object'
     || plan === null
-    || plan[compiledStrategyPlanBrand] !== true
     || !compiledStrategyPlans.has(plan)) {
     throw new Error('dsh-legion: Strategy Plan was not produced by this compiler generation')
   }
@@ -840,12 +845,6 @@ export function compileStrategy(
     limits,
     memberFailure: strategy.memberFailure,
   } as unknown as CompiledStrategyPlan
-  Object.defineProperty(plan, compiledStrategyPlanBrand, {
-    value: true,
-    enumerable: false,
-    configurable: false,
-    writable: false,
-  })
   compiledStrategyPlans.add(plan)
   deepFreeze(plan)
   return deepFreeze({ ok: true, plan, diagnostics })
