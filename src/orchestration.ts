@@ -46,6 +46,7 @@ export type OrchestrationDiagnosticCode =
   | 'STRATEGY_ROUND_LIMIT_EXCEEDED'
   | 'STRATEGY_UNUSED_ARTIFACT'
   | 'STRATEGY_PARTIAL_POLICY_UNUSED'
+  | 'STRATEGY_PARTIAL_POLICY_CONFLICT'
   | 'STRATEGY_LIMIT_WIDENING'
   | 'STRATEGY_LIMIT_UNSATISFIABLE'
   | 'STRATEGY_REQUEST_INVALID'
@@ -102,7 +103,7 @@ export interface DelegatePrimitive extends PrimitiveBase {
 }
 
 export interface FanoutPrimitive extends PrimitiveBase {
-  readonly kind: 'dsh-workflow-fanout'
+  readonly kind: 'dsh-subagent-fanout'
   readonly count: number
   readonly minSuccess: number
   readonly allowDegraded: boolean
@@ -165,12 +166,15 @@ export interface CompiledStrategyPlan {
   readonly team: TeamNameType
   readonly objective: string
   readonly objectiveDigest: `sha256:${string}`
+  readonly catalogDigest: `sha256:${string}`
+  readonly profilePolicyDigest: string
   readonly planDigest: StrategyPlanDigestType
   readonly executionClass: StrategyExecutionClass
   readonly primitives: readonly DshPrimitive[]
   readonly artifacts: Readonly<Record<string, CompiledArtifact>>
   readonly completion: CompiledStrategyTemplate['completion']
   readonly limits: Readonly<StrategyLimits>
+  readonly memberFailure: 'fail' | 'allow-partial'
 }
 
 export type StrategyCompileResult =
@@ -317,7 +321,7 @@ function expectedAgentCount(stage: StrategyStageSpec): number {
 
 function executionClass(primitives: readonly DshPrimitive[]): StrategyExecutionClass {
   const classes = new Set(primitives.map((primitive) => {
-    if (primitive.kind === 'dsh-workflow-fanout') return 'workflow'
+    if (primitive.kind === 'dsh-subagent-fanout') return 'subagents'
     if (primitive.kind === 'dsh-goal') return 'goal'
     return 'subagents'
   }))
@@ -502,7 +506,7 @@ function compileStrategyTemplate(
     agents += expectedAgentCount(stage)
     if (stage.kind === 'fanout') {
       primitives.push(deepFreeze({
-        kind: 'dsh-workflow-fanout',
+        kind: 'dsh-subagent-fanout',
         stage: stage.id,
         member: member.name,
         profile: member.profile,
@@ -570,6 +574,15 @@ function compileStrategyTemplate(
       'STRATEGY_COMPLETION_CONTRACT_MISMATCH',
       'error',
       `strategy "${name}" completion contract does not match artifact`,
+      { strategy: name },
+    )
+  }
+  if (spec.memberFailure === 'fail' && hasDegraded) {
+    push(
+      diagnostics,
+      'STRATEGY_PARTIAL_POLICY_CONFLICT',
+      'error',
+      `strategy "${name}" has degraded fanout but memberFailure is fail`,
       { strategy: name },
     )
   }
@@ -690,6 +703,43 @@ function narrowedLimits(
   return result
 }
 
+export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalog): string {
+  const strategies = Object.values(catalog.strategies)
+    .filter(strategy => strategy.active
+      && strategy.primitives.every(primitive => primitive.kind !== 'dsh-goal'))
+    .sort((left, right) => String(left.name).localeCompare(String(right.name)))
+  if (strategies.length === 0) return ''
+  return [
+    'Configured bounded Team Strategies (use the strategy argument instead of profile):',
+    ...strategies.map(strategy =>
+      `- \`${strategy.name}\`: ${strategy.description} `
+      + `(team: ${strategy.team}; max agents: ${String(strategy.limits.maxAgents)}; foreground)`),
+    'Strategy calls are foreground and return completed, degraded, cancelled, or failed outcomes.',
+  ].join('\n')
+}
+
+export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
+  const objectiveDigest = digest({ version: 1, kind: 'legion-objective', objective: plan.objective })
+  const identity = {
+    version: 1,
+    kind: 'legion-strategy-plan',
+    catalogDigest: plan.catalogDigest,
+    profilePolicyDigest: plan.profilePolicyDigest,
+    strategy: plan.strategy,
+    team: plan.team,
+    objectiveDigest,
+    primitives: plan.primitives,
+    artifacts: plan.artifacts,
+    completion: plan.completion,
+    limits: plan.limits,
+    memberFailure: plan.memberFailure,
+  }
+  if (plan.objectiveDigest !== objectiveDigest
+    || StrategyPlanDigest(digest(identity)) !== plan.planDigest) {
+    throw new Error('dsh-legion: compiled Strategy Plan digest does not match its policy')
+  }
+}
+
 /** Bind one objective and optional narrowing limits to a compiled Strategy template. */
 export function compileStrategy(
   catalog: CompiledOrchestrationCatalog,
@@ -758,13 +808,13 @@ export function compileStrategy(
   const limits = narrowedLimits(strategy.limits, request.limits, diagnostics, request.strategy)
   if (limits === undefined) return deepFreeze({ ok: false, diagnostics })
   const requiredAgents = strategy.primitives.reduce(
-    (total, primitive) => total + (primitive.kind === 'dsh-workflow-fanout' ? primitive.count : 1),
+    (total, primitive) => total + (primitive.kind === 'dsh-subagent-fanout' ? primitive.count : 1),
     0,
   )
   const requiredConcurrent = strategy.primitives.reduce(
     (largest, primitive) => Math.max(
       largest,
-      primitive.kind === 'dsh-workflow-fanout' ? primitive.count : 1,
+      primitive.kind === 'dsh-subagent-fanout' ? primitive.count : 1,
     ),
     1,
   )
@@ -792,6 +842,7 @@ export function compileStrategy(
     version: 1,
     kind: 'legion-strategy-plan',
     catalogDigest: catalog.digest,
+    profilePolicyDigest: catalog.profilePolicyDigest,
     strategy: strategy.name,
     team: strategy.team,
     objectiveDigest,
@@ -799,6 +850,7 @@ export function compileStrategy(
     artifacts: strategy.artifacts,
     completion: strategy.completion,
     limits,
+    memberFailure: strategy.memberFailure,
   }
   const plan: CompiledStrategyPlan = deepFreeze({
     kind: 'compiled-strategy-plan',
@@ -806,12 +858,15 @@ export function compileStrategy(
     team: strategy.team,
     objective,
     objectiveDigest,
+    catalogDigest: catalog.digest,
+    profilePolicyDigest: catalog.profilePolicyDigest,
     planDigest: StrategyPlanDigest(digest(planIdentity)),
     executionClass: strategy.executionClass,
     primitives: strategy.primitives,
     artifacts: strategy.artifacts,
     completion: strategy.completion,
     limits,
+    memberFailure: strategy.memberFailure,
   })
   return deepFreeze({ ok: true, plan, diagnostics })
 }

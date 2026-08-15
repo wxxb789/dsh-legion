@@ -51,11 +51,11 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal primitive IR.
 - [x] Strategy registration and validation shared by Legion defaults and third-party Catalog Layers.
 - [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
-- [ ] Execute default `independent-review`: one executor result, one bounded reviewer, evidence contract. (IR template complete.)
-- [ ] Execute default `research-panel`: bounded independent findings and deterministic synthesis. (IR template complete.)
-- [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR template complete.)
-- [ ] Hard member/round/deadline/output limits are compiled; aggregate token/cost enforcement awaits a DSH budget seam.
-- [ ] Cancellation and partial/degraded result semantics in the thin execution adapter.
+- [ ] Model-enable default `independent-review` after benchmarks. (IR and direct subagent adapter complete.)
+- [ ] Model-enable default `research-panel` after benchmarks. (IR and fanout/synthesis adapter complete.)
+- [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR complete; goal adapter pending.)
+- [ ] Hard member/round/deadline/output limits are compiled and direct execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
+- [ ] Direct/fanout cancellation and degraded outcomes are implemented; goal/workflow terminal normalization remains.
 - [x] Authority monotonicity: invocation customization only narrows limits; final widening remains subject to DSH policy and approval.
 - [x] Contract tests prove default entries can be recreated entirely through public user configuration.
 - [ ] Seeded interleaving tests: terminal first-wins, no lease leaks, stale generation cannot commit, every waiter settles.

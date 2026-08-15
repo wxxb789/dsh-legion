@@ -42,8 +42,9 @@ Supported:
 - config v2 ordered Catalog Layers with add/replace/disable semantics and deterministic provenance;
 - public bounded TeamSpec Member Slots referencing existing Profiles;
 - public declarative StrategySpec stages with type-level and runtime artifact wiring;
-- immutable lowering to `dsh-delegate`, `dsh-workflow-fanout`, and `dsh-goal` primitive IR;
+- immutable lowering to `dsh-delegate`, `dsh-subagent-fanout`, and `dsh-goal` primitive IR;
 - invocation-only limit narrowing and deterministic StrategyPlanDigest;
+- direct/fanout execution through real one-shot DSH subagents with completed/degraded/cancelled/failed outcomes;
 - ordinary defaults-as-data templates for independent review, research panel, and plan/execute/review;
 - multiple named profiles in one Legion-enabled DSH agent preset;
 - independent subagent backend per profile (`spawn`, `fork`, `codex`, `claude-code`, or another registered provider);
@@ -61,7 +62,7 @@ Supported:
 
 Not yet supported:
 
-- executing compiled Team Strategies from the model tool; v0.5 ships the validated IR and defaults, while the thin DSH execution adapter remains v1 work;
+- executing compiled Team Strategies from the model tool; v0.5 exposes `executeStrategyPlan()` for direct/fanout plans, while model exposure remains benchmark-gated;
 - benchmark-backed enablement of the three default Strategy templates;
 - post-failure model fallback/replay or automatic provider health scoring;
 - a Legion-owned team/DAG runtime—the coordinator uses DSH's existing subagent and workflow capabilities;
@@ -263,7 +264,9 @@ catalogLayers:
 
 `compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
 
-The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They are currently compiler templates, not hidden executable branches; benchmark-backed execution waits for the v1 DSH adapter.
+The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They remain absent from the model-facing tool until benchmarked. Programmatic callers may execute direct/fanout plans through `executeStrategyPlan(ctx, profileCatalog, plan, parent, signal)`; goal/hybrid plans return `EXECUTION_CLASS_UNSUPPORTED` before starting children until the DSH goal adapter lands.
+
+The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
 ### Prompt Fragments
 

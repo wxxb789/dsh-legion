@@ -174,9 +174,11 @@ export type {
 } from './orchestration-contract.ts'
 export {
   OrchestrationCompileError,
+  assertCompiledStrategyPlan,
   assertOrchestrationCatalogUsable,
   compileOrchestrationCatalog,
   compileStrategy,
+  renderOrchestrationGuidance,
 } from './orchestration.ts'
 export type {
   ArtifactAvailability,
@@ -197,6 +199,12 @@ export type {
   StrategyExecutionClass,
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
+export { executeStrategyPlan } from './execution.ts'
+export type {
+  MaterializedStrategyArtifact,
+  StrategyMemberFailure,
+  TeamRunOutcome,
+} from './execution.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']

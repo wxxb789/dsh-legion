@@ -24,6 +24,7 @@ import {
   type RoutePlanDigest,
   type StrategyName as StrategyNameType,
   type TeamName as TeamNameType,
+  type TeamRunOutcome,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
 
@@ -258,6 +259,19 @@ export function routePlanIdentity(plan: RoutePlan): RoutePlanDigest {
     void selectedId
   }
   return plan.planDigest
+}
+
+export function outcomeKind(outcome: TeamRunOutcome): TeamRunOutcome['kind'] {
+  switch (outcome.kind) {
+    case 'completed': return outcome.kind
+    case 'degraded': return outcome.kind
+    case 'cancelled': return outcome.kind
+    case 'failed': return outcome.kind
+    default: {
+      const neverOutcome: never = outcome
+      return neverOutcome
+    }
+  }
 }
 
 export function diagnosticCodeClass(diagnostic: Diagnostic): WarningDiagnosticCode | ErrorDiagnosticCode {

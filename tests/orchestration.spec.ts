@@ -4,6 +4,7 @@ import { materializeConfig, type Config } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import {
   OrchestrationCompileError,
+  assertCompiledStrategyPlan,
   assertOrchestrationCatalogUsable,
   compileOrchestrationCatalog,
   compileStrategy,
@@ -76,13 +77,13 @@ describe('Team and Strategy compiler', () => {
       ],
     })
     expect(orchestration.strategies['research-panel']).toMatchObject({
-      executionClass: 'hybrid',
+      executionClass: 'subagents',
       artifacts: {
         findings: { contract: 'text', collection: true, availability: 'degraded' },
         synthesis: { contract: 'text', collection: false, availability: 'required' },
       },
       primitives: [
-        { kind: 'dsh-workflow-fanout', count: 3, minSuccess: 2 },
+        { kind: 'dsh-subagent-fanout', count: 3, minSuccess: 2 },
         { kind: 'dsh-delegate', stage: 'synthesis' },
       ],
     })
@@ -133,6 +134,11 @@ describe('Team and Strategy compiler', () => {
     })
     if (!first.ok) throw new Error('expected compiled strategy')
     expect(first.plan.planDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(() => assertCompiledStrategyPlan(first.plan)).not.toThrow()
+    expect(() => assertCompiledStrategyPlan({
+      ...first.plan,
+      objective: 'tampered objective',
+    })).toThrow(/digest does not match/)
     expect(compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Implement and verify the change.',

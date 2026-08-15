@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Config v2 ordered Catalog Layers spanning Profiles, Teams, and Strategies with replacement, extension-by-new-name, disable tombstones, revival, and provenance.
 - Public bounded TeamSpec Member Slots, strict StrategySpec stages, artifact contracts/cardinality/availability, and hard plan limits.
 - TypeScript `defineTeam`, `defineStrategy`, and `defineStrategyFor` authoring helpers with compile-time member and prior-artifact wiring checks.
-- Immutable lowering to `dsh-delegate`, `dsh-workflow-fanout`, and `dsh-goal` primitive IR plus deterministic StrategyPlanDigest.
+- Immutable lowering to `dsh-delegate`, `dsh-subagent-fanout`, and `dsh-goal` primitive IR plus deterministic StrategyPlanDigest.
+- Public direct/fanout `executeStrategyPlan()` adapter with real one-shot DSH children, artifact handoff, deadline/output bounds, disposal, and explicit terminal outcomes.
 - Ordinary defaults-as-data templates for `independent-review`, `research-panel`, and `plan-execute-review`, mirrored by the shipped preset.
 
 ### Changed
