@@ -12,7 +12,7 @@ import {
   type DelegationPlan,
   type RuntimeSnapshot,
 } from './compiler.ts'
-import { renderCoordinatorGuidance } from './prompt.ts'
+import { createCoordinatorCatalog, renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
 import {
   assertOrchestrationCatalogUsable,
@@ -794,13 +794,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       if (activeSnapshot === undefined
         || Object.keys(activeSnapshot.profiles.activeProfiles).length === 0) return ''
       const catalog = activeSnapshot.profiles
-      const profileGuidance = renderCoordinatorGuidance({
+      const profileGuidance = renderCoordinatorGuidance(createCoordinatorCatalog({
         toolName: catalog.toolName,
         enableRunInBackground: catalog.enableRunInBackground,
         profiles: catalog.activeProfiles,
         ...catalog.defaultProfile === undefined ? {} : { defaultProfile: catalog.defaultProfile },
         ...catalog.guidance === undefined ? {} : { guidance: catalog.guidance },
-      })
+      }))
       const strategyGuidance = catalog.enableStrategies
         ? renderOrchestrationGuidance(activeSnapshot.orchestration)
         : ''

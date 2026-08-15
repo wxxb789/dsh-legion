@@ -1,4 +1,6 @@
-import type { Config, LegionProfile } from './config.ts'
+import type { LegionProfile } from './config.ts'
+
+const coordinatorCatalogBrand: unique symbol = Symbol('dsh-legion.coordinator-catalog')
 
 export interface CoordinatorProfile extends Omit<LegionProfile, 'routes' | 'toolFilter' | 'promptFiles'> {
   readonly routes?: readonly Readonly<NonNullable<LegionProfile['routes']>[number]>[]
@@ -11,11 +13,26 @@ export interface CoordinatorProfile extends Omit<LegionProfile, 'routes' | 'tool
 }
 
 export interface CoordinatorCatalog {
+  readonly [coordinatorCatalogBrand]: true
   readonly toolName: string
   readonly enableRunInBackground: boolean
   readonly defaultProfile?: string
   readonly guidance?: string
   readonly profiles: Readonly<Record<string, CoordinatorProfile>>
+}
+
+type CoordinatorCatalogInput = Omit<CoordinatorCatalog, typeof coordinatorCatalogBrand>
+
+/** Internal constructor for the compiler-owned guidance view. */
+export function createCoordinatorCatalog(input: CoordinatorCatalogInput): CoordinatorCatalog {
+  const catalog = { ...input } as CoordinatorCatalog
+  Object.defineProperty(catalog, coordinatorCatalogBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  })
+  return Object.freeze(catalog)
 }
 
 function routeLabel(profile: Pick<CoordinatorProfile, 'agentOptions' | 'routes'>): string {
@@ -32,9 +49,10 @@ function routeLabel(profile: Pick<CoordinatorProfile, 'agentOptions' | 'routes'>
 }
 
 /** Render the stable coordinator guidance owned by the Legion tool. */
-export function renderCoordinatorGuidance(config: Config): string
-export function renderCoordinatorGuidance(config: CoordinatorCatalog): string
 export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
+  if (config[coordinatorCatalogBrand] !== true) {
+    throw new Error('dsh-legion: coordinator guidance requires a compiler-owned catalog')
+  }
   const lines = [
     `Use \`${config.toolName}\` to delegate focused work through semantic profiles.`,
     'Choose a profile by task fit; do not choose raw models in tool calls.',
