@@ -64,21 +64,14 @@ export interface SynthesizeStageSpec extends StageBase {
   readonly kind: 'synthesize'
 }
 
-export interface GoalStageSpec extends StageBase {
-  readonly kind: 'goal'
-  readonly maxRounds: number
-}
-
 export type StrategyStageSpec =
   | DelegateStageSpec
   | FanoutStageSpec
   | SynthesizeStageSpec
-  | GoalStageSpec
 
 export interface StrategyLimits {
   readonly maxAgents: number
   readonly maxConcurrent: number
-  readonly maxRounds: number
   readonly deadlineMs: number
   readonly maxOutputBytes: number
 }
@@ -166,23 +159,15 @@ const SynthesizeStageSchema = z.object({
   ...StageBaseSchema,
 }) as unknown as z<SynthesizeStageSpec>
 
-const GoalStageSchema = z.object({
-  kind: z.const('goal' as const).required(),
-  ...StageBaseSchema,
-  maxRounds: z.number().step(1).min(1).max(8).required(),
-}) as unknown as z<GoalStageSpec>
-
 export const StrategyStageSchema: z<StrategyStageSpec> = z.union([
   DelegateStageSchema,
   FanoutStageSchema,
   SynthesizeStageSchema,
-  GoalStageSchema,
 ])
 
 const StrategyLimitsSchema: z<StrategyLimits> = z.object({
   maxAgents: z.number().step(1).min(1).max(32).required(),
   maxConcurrent: z.number().step(1).min(1).max(16).required(),
-  maxRounds: z.number().step(1).min(1).max(8).required(),
   deadlineMs: z.number().step(1).min(1).max(24 * 60 * 60 * 1000).required(),
   maxOutputBytes: z.number().step(1).min(1).max(16 * 1024 * 1024).required(),
 })
@@ -267,7 +252,7 @@ export function assertKnownOrchestrationKeys(
       assertKnownKeys(source?.completion, ['artifact', 'contract'], `${at}.strategies.${name}.completion`)
       assertKnownKeys(
         source?.limits,
-        ['maxAgents', 'maxConcurrent', 'maxRounds', 'deadlineMs', 'maxOutputBytes'],
+        ['maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes'],
         `${at}.strategies.${name}.limits`,
       )
       if (Array.isArray(source?.stages)) {
@@ -278,9 +263,7 @@ export function assertKnownOrchestrationKeys(
             ? ['mode']
             : stageRecord?.kind === 'fanout'
               ? ['count', 'minSuccess', 'allowDegraded']
-              : stageRecord?.kind === 'goal'
-                ? ['maxRounds']
-                : []
+              : []
           assertKnownKeys(
             stage,
             [...baseKeys, ...variantKeys],

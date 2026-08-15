@@ -48,7 +48,7 @@ Cross-route recovery is not part of v0.3. It requires a unified DSH recovery sea
 Users can build their own Teams and orchestration Strategies. Legion ships a useful Default Catalog, but defaults are ordinary versioned data under the same public contracts.
 
 - [x] Public `TeamSpec`: named Member Slots reference Profiles and declare bounded participation constraints.
-- [x] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal primitive IR.
+- [x] Public Strategy contract that compiles an Objective and Team to executable bounded DSH subagent primitive IR.
 - [x] Strategy registration and validation shared by Legion defaults and third-party Catalog Layers.
 - [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
 - [x] Blocking deterministic direct-vs-strategy protocol benchmark with versioned thresholds; it is not model-quality evidence.
@@ -56,12 +56,12 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [ ] Complete two paired held-out real-model quality campaigns per Strategy with safety/cost/latency gates.
 - [ ] Model-enable default `independent-review` after real-model benchmarks. (IR and direct subagent adapter complete.)
 - [ ] Model-enable default `research-panel` after real-model benchmarks. (IR and fanout/synthesis adapter complete.)
-- [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR complete; goal adapter pending.)
-- [ ] Hard member/round/deadline/output limits are compiled and direct execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
-- [ ] Direct/fanout cancellation and degraded outcomes are implemented; goal/workflow terminal normalization remains.
+- [x] Execute default `plan-execute-review`: plan, execution evidence, structured review, and one bounded repair delegate.
+- [ ] Hard member/concurrency/deadline/output limits are compiled and execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
+- [x] Direct/fanout cancellation, degraded outcomes, bounded disposal, and terminal first-wins normalization.
 - [x] Authority monotonicity: invocation customization only narrows limits; final widening remains subject to DSH policy and approval.
 - [x] Contract tests prove default entries can be recreated entirely through public user configuration.
-- [ ] Seeded fanout ordering/every-waiter/no-lease checks are complete; terminal first-wins and stale-generation commit fencing remain.
+- [x] Seeded fanout ordering, terminal first-wins, every-waiter/no-lease checks, and catalog-generation commit fencing.
 
 Default Strategies ship only after benchmarks show measurable value over direct delegation.
 

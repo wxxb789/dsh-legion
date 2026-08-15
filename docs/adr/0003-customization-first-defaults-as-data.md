@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-15
 
-Legion will let users define their own Profiles, Teams, and Strategies while shipping a curated Default Catalog that uses exactly the same public contracts. Built-in names, member shapes, routing choices, and orchestration policies must not receive hidden runtime privileges or hardcoded branches; users can replace, extend, or disable them. Strategies compile to bounded DeepSeek Harness workflow/subagent/goal operations, so customization changes policy without creating a second execution or authority runtime.
+Legion will let users define their own Profiles, Teams, and Strategies while shipping a curated Default Catalog that uses exactly the same public contracts. Built-in names, member shapes, routing choices, and orchestration policies must not receive hidden runtime privileges or hardcoded branches; users can replace, extend, or disable them. Strategies compile to bounded executable DeepSeek Harness subagent operations, so customization changes policy without creating a second execution or authority runtime. Session-owned DSH Goals are intentionally not member stages.
 
 ## Consequences
 

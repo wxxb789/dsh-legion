@@ -70,14 +70,12 @@ describe('Team and Strategy compiler', () => {
       'independent-review', 'plan-execute-review', 'research-panel',
     ])
     expect(orchestration.strategies['independent-review']).toMatchObject({
-      executionClass: 'subagents',
       primitives: [
         { kind: 'dsh-delegate', stage: 'execute', profile: 'deep' },
         { kind: 'dsh-delegate', stage: 'review', profile: 'review' },
       ],
     })
     expect(orchestration.strategies['research-panel']).toMatchObject({
-      executionClass: 'subagents',
       artifacts: {
         findings: { contract: 'text', collection: true, availability: 'degraded' },
         synthesis: { contract: 'text', collection: false, availability: 'required' },
@@ -88,12 +86,11 @@ describe('Team and Strategy compiler', () => {
       ],
     })
     expect(orchestration.strategies['plan-execute-review']).toMatchObject({
-      executionClass: 'hybrid',
       primitives: [
         { kind: 'dsh-delegate', stage: 'plan' },
         { kind: 'dsh-delegate', stage: 'execute' },
         { kind: 'dsh-delegate', stage: 'review' },
-        { kind: 'dsh-goal', stage: 'repair', maxRounds: 1 },
+        { kind: 'dsh-delegate', stage: 'repair' },
       ],
     })
     expect(orchestration.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
@@ -201,7 +198,6 @@ describe('Team and Strategy compiler', () => {
           limits: {
             maxAgents: 4,
             maxConcurrent: 4,
-            maxRounds: 1,
             deadlineMs: 60_000,
             maxOutputBytes: 64_000,
           },
@@ -222,7 +218,6 @@ describe('Team and Strategy compiler', () => {
           limits: {
             maxAgents: 4,
             maxConcurrent: 4,
-            maxRounds: 1,
             deadlineMs: 60_000,
             maxOutputBytes: 64_000,
           },
@@ -278,7 +273,6 @@ describe('Team and Strategy compiler', () => {
           limits: {
             maxAgents: 1,
             maxConcurrent: 1,
-            maxRounds: 1,
             deadlineMs: 60_000,
             maxOutputBytes: 64_000,
           },
@@ -286,6 +280,31 @@ describe('Team and Strategy compiler', () => {
         },
       },
     })).toThrow(/unknown field.*count/)
+  })
+
+  it('rejects the non-portable session Goal lifecycle as a Strategy stage', () => {
+    const base = DEFAULT_CATALOG_LAYER.strategies?.['independent-review']
+    if (base === undefined) throw new Error('missing default Strategy')
+    expect(() => materializeConfig({
+      configVersion: 2,
+      profiles: config.profiles,
+      catalogLayers: [DEFAULT_CATALOG_LAYER],
+      strategies: {
+        'legacy-goal': {
+          ...base,
+          stages: [{
+            kind: 'goal',
+            id: 'repair',
+            member: 'executor',
+            maxRounds: 1,
+            inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+            output: { artifact: 'result', contract: 'text' },
+            prompt: 'Repair.',
+          }],
+          completion: { artifact: 'result', contract: 'text' },
+        },
+      },
+    })).toThrow(/unknown field.*maxRounds/)
   })
 
   it('rejects forward references, contract mismatches, and invalid fanout cardinality', () => {
@@ -327,7 +346,6 @@ describe('Team and Strategy compiler', () => {
           limits: {
             maxAgents: 2,
             maxConcurrent: 1,
-            maxRounds: 1,
             deadlineMs: 60_000,
             maxOutputBytes: 64_000,
           },
@@ -388,7 +406,6 @@ describe('Team and Strategy compiler', () => {
           limits: {
             maxAgents: 1,
             maxConcurrent: 1,
-            maxRounds: 1,
             deadlineMs: 60_000,
             maxOutputBytes: 64_000,
           },

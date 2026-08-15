@@ -163,7 +163,6 @@ export type {
   DefinedTeam,
   DelegateStageSpec,
   FanoutStageSpec,
-  GoalStageSpec,
   MemberSlotSpec,
   StrategyLimits,
   StrategySpec,
@@ -191,17 +190,16 @@ export type {
   DelegatePrimitive,
   DshPrimitive,
   FanoutPrimitive,
-  GoalPrimitive,
   OrchestrationDiagnostic,
   OrchestrationDiagnosticCode,
   StrategyCompileRequest,
   StrategyCompileResult,
-  StrategyExecutionClass,
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
-export { executeStrategyPlan } from './execution.ts'
+export { createStrategyExecutionSnapshot, executeStrategyPlan } from './execution.ts'
 export type {
   MaterializedStrategyArtifact,
+  StrategyExecutionSnapshot,
   StrategyMemberFailure,
   TeamRunOutcome,
 } from './execution.ts'

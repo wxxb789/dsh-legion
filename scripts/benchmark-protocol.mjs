@@ -41,6 +41,8 @@ const provider = {
       result = textResult('Implementation completed without an independent review.')
     } else if (prompt.includes('DIRECT_RESEARCH')) {
       result = textResult('source-a')
+    } else if (prompt.includes('DIRECT_PLAN_EXECUTE')) {
+      result = textResult('unreviewed execution')
     } else if (request.outputSchema !== undefined) {
       result = { ...textResult('reviewed'), structured: review }
     } else if (prompt.includes('Panel member: 1')) {
@@ -51,6 +53,8 @@ const provider = {
       result = textResult('source-c')
     } else if (prompt.includes('Synthesize the panel')) {
       result = textResult('source-a source-b source-c')
+    } else if (prompt.includes('Perform one bounded repair')) {
+      result = textResult('repaired-safe')
     } else {
       result = textResult('execution evidence')
     }
@@ -119,10 +123,12 @@ try {
   })
   const orchestration = legion.compileOrchestrationCatalog(profiles)
   legion.assertOrchestrationCatalogUsable(orchestration)
+  const snapshot = legion.createStrategyExecutionSnapshot(profiles, orchestration)
 
   const started = performance.now()
   const directImplementation = await direct(ctx, 'DIRECT_IMPLEMENTATION')
   const directResearch = await direct(ctx, 'DIRECT_RESEARCH')
+  const directPlanExecution = await direct(ctx, 'DIRECT_PLAN_EXECUTE')
   const directAgents = calls.length
 
   const independent = legion.compileStrategy(orchestration, {
@@ -133,18 +139,31 @@ try {
     strategy: 'research-panel',
     objective: 'Research all three sources.',
   })
-  if (!independent.ok || !panel.ok) throw new Error('default protocol failed compilation')
+  const planExecuteReview = legion.compileStrategy(orchestration, {
+    strategy: 'plan-execute-review',
+    objective: 'Plan, execute, review, and repair the seeded issue.',
+  })
+  if (!independent.ok || !panel.ok || !planExecuteReview.ok) {
+    throw new Error('default protocol failed compilation')
+  }
   const independentOutcome = await legion.executeStrategyPlan(
     ctx,
-    profiles,
+    snapshot,
     independent.plan,
     parent,
     new AbortController().signal,
   )
   const panelOutcome = await legion.executeStrategyPlan(
     ctx,
-    profiles,
+    snapshot,
     panel.plan,
+    parent,
+    new AbortController().signal,
+  )
+  const planExecuteReviewOutcome = await legion.executeStrategyPlan(
+    ctx,
+    snapshot,
+    planExecuteReview.plan,
     parent,
     new AbortController().signal,
   )
@@ -152,25 +171,29 @@ try {
 
   const directImplementationText = directImplementation.output.map(block => block.type === 'text' ? block.text : '').join('')
   const directResearchText = directResearch.output.map(block => block.type === 'text' ? block.text : '').join('')
+  const directPlanText = directPlanExecution.output.map(block => block.type === 'text' ? block.text : '').join('')
   const reviewArtifact = independentOutcome.artifacts.find(artifact => artifact.name === 'review')
   const synthesisArtifact = panelOutcome.artifacts.find(artifact => artifact.name === 'synthesis')
+  const repairedArtifact = planExecuteReviewOutcome.artifacts.find(artifact => artifact.name === 'final')
   const defectBaseline = directImplementationText.includes('race condition') ? 1 : 0
   const defectStrategy = JSON.stringify(reviewArtifact?.value).includes('Seeded race condition') ? 1 : 0
   const sourceNames = ['source-a', 'source-b', 'source-c']
   const directCoverage = sourceNames.filter(source => directResearchText.includes(source)).length / sourceNames.length
   const strategyCoverage = sourceNames.filter(source => String(synthesisArtifact?.value).includes(source)).length / sourceNames.length
-  const directStructuralScore = (defectBaseline + directCoverage) / 2
-  const strategyStructuralScore = (defectStrategy + strategyCoverage) / 2
+  const repairBaseline = directPlanText.includes('repaired-safe') ? 1 : 0
+  const repairStrategy = String(repairedArtifact?.value).includes('repaired-safe') ? 1 : 0
+  const directStructuralScore = (defectBaseline + directCoverage + repairBaseline) / 3
+  const strategyStructuralScore = (defectStrategy + strategyCoverage + repairStrategy) / 3
   const result = {
     version: 1,
     kind: 'legion-protocol-benchmark',
-    scenarios: 2,
+    scenarios: 3,
     gateClass: 'deterministic-protocol',
     direct: { structuralScore: directStructuralScore, agents: directAgents },
     strategy: {
       structuralScore: strategyStructuralScore,
       agents: strategyAgents,
-      outcomes: [independentOutcome.kind, panelOutcome.kind],
+      outcomes: [independentOutcome.kind, panelOutcome.kind, planExecuteReviewOutcome.kind],
     },
     structuralDelta: strategyStructuralScore - directStructuralScore,
     agentRatio: strategyAgents / directAgents,

@@ -1,9 +1,10 @@
 # Protocol benchmark
 
-This deterministic benchmark is a regression gate for Legion's orchestration semantics, not a claim about general model quality. A scripted provider supplies fixed responses for two tasks:
+This deterministic benchmark is a regression gate for Legion's orchestration semantics, not a claim about general model quality. A scripted provider supplies fixed responses for three tasks:
 
 1. direct implementation versus independent execution + review;
-2. one direct research result versus a three-member panel + synthesis.
+2. one direct research result versus a three-member panel + synthesis;
+3. one direct execution versus bounded plan + execute + review + repair.
 
 The structural score measures expected defect and source markers encoded by those fixtures. The gate proves that the protocols preserve and aggregate evidence while keeping a declared bound on child starts. It does not estimate credentials, provider health, real token price, or performance on unseen tasks.
 

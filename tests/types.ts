@@ -173,7 +173,6 @@ const typedStrategy = defineStrategy({
   limits: {
     maxAgents: 2,
     maxConcurrent: 1,
-    maxRounds: 1,
     deadlineMs: 60_000,
     maxOutputBytes: 64_000,
   },
@@ -211,7 +210,6 @@ defineStrategy({
   limits: {
     maxAgents: 1,
     maxConcurrent: 1,
-    maxRounds: 1,
     deadlineMs: 60_000,
     maxOutputBytes: 64_000,
   },

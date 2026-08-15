@@ -64,7 +64,6 @@ export const DEFAULT_CATALOG_LAYER = {
       limits: {
         maxAgents: 2,
         maxConcurrent: 1,
-        maxRounds: 1,
         deadlineMs: 15 * 60_000,
         maxOutputBytes: 512 * 1024,
       },
@@ -98,14 +97,13 @@ export const DEFAULT_CATALOG_LAYER = {
       limits: {
         maxAgents: 4,
         maxConcurrent: 3,
-        maxRounds: 1,
         deadlineMs: 15 * 60_000,
         maxOutputBytes: 1024 * 1024,
       },
       memberFailure: 'allow-partial',
     },
     'plan-execute-review': {
-      description: 'Plan, execute, review, then permit one bounded repair goal activation.',
+      description: 'Plan, execute, review, then perform one bounded evidence-aware repair.',
       team: 'plan-execute-review',
       stages: [
         {
@@ -139,23 +137,21 @@ export const DEFAULT_CATALOG_LAYER = {
           prompt: 'Review plan adherence and execution evidence.',
         },
         {
-          kind: 'goal',
+          kind: 'delegate',
           id: 'repair',
           member: 'executor',
-          maxRounds: 1,
           inputs: [
             { artifact: 'execution', contract: 'text' },
             { artifact: 'review', contract: 'review-v1' },
           ],
           output: { artifact: 'final', contract: 'text' },
-          prompt: 'If required, perform at most one repair activation; otherwise preserve the evidence.',
+          prompt: 'Perform one bounded repair from the review, or preserve the evidence when no repair is required.',
         },
       ],
       completion: { artifact: 'final', contract: 'text' },
       limits: {
         maxAgents: 4,
         maxConcurrent: 1,
-        maxRounds: 1,
         deadlineMs: 30 * 60_000,
         maxOutputBytes: 1024 * 1024,
       },

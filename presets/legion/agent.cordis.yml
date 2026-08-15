@@ -204,7 +204,6 @@
         limits:
           maxAgents: 2
           maxConcurrent: 1
-          maxRounds: 1
           deadlineMs: 900000
           maxOutputBytes: 524288
         memberFailure: fail
@@ -232,13 +231,12 @@
         limits:
           maxAgents: 4
           maxConcurrent: 3
-          maxRounds: 1
           deadlineMs: 900000
           maxOutputBytes: 1048576
         memberFailure: allow-partial
 
       plan-execute-review:
-        description: Plan, execute, review, then permit one bounded repair goal activation.
+        description: Plan, execute, review, then perform one bounded evidence-aware repair.
         team: plan-execute-review
         stages:
           - kind: delegate
@@ -263,20 +261,18 @@
               - { artifact: execution, contract: text }
             output: { artifact: review, contract: review-v1 }
             prompt: Review plan adherence and execution evidence.
-          - kind: goal
+          - kind: delegate
             id: repair
             member: executor
-            maxRounds: 1
             inputs:
               - { artifact: execution, contract: text }
               - { artifact: review, contract: review-v1 }
             output: { artifact: final, contract: text }
-            prompt: If required, perform at most one repair activation; otherwise preserve the evidence.
+            prompt: Perform one bounded repair from the review, or preserve the evidence when no repair is required.
         completion: { artifact: final, contract: text }
         limits:
           maxAgents: 4
           maxConcurrent: 1
-          maxRounds: 1
           deadlineMs: 1800000
           maxOutputBytes: 1048576
         memberFailure: fail

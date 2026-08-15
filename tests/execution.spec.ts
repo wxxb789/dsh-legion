@@ -7,7 +7,7 @@ import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent
 import { compileCatalog } from '../src/compiler.ts'
 import { materializeConfig, type Config } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
-import { executeStrategyPlan } from '../src/execution.ts'
+import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
 
 const parent = { id: SessionId('strategy-parent') } as unknown as Agent
@@ -64,7 +64,11 @@ function completed(text: string, structured?: unknown): SubagentResult {
   }
 }
 
-function setup(reply: (prompt: string, index: number, signal: AbortSignal) => Promise<SubagentResult> | SubagentResult) {
+function setup(
+  reply: (prompt: string, index: number, signal: AbortSignal) => Promise<SubagentResult> | SubagentResult,
+  onStart?: () => void,
+  dispose?: () => Promise<void> | void,
+) {
   const ctx = new Context()
   const starts: string[] = []
   const disposed: string[] = []
@@ -74,6 +78,7 @@ function setup(reply: (prompt: string, index: number, signal: AbortSignal) => Pr
     capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
     inheritsParentContext: false,
     async start(request) {
+      onStart?.()
       const current = index++
       const prompt = request.prompt
         .filter((block): block is Extract<(typeof request.prompt)[number], { type: 'text' }> => block.type === 'text')
@@ -84,7 +89,10 @@ function setup(reply: (prompt: string, index: number, signal: AbortSignal) => Pr
         id: SessionId(`strategy-child-${String(current)}`),
         localAgent: undefined,
         result: Promise.resolve().then(() => reply(prompt, current, request.signal!)),
-        async dispose() { disposed.push(prompt) },
+        async dispose() {
+          disposed.push(prompt)
+          await dispose?.()
+        },
       }
     },
   }
@@ -101,7 +109,12 @@ function catalogs() {
       },
     },
   })
-  return { profiles, orchestration: compileOrchestrationCatalog(profiles) }
+  const orchestration = compileOrchestrationCatalog(profiles)
+  return {
+    profiles,
+    orchestration,
+    snapshot: createStrategyExecutionSnapshot(profiles, orchestration),
+  }
 }
 
 describe('bounded Strategy execution adapter', () => {
@@ -111,7 +124,7 @@ describe('bounded Strategy execution adapter', () => {
       : completed('reviewed', review))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Implement the feature.',
@@ -120,7 +133,7 @@ describe('bounded Strategy execution adapter', () => {
 
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
@@ -149,7 +162,7 @@ describe('bounded Strategy execution adapter', () => {
     })
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'research-panel',
       objective: 'Research the design.',
@@ -158,7 +171,7 @@ describe('bounded Strategy execution adapter', () => {
 
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
@@ -187,7 +200,7 @@ describe('bounded Strategy execution adapter', () => {
       })
       await runtime.ctx.plugin(SubagentRuntime)
       runtime.ctx.subagents.registerProvider(runtime.provider)
-      const { profiles, orchestration } = catalogs()
+      const { orchestration, snapshot } = catalogs()
       const compiled = compileStrategy(orchestration, {
         strategy: 'research-panel',
         objective: `Seed ${String(seed)}.`,
@@ -195,7 +208,7 @@ describe('bounded Strategy execution adapter', () => {
       if (!compiled.ok) throw new Error('expected strategy plan')
       const outcome = await executeStrategyPlan(
         runtime.ctx,
-        profiles,
+        snapshot,
         compiled.plan,
         parent,
         new AbortController().signal,
@@ -208,13 +221,71 @@ describe('bounded Strategy execution adapter', () => {
     }
   })
 
+  it('fails without replay and disposes published runs when a provider disappears during fanout admission', async () => {
+    let removeProvider: () => void = () => undefined
+    const runtime = setup(() => completed('only admitted result'), () => removeProvider())
+    await runtime.ctx.plugin(SubagentRuntime)
+    removeProvider = runtime.ctx.subagents.registerProvider(runtime.provider)
+    const { orchestration, snapshot } = catalogs()
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'research-panel',
+      objective: 'Provider removal race.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const outcome = await executeStrategyPlan(
+      runtime.ctx,
+      snapshot,
+      compiled.plan,
+      parent,
+      new AbortController().signal,
+    )
+    expect(outcome).toMatchObject({
+      kind: 'failed',
+      failure: { code: 'MIN_SUCCESS_UNSATISFIED', stage: 'research' },
+    })
+    expect(runtime.starts).toHaveLength(1)
+    expect(runtime.disposed).toHaveLength(1)
+  })
+
+  it('does not let cancellation overwrite a fanout failure once minSuccess is impossible', async () => {
+    const runtime = setup((prompt, _index, signal) => {
+      if (prompt.includes('Panel member: 3')) {
+        return new Promise(resolve => {
+          const settle = () => resolve({ output: [], stopReason: 'aborted' })
+          if (signal.aborted) settle()
+          else signal.addEventListener('abort', settle, { once: true })
+        })
+      }
+      return Promise.reject(new Error('member failed'))
+    })
+    await runtime.ctx.plugin(SubagentRuntime)
+    runtime.ctx.subagents.registerProvider(runtime.provider)
+    const { orchestration, snapshot } = catalogs()
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'research-panel',
+      objective: 'Impossible fanout.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const controller = new AbortController()
+    const pending = executeStrategyPlan(runtime.ctx, snapshot, compiled.plan, parent, controller.signal)
+    for (let step = 0; step < 30 && runtime.disposed.length < 2; step += 1) await Promise.resolve()
+    expect(runtime.disposed).toHaveLength(2)
+    for (let step = 0; step < 10; step += 1) await Promise.resolve()
+    controller.abort('late cancellation')
+    await expect(pending).resolves.toMatchObject({
+      kind: 'failed',
+      failure: { code: 'MIN_SUCCESS_UNSATISFIED' },
+    })
+    expect(runtime.disposed).toHaveLength(3)
+  })
+
   it('fails when fanout misses minSuccess and never starts downstream synthesis', async () => {
     const runtime = setup((prompt) => prompt.includes('Panel member: 1')
       ? completed('only finding')
       : Promise.reject(new Error('failed')))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'research-panel',
       objective: 'Research.',
@@ -222,7 +293,7 @@ describe('bounded Strategy execution adapter', () => {
     if (!compiled.ok) throw new Error('expected strategy plan')
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
@@ -239,7 +310,7 @@ describe('bounded Strategy execution adapter', () => {
     const runtime = setup(() => new Promise<SubagentResult>(() => {}))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Deadline bound.',
@@ -248,7 +319,7 @@ describe('bounded Strategy execution adapter', () => {
     if (!compiled.ok) throw new Error('expected strategy plan')
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
@@ -257,11 +328,72 @@ describe('bounded Strategy execution adapter', () => {
     expect(runtime.disposed).toHaveLength(1)
   })
 
+  it('keeps the first terminal claim across seeded cancellation/failure orderings', async () => {
+    for (let seed = 0; seed < 8; seed += 1) {
+      let rejectChild: ((error: Error) => void) | undefined
+      const runtime = setup(() => new Promise<SubagentResult>((_resolve, reject) => {
+        rejectChild = reject
+      }))
+      await runtime.ctx.plugin(SubagentRuntime)
+      runtime.ctx.subagents.registerProvider(runtime.provider)
+      const { orchestration, snapshot } = catalogs()
+      const compiled = compileStrategy(orchestration, {
+        strategy: 'independent-review',
+        objective: `Terminal seed ${String(seed)}.`,
+      })
+      if (!compiled.ok) throw new Error('expected strategy plan')
+      const controller = new AbortController()
+      const pending = executeStrategyPlan(runtime.ctx, snapshot, compiled.plan, parent, controller.signal)
+      for (let step = 0; step < 20 && rejectChild === undefined; step += 1) await Promise.resolve()
+      if (rejectChild === undefined) throw new Error('child was not admitted')
+      if (seed % 2 === 0) {
+        controller.abort(`cancel-${String(seed)}`)
+        rejectChild(new Error('late failure'))
+        await expect(pending).resolves.toMatchObject({ kind: 'cancelled' })
+      } else {
+        rejectChild(new Error('first failure'))
+        const outcome = await pending
+        controller.abort(`late-cancel-${String(seed)}`)
+        expect(outcome).toMatchObject({ kind: 'failed', failure: { code: 'MEMBER_FAILED' } })
+      }
+      expect(runtime.disposed).toHaveLength(1)
+      await runtime.ctx.fiber.dispose()
+    }
+  })
+
+  it('does not let cancellation during disposal overwrite an earlier child failure', async () => {
+    let releaseDispose: (() => void) | undefined
+    const runtime = setup(
+      () => Promise.reject(new Error('child failed first')),
+      undefined,
+      () => new Promise<void>(resolve => { releaseDispose = resolve }),
+    )
+    await runtime.ctx.plugin(SubagentRuntime)
+    runtime.ctx.subagents.registerProvider(runtime.provider)
+    const { orchestration, snapshot } = catalogs()
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'independent-review',
+      objective: 'Failure before cancellation.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const controller = new AbortController()
+    const pending = executeStrategyPlan(runtime.ctx, snapshot, compiled.plan, parent, controller.signal)
+    for (let step = 0; step < 30 && releaseDispose === undefined; step += 1) await Promise.resolve()
+    if (releaseDispose === undefined) throw new Error('disposal did not start')
+    controller.abort('late cancellation')
+    releaseDispose()
+    await expect(pending).resolves.toMatchObject({
+      kind: 'failed',
+      failure: { code: 'MEMBER_FAILED' },
+    })
+    expect(runtime.disposed).toHaveLength(1)
+  })
+
   it('rejects an oversized artifact before committing it to partial outcome state', async () => {
     const runtime = setup(() => completed('oversized'))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Bound output.',
@@ -270,7 +402,7 @@ describe('bounded Strategy execution adapter', () => {
     if (!compiled.ok) throw new Error('expected strategy plan')
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
@@ -290,14 +422,14 @@ describe('bounded Strategy execution adapter', () => {
     }))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'independent-review',
       objective: 'Cancel me.',
     })
     if (!compiled.ok) throw new Error('expected strategy plan')
     const controller = new AbortController()
-    const pending = executeStrategyPlan(runtime.ctx, profiles, compiled.plan, parent, controller.signal)
+    const pending = executeStrategyPlan(runtime.ctx, snapshot, compiled.plan, parent, controller.signal)
     controller.abort('human cancelled')
     await expect(pending).resolves.toMatchObject({ kind: 'cancelled', reason: 'human cancelled' })
     expect(runtime.disposed).toHaveLength(1)
@@ -322,21 +454,82 @@ describe('bounded Strategy execution adapter', () => {
         },
       },
     })
-    await expect(executeStrategyPlan(
-      runtime.ctx,
-      changedProfiles,
-      compiled.plan,
-      parent,
-      new AbortController().signal,
-    )).rejects.toThrow(/Profile policy does not match/)
+    expect(() => createStrategyExecutionSnapshot(changedProfiles, orchestration))
+      .toThrow(/does not match Profile catalog generation/)
     expect(runtime.starts).toHaveLength(0)
   })
 
-  it('fails unsupported goal/hybrid plans before starting any child', async () => {
+  it('rejects splicing the same policy across different runtime catalog generations', () => {
+    const { profiles, orchestration } = catalogs()
+    const materialized = materializeConfig(config())
+    const changedRuntimeProfiles = compileCatalog(materialized, {
+      providers: {
+        spawn: {
+          continuable: true,
+          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        },
+        unused: {
+          continuable: false,
+          capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+        },
+      },
+    })
+    expect(changedRuntimeProfiles.policyDigest).toBe(profiles.policyDigest)
+    expect(changedRuntimeProfiles.catalogDigest).not.toBe(profiles.catalogDigest)
+    expect(() => createStrategyExecutionSnapshot(changedRuntimeProfiles, orchestration))
+      .toThrow(/does not match Profile catalog generation/)
+  })
+
+  it('rejects a stale Strategy Plan generation before admitting a child', async () => {
     const runtime = setup(() => completed('unused'))
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const { profiles, orchestration } = catalogs()
+    const { orchestration } = catalogs()
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'independent-review',
+      objective: 'Generation-bound.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const changed = materializeConfig({
+      ...config(),
+      strategies: {
+        'independent-review': {
+          ...DEFAULT_CATALOG_LAYER.strategies?.['independent-review'],
+          description: 'Changed Strategy generation.',
+        },
+      },
+    })
+    const changedProfiles = compileCatalog(changed, {
+      providers: {
+        spawn: {
+          continuable: true,
+          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        },
+      },
+    })
+    const changedOrchestration = compileOrchestrationCatalog(changedProfiles)
+    const changedSnapshot = createStrategyExecutionSnapshot(changedProfiles, changedOrchestration)
+    await expect(executeStrategyPlan(
+      runtime.ctx,
+      changedSnapshot,
+      compiled.plan,
+      parent,
+      new AbortController().signal,
+    )).rejects.toThrow(/catalog generation does not match/)
+    expect(runtime.starts).toHaveLength(0)
+  })
+
+  it('executes plan-execute-review as four bounded one-shot stages', async () => {
+    const runtime = setup((prompt, index) => {
+      if (index === 0) return completed('bounded plan')
+      if (index === 1) return completed('execution evidence')
+      if (index === 2) return completed('reviewed', review)
+      expect(prompt).toContain('needs-changes')
+      return completed('repaired result')
+    })
+    await runtime.ctx.plugin(SubagentRuntime)
+    runtime.ctx.subagents.registerProvider(runtime.provider)
+    const { orchestration, snapshot } = catalogs()
     const compiled = compileStrategy(orchestration, {
       strategy: 'plan-execute-review',
       objective: 'Plan it.',
@@ -344,15 +537,16 @@ describe('bounded Strategy execution adapter', () => {
     if (!compiled.ok) throw new Error('expected strategy plan')
     const outcome = await executeStrategyPlan(
       runtime.ctx,
-      profiles,
+      snapshot,
       compiled.plan,
       parent,
       new AbortController().signal,
     )
     expect(outcome).toMatchObject({
-      kind: 'failed',
-      failure: { code: 'EXECUTION_CLASS_UNSUPPORTED' },
+      kind: 'completed',
+      final: { name: 'final', value: 'repaired result' },
     })
-    expect(runtime.starts).toHaveLength(0)
+    expect(runtime.starts).toHaveLength(4)
+    expect(runtime.disposed).toHaveLength(4)
   })
 })

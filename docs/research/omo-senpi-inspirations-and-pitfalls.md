@@ -400,7 +400,7 @@ research-panel
 plan-execute-review
 ```
 
-实现方式：编译到DSH workflow/subagent/goal；固定members、attempts、deadline、output bytes、cost，使用structured evidence packet。禁止Team mailbox、Senpi task table和自有resume engine。
+实现方式：编译到可执行的DSH subagent primitives；固定members、attempts、deadline、output bytes、cost，使用structured evidence packet。DSH Goal继续作为session-owned objective，不伪装成member stage。禁止Team mailbox、Senpi task table和自有resume engine。
 
 ## Shared admission policy — only when measured need exists
 

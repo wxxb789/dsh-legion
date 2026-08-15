@@ -43,7 +43,6 @@ export type OrchestrationDiagnosticCode =
   | 'STRATEGY_COMPLETION_CONTRACT_MISMATCH'
   | 'STRATEGY_AGENT_LIMIT_EXCEEDED'
   | 'STRATEGY_CONCURRENCY_LIMIT_EXCEEDED'
-  | 'STRATEGY_ROUND_LIMIT_EXCEEDED'
   | 'STRATEGY_UNUSED_ARTIFACT'
   | 'STRATEGY_PARTIAL_POLICY_UNUSED'
   | 'STRATEGY_PARTIAL_POLICY_CONFLICT'
@@ -109,13 +108,7 @@ export interface FanoutPrimitive extends PrimitiveBase {
   readonly allowDegraded: boolean
 }
 
-export interface GoalPrimitive extends PrimitiveBase {
-  readonly kind: 'dsh-goal'
-  readonly maxRounds: number
-}
-
-export type DshPrimitive = DelegatePrimitive | FanoutPrimitive | GoalPrimitive
-export type StrategyExecutionClass = 'subagents' | 'workflow' | 'goal' | 'hybrid'
+export type DshPrimitive = DelegatePrimitive | FanoutPrimitive
 
 export interface CompiledStrategyTemplate {
   readonly name: StrategyNameType
@@ -129,7 +122,6 @@ export interface CompiledStrategyTemplate {
   }
   readonly limits: Readonly<StrategyLimits>
   readonly memberFailure: 'fail' | 'allow-partial'
-  readonly executionClass: StrategyExecutionClass
   readonly active: boolean
 }
 
@@ -152,6 +144,7 @@ export interface CompiledOrchestrationCatalog {
   readonly diagnostics: readonly OrchestrationDiagnostic[]
   readonly digest: `sha256:${string}`
   readonly profilePolicyDigest: string
+  readonly profileCatalogDigest: string
 }
 
 export interface StrategyCompileRequest {
@@ -169,7 +162,6 @@ export interface CompiledStrategyPlan {
   readonly catalogDigest: `sha256:${string}`
   readonly profilePolicyDigest: string
   readonly planDigest: StrategyPlanDigestType
-  readonly executionClass: StrategyExecutionClass
   readonly primitives: readonly DshPrimitive[]
   readonly artifacts: Readonly<Record<string, CompiledArtifact>>
   readonly completion: CompiledStrategyTemplate['completion']
@@ -317,16 +309,6 @@ function stageOutput(
 
 function expectedAgentCount(stage: StrategyStageSpec): number {
   return stage.kind === 'fanout' ? stage.count : 1
-}
-
-function executionClass(primitives: readonly DshPrimitive[]): StrategyExecutionClass {
-  const classes = new Set(primitives.map((primitive) => {
-    if (primitive.kind === 'dsh-subagent-fanout') return 'subagents'
-    if (primitive.kind === 'dsh-goal') return 'goal'
-    return 'subagents'
-  }))
-  if (classes.size === 1) return [...classes][0]!
-  return 'hybrid'
 }
 
 function compileStrategyTemplate(
@@ -486,15 +468,6 @@ function compileStrategyTemplate(
       largestParallel = Math.max(largestParallel, stage.count)
       hasDegraded ||= stage.allowDegraded && stage.minSuccess < stage.count
     }
-    if (stage.kind === 'goal' && stage.maxRounds > spec.limits.maxRounds) {
-      push(
-        diagnostics,
-        'STRATEGY_ROUND_LIMIT_EXCEEDED',
-        'error',
-        `strategy "${name}" stage "${stage.id}" exceeds maxRounds`,
-        location,
-      )
-    }
     if (diagnostics.slice(stageDiagnosticStart).some(item => item.severity === 'error')) continue
     const availability: ArtifactAvailability = stage.kind === 'fanout'
       && stage.allowDegraded
@@ -516,17 +489,6 @@ function compileStrategyTemplate(
         count: stage.count,
         minSuccess: stage.minSuccess,
         allowDegraded: stage.allowDegraded,
-      }))
-    } else if (stage.kind === 'goal') {
-      primitives.push(deepFreeze({
-        kind: 'dsh-goal',
-        stage: stage.id,
-        member: member.name,
-        profile: member.profile,
-        inputs: inputNames,
-        output,
-        prompt: stage.prompt,
-        maxRounds: stage.maxRounds,
       }))
     } else {
       primitives.push(deepFreeze({
@@ -621,7 +583,6 @@ function compileStrategyTemplate(
     completion: { artifact: completion.name, contract: completion.contract },
     limits: effectiveLimits,
     memberFailure: spec.memberFailure,
-    executionClass: executionClass(primitives),
     active: primitives.every(primitive => team.members[primitive.member]?.active === true),
   })
 }
@@ -651,6 +612,7 @@ export function compileOrchestrationCatalog(
     version: 1,
     kind: 'legion-orchestration-catalog',
     profilePolicyDigest: profiles.policyDigest,
+    profileCatalogDigest: profiles.catalogDigest,
     teams,
     strategies,
   }
@@ -660,6 +622,7 @@ export function compileOrchestrationCatalog(
     diagnostics,
     digest: digest(identity),
     profilePolicyDigest: profiles.policyDigest,
+    profileCatalogDigest: profiles.catalogDigest,
   })
 }
 
@@ -672,7 +635,7 @@ function narrowedLimits(
   if (requested === undefined) return { ...authored }
   const result = { ...authored }
   const allowed = new Set<keyof StrategyLimits>([
-    'maxAgents', 'maxConcurrent', 'maxRounds', 'deadlineMs', 'maxOutputBytes',
+    'maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes',
   ])
   const unknown = Object.keys(requested).filter(key => !allowed.has(key as keyof StrategyLimits))
   if (unknown.length > 0) {
@@ -705,8 +668,7 @@ function narrowedLimits(
 
 export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalog): string {
   const strategies = Object.values(catalog.strategies)
-    .filter(strategy => strategy.active
-      && strategy.primitives.every(primitive => primitive.kind !== 'dsh-goal'))
+    .filter(strategy => strategy.active)
     .sort((left, right) => String(left.name).localeCompare(String(right.name)))
   if (strategies.length === 0) return ''
   return [
@@ -818,16 +780,8 @@ export function compileStrategy(
     ),
     1,
   )
-  const requiredRounds = strategy.primitives.reduce(
-    (largest, primitive) => Math.max(
-      largest,
-      primitive.kind === 'dsh-goal' ? primitive.maxRounds : 1,
-    ),
-    1,
-  )
   if (limits.maxAgents < requiredAgents
-    || limits.maxConcurrent < requiredConcurrent
-    || limits.maxRounds < requiredRounds) {
+    || limits.maxConcurrent < requiredConcurrent) {
     push(
       diagnostics,
       'STRATEGY_LIMIT_UNSATISFIABLE',
@@ -861,7 +815,6 @@ export function compileStrategy(
     catalogDigest: catalog.digest,
     profilePolicyDigest: catalog.profilePolicyDigest,
     planDigest: StrategyPlanDigest(digest(planIdentity)),
-    executionClass: strategy.executionClass,
     primitives: strategy.primitives,
     artifacts: strategy.artifacts,
     completion: strategy.completion,

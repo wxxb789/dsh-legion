@@ -22,10 +22,14 @@ describe('deterministic protocol benchmark', () => {
     }
     expect(report).toMatchObject({
       gateClass: 'deterministic-protocol',
-      direct: { structuralScore: 1 / 6, agents: 2 },
-      strategy: { structuralScore: 1, agents: 6, outcomes: ['completed', 'completed'] },
-      structuralDelta: 5 / 6,
-      agentRatio: 3,
+      direct: { structuralScore: 1 / 9, agents: 3 },
+      strategy: {
+        structuralScore: 1,
+        agents: 10,
+        outcomes: ['completed', 'completed', 'completed'],
+      },
+      structuralDelta: 8 / 9,
+      agentRatio: 10 / 3,
     })
   })
 })

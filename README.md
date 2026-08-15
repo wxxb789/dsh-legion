@@ -42,7 +42,7 @@ Supported:
 - config v2 ordered Catalog Layers with add/replace/disable semantics and deterministic provenance;
 - public bounded TeamSpec Member Slots referencing existing Profiles;
 - public declarative StrategySpec stages with type-level and runtime artifact wiring;
-- immutable lowering to `dsh-delegate`, `dsh-subagent-fanout`, and `dsh-goal` primitive IR;
+- immutable lowering to executable `dsh-delegate` and `dsh-subagent-fanout` primitive IR;
 - invocation-only limit narrowing and deterministic StrategyPlanDigest;
 - direct/fanout execution through real one-shot DSH subagents with completed/degraded/cancelled/failed outcomes;
 - ordinary defaults-as-data templates for independent review, research panel, and plan/execute/review;
@@ -62,10 +62,10 @@ Supported:
 
 Not yet supported:
 
-- executing compiled Team Strategies from the model tool; v0.5 exposes `executeStrategyPlan()` for direct/fanout plans, while model exposure remains benchmark-gated;
+- executing compiled Team Strategies from the model tool; v0.5 exposes `executeStrategyPlan()` for all compiled plans, while model exposure remains benchmark-gated;
 - benchmark-backed enablement of the three default Strategy templates;
 - post-failure model fallback/replay or automatic provider health scoring;
-- a Legion-owned team/DAG runtime—the coordinator uses DSH's existing subagent and workflow capabilities;
+- a Legion-owned team/DAG runtime—the adapter walks a frozen plan and delegates every child lifecycle to DSH subagents;
 - selecting a different **DSH agent preset** for each child. Current in-process subagents inherit the parent's standing preset composition; Legion profiles can still vary model, persona, tools, and backend. A true per-child preset requires a small upstream DSH subagent composition seam and is tracked as a roadmap item;
 - a GUI settings card. External Host settings namespaces are not currently exposed by the DSH Web allowlist, so configuration remains in the user-owned agent preset.
 
@@ -256,7 +256,6 @@ catalogLayers:
         limits:
           maxAgents: 2
           maxConcurrent: 1
-          maxRounds: 1
           deadlineMs: 900000
           maxOutputBytes: 524288
         memberFailure: fail
@@ -264,11 +263,11 @@ catalogLayers:
 
 `compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
 
-The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They remain absent from the model-facing tool until benchmarked. Programmatic callers may execute direct/fanout plans through `executeStrategyPlan(ctx, profileCatalog, plan, parent, signal)`; goal/hybrid plans return `EXECUTION_CLASS_UNSUPPORTED` before starting children until the DSH goal adapter lands.
+The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They remain absent from the model-facing tool until benchmarked. Programmatic callers may execute every compiled plan through `executeStrategyPlan(ctx, createStrategyExecutionSnapshot(profileCatalog, orchestrationCatalog), plan, parent, signal)`. The Strategy vocabulary contains only executable one-shot subagent stages; DSH Goals remain a separate single-objective session lifecycle rather than a Strategy member primitive.
 
 `pnpm run benchmark:protocol` is a blocking deterministic regression gate over scripted direct-vs-strategy fixtures. It proves artifact aggregation, defect/source preservation, bounded child counts, and completed outcomes; it explicitly does **not** claim general model-quality uplift. Curated model exposure requires separate paired real-model campaigns with frozen case packs, blind scoring, safety metrics, cost/latency evidence, and a positive confidence interval. See [`benchmarks/README.md`](benchmarks/README.md).
 
-The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
+`createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
 ### Prompt Fragments
 

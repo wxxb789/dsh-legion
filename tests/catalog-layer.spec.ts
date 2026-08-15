@@ -22,7 +22,6 @@ const strategy: StrategySpec = {
   limits: {
     maxAgents: 1,
     maxConcurrent: 1,
-    maxRounds: 1,
     deadlineMs: 60_000,
     maxOutputBytes: 64_000,
   },
