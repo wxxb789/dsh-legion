@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "legion-protocol-thresholds",
+  "minimumStructuralDelta": 0.5,
+  "maximumAgentRatio": 3,
+  "requiredStrategyOutcomes": [
+    "completed"
+  ]
+}

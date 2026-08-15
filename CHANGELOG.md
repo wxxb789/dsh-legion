@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - TypeScript `defineTeam`, `defineStrategy`, and `defineStrategyFor` authoring helpers with compile-time member and prior-artifact wiring checks.
 - Immutable lowering to `dsh-delegate`, `dsh-subagent-fanout`, and `dsh-goal` primitive IR plus deterministic StrategyPlanDigest.
 - Public direct/fanout `executeStrategyPlan()` adapter with real one-shot DSH children, artifact handoff, deadline/output bounds, disposal, and explicit terminal outcomes.
+- Blocking deterministic direct-vs-strategy protocol benchmark with versioned structural and child-count thresholds.
 - Ordinary defaults-as-data templates for `independent-review`, `research-panel`, and `plan-execute-review`, mirrored by the shipped preset.
 
 ### Changed

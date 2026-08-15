@@ -1,0 +1,17 @@
+# Protocol benchmark
+
+This deterministic benchmark is a regression gate for Legion's orchestration semantics, not a claim about general model quality. A scripted provider supplies fixed responses for two tasks:
+
+1. direct implementation versus independent execution + review;
+2. one direct research result versus a three-member panel + synthesis.
+
+The quality score measures expected defect detection and source coverage encoded by those fixtures. The gate proves that the protocols preserve and aggregate evidence while keeping a declared bound on child starts. It does not estimate credentials, provider health, real token price, or performance on unseen tasks.
+
+Run after building:
+
+```bash
+pnpm run build
+pnpm run benchmark:protocol
+```
+
+Thresholds are versioned in `protocol-thresholds.json`. Changing fixtures or thresholds requires review because it changes the evidence used to enable default Strategies.

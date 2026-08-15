@@ -266,6 +266,8 @@ catalogLayers:
 
 The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They remain absent from the model-facing tool until benchmarked. Programmatic callers may execute direct/fanout plans through `executeStrategyPlan(ctx, profileCatalog, plan, parent, signal)`; goal/hybrid plans return `EXECUTION_CLASS_UNSUPPORTED` before starting children until the DSH goal adapter lands.
 
+`pnpm run benchmark:protocol` is a blocking deterministic regression gate over scripted direct-vs-strategy fixtures. It proves artifact aggregation, defect/source preservation, bounded child counts, and completed outcomes; it explicitly does **not** claim general model-quality uplift. Curated model exposure requires separate paired real-model campaigns with frozen case packs, blind scoring, safety metrics, cost/latency evidence, and a positive confidence interval. See [`benchmarks/README.md`](benchmarks/README.md).
+
 The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
 ### Prompt Fragments

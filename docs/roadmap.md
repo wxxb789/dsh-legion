@@ -51,14 +51,16 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal primitive IR.
 - [x] Strategy registration and validation shared by Legion defaults and third-party Catalog Layers.
 - [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
-- [ ] Model-enable default `independent-review` after benchmarks. (IR and direct subagent adapter complete.)
-- [ ] Model-enable default `research-panel` after benchmarks. (IR and fanout/synthesis adapter complete.)
+- [x] Blocking deterministic direct-vs-strategy protocol benchmark with versioned thresholds; it is not model-quality evidence.
+- [ ] Complete two paired real-model quality campaigns per Strategy with safety/cost/latency gates.
+- [ ] Model-enable default `independent-review` after real-model benchmarks. (IR and direct subagent adapter complete.)
+- [ ] Model-enable default `research-panel` after real-model benchmarks. (IR and fanout/synthesis adapter complete.)
 - [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR complete; goal adapter pending.)
 - [ ] Hard member/round/deadline/output limits are compiled and direct execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
 - [ ] Direct/fanout cancellation and degraded outcomes are implemented; goal/workflow terminal normalization remains.
 - [x] Authority monotonicity: invocation customization only narrows limits; final widening remains subject to DSH policy and approval.
 - [x] Contract tests prove default entries can be recreated entirely through public user configuration.
-- [ ] Seeded interleaving tests: terminal first-wins, no lease leaks, stale generation cannot commit, every waiter settles.
+- [ ] Seeded fanout ordering/every-waiter/no-lease checks are complete; terminal first-wins and stale-generation commit fencing remain.
 
 Default Strategies ship only after benchmarks show measurable value over direct delegation.
 
