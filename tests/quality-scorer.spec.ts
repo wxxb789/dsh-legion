@@ -17,8 +17,21 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(value)
 }
 
-function executionPayload(run: Record<string, unknown>): Record<string, unknown> {
+interface ExecutionReceiptContext {
+  readonly campaignId: string
+  readonly executionCommit: string
+  readonly casePackSha256: string
+  readonly packCommitmentId: string | null
+  readonly startedAt: string
+  readonly endedAt: string
+}
+
+function executionPayload(
+  run: Record<string, unknown>,
+  context: ExecutionReceiptContext,
+): Record<string, unknown> {
   return {
+    ...context,
     executionId: run.executionId,
     caseId: run.caseId,
     repeat: run.repeat,
@@ -53,6 +66,14 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
   const treatmentPlanRef = contentRef('treatment-plan.json', '{"plan":"treatment"}')
   const rubricRef = contentRef('rubric.json', '{"schemaVersion":"rubric-v1"}')
   const stable = `sha256:${'a'.repeat(64)}`
+  const executionContext: ExecutionReceiptContext = {
+    campaignId: 'review-campaign-a',
+    executionCommit: 'commit-a',
+    casePackSha256: sha256(casePackBytes),
+    packCommitmentId: null,
+    startedAt: '2026-08-01T00:00:00.000Z',
+    endedAt: '2026-08-02T00:00:00.000Z',
+  }
   const runs = casePack.cases.flatMap(({ id }) => [1, 2, 3].flatMap((repeat) => [
     {
       caseId: id,
@@ -103,7 +124,7 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
     },
   ]))
   const runsWithReceipts = runs.map((run, index) => {
-    const payload = executionPayload(run as unknown as Record<string, unknown>)
+    const payload = executionPayload(run as unknown as Record<string, unknown>, executionContext)
     const executionReceipt = contentRef(`execution-${String(index)}.json`, JSON.stringify({
       schemaVersion: 'legion-execution-receipt-v1',
       signerId: 'development',
@@ -115,12 +136,12 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
   const scoredRunRecords = [...runsWithReceipts]
     .sort((left, right) => `${left.pairId}:${left.arm}`.localeCompare(`${right.pairId}:${right.arm}`))
   const adjudicationPayload = {
-    campaignId: 'review-campaign-a',
+    campaignId: executionContext.campaignId,
     strategy: 'independent-review',
-    startedAt: '2026-08-01T00:00:00.000Z',
-    endedAt: '2026-08-02T00:00:00.000Z',
+    startedAt: executionContext.startedAt,
+    endedAt: executionContext.endedAt,
     catalogDigest: stable,
-    executionCommit: 'commit-a',
+    executionCommit: executionContext.executionCommit,
     deploymentHardBudget: options.hardBudget === true,
     casePackSha256: sha256(casePackBytes),
     rubricSha256: rubricRef.sha256,
@@ -138,19 +159,19 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
   return {
     schemaVersion: 'legion-quality-campaign-v1',
     campaign: {
-      id: 'review-campaign-a',
+      id: executionContext.campaignId,
       strategy: 'independent-review',
       casePackId: 'independent-review-v1',
       casePackSha256: sha256(casePackBytes),
       rubric: rubricRef,
       thresholdsSha256: sha256(thresholdBytes),
       adjudicationReceipt: adjudicationRef,
-      startedAt: '2026-08-01T00:00:00.000Z',
-      endedAt: '2026-08-02T00:00:00.000Z',
+      startedAt: executionContext.startedAt,
+      endedAt: executionContext.endedAt,
     },
     environment: {
       catalogDigest: stable,
-      executionCommit: 'commit-a',
+      executionCommit: executionContext.executionCommit,
       deploymentHardBudget: options.hardBudget === true,
     },
     runs: runsWithReceipts,
@@ -162,9 +183,18 @@ function refreshExecutionReceipts(
   document: ReturnType<typeof campaign>,
   signerId = 'development',
   privateKey?: KeyObject,
+  packCommitmentId: string | null = null,
 ): void {
+  const context: ExecutionReceiptContext = {
+    campaignId: document.campaign.id,
+    executionCommit: document.environment.executionCommit,
+    casePackSha256: document.campaign.casePackSha256,
+    packCommitmentId,
+    startedAt: document.campaign.startedAt,
+    endedAt: document.campaign.endedAt,
+  }
   document.runs.forEach((run, index) => {
-    const payload = executionPayload(run as unknown as Record<string, unknown>)
+    const payload = executionPayload(run as unknown as Record<string, unknown>, context)
     const signature = privateKey === undefined
       ? null
       : signPayload(null, Buffer.from(canonical(payload)), privateKey).toString('base64')
@@ -423,7 +453,7 @@ describe('real-model quality campaign scorer', () => {
           issuer: 'benchmark-issuer-a',
           commitmentId: 'pack-commitment-a',
           committedAt: '2026-07-01T00:00:00.000Z',
-          unsealedAt: '2026-08-02T00:00:00.000Z',
+          unsealedAt: '2026-08-04T00:00:00.000Z',
         }, leftPackIssuer.privateKey),
         [rightPackSha256]: signPackTrust({
           packId: rightPack.id,
@@ -467,8 +497,12 @@ describe('real-model quality campaign scorer', () => {
       rightDocument.campaign.endedAt = '2026-08-04T00:00:00.000Z'
       rightDocument.campaign.casePackId = rightPack.id
       rightDocument.campaign.casePackSha256 = sha256(rightPackBytes)
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshExecutionReceipts(
+        leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey, 'pack-commitment-a',
+      )
+      refreshExecutionReceipts(
+        rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey, 'pack-commitment-b',
+      )
       refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
       refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       const left = join(leftRoot, 'campaign.json')
@@ -482,6 +516,23 @@ describe('real-model quality campaign scorer', () => {
       ], { cwd: ROOT, encoding: 'utf8' })
       expect(eligible.status).toBe(0)
       expect(JSON.parse(eligible.stdout)).toMatchObject({ eligible: true })
+
+      const originalRightCampaignId = rightDocument.campaign.id
+      rightDocument.campaign.id = 'campaign-replayed'
+      refreshAdjudication(
+        rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey,
+      )
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
+      const replayedCampaign = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(replayedCampaign.status).not.toBe(0)
+      expect(replayedCampaign.stderr).toContain('execution receipt is invalid or not bound')
+      rightDocument.campaign.id = originalRightCampaignId
+      refreshAdjudication(
+        rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey,
+      )
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
 
       const mutableRightPackTrust = heldOutPacks[rightPackSha256]
       if (mutableRightPackTrust === undefined) throw new Error('missing right pack trust fixture')
@@ -530,6 +581,32 @@ describe('real-model quality campaign scorer', () => {
       expect(tamperedPackTrust.stderr).toContain('lacks authenticated commitment')
       mutableLeftPackTrust.committedAt = originalCommittedAt
 
+      const originalUnsealedAt = mutableLeftPackTrust.unsealedAt
+      mutableLeftPackTrust.unsealedAt = '2026-08-02T00:00:00.000Z'
+      const { signature: _oldSignature, ...shortEmbargoCommitment } = mutableLeftPackTrust
+      mutableLeftPackTrust.signature = signPayload(
+        null,
+        Buffer.from(canonical(shortEmbargoCommitment)),
+        leftPackIssuer.privateKey,
+      ).toString('base64')
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
+      const shortEmbargo = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(shortEmbargo.status).not.toBe(0)
+      expect(JSON.parse(shortEmbargo.stdout).reasons)
+        .toContain('held-out pack embargo does not cover the complete campaign pair')
+      mutableLeftPackTrust.unsealedAt = originalUnsealedAt
+      const { signature: _shortSignature, ...fullEmbargoCommitment } = mutableLeftPackTrust
+      mutableLeftPackTrust.signature = signPayload(
+        null,
+        Buffer.from(canonical(fullEmbargoCommitment)),
+        leftPackIssuer.privateKey,
+      ).toString('base64')
+
       writeFileSync(trustStorePath, JSON.stringify({
         schemaVersion: 'legion-adjudicator-trust-v1',
         adjudicators: { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
@@ -550,8 +627,12 @@ describe('real-model quality campaign scorer', () => {
         { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
       )
 
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftAdjudicator.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightAdjudicator.privateKey)
+      refreshExecutionReceipts(
+        leftRoot, leftDocument, 'execution-lab-a', leftAdjudicator.privateKey, 'pack-commitment-a',
+      )
+      refreshExecutionReceipts(
+        rightRoot, rightDocument, 'execution-lab-b', rightAdjudicator.privateKey, 'pack-commitment-b',
+      )
       refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
       refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       writeFileSync(left, JSON.stringify(leftDocument, null, 2))
@@ -572,8 +653,12 @@ describe('real-model quality campaign scorer', () => {
         { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
         { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
       )
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshExecutionReceipts(
+        leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey, 'pack-commitment-a',
+      )
+      refreshExecutionReceipts(
+        rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey, 'pack-commitment-b',
+      )
       refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
       refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       writeFileSync(left, JSON.stringify(leftDocument, null, 2))
@@ -595,7 +680,9 @@ describe('real-model quality campaign scorer', () => {
       })
 
       for (const run of rightDocument.runs) run.executionId = run.executionId.replace('execution-b-', 'execution-a-')
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshExecutionReceipts(
+        rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey, 'pack-commitment-b',
+      )
       refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       writeFileSync(right, JSON.stringify(rightDocument, null, 2))
       const replayed = spawnSync(process.execPath, [

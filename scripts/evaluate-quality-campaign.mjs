@@ -118,6 +118,7 @@ async function validateRun(
   heldOut,
   publicContract,
   executionSignerIds,
+  executionContext,
 ) {
   if (typeof run !== 'object' || run === null || Array.isArray(run)) throw new Error('run must be an object')
   if (!caseIds.has(run.caseId)) throw new Error(`unknown caseId ${String(run.caseId)}`)
@@ -183,7 +184,22 @@ async function validateRun(
     publicContract.executionReceiptFields,
     'execution receipt',
   )
+  const receiptStartedAt = Date.parse(executionReceipt.payload?.startedAt)
+  const receiptEndedAt = Date.parse(executionReceipt.payload?.endedAt)
+  if (!Number.isFinite(receiptStartedAt)
+    || !Number.isFinite(receiptEndedAt)
+    || receiptEndedAt <= receiptStartedAt
+    || receiptStartedAt < Date.parse(executionContext.campaignStartedAt)
+    || receiptEndedAt > Date.parse(executionContext.campaignEndedAt)) {
+    throw new Error('execution receipt absolute window is outside the signed campaign window')
+  }
   const expectedPayload = {
+    campaignId: executionContext.campaignId,
+    executionCommit: executionContext.executionCommit,
+    casePackSha256: executionContext.casePackSha256,
+    packCommitmentId: executionContext.packCommitmentId,
+    startedAt: executionReceipt.payload.startedAt,
+    endedAt: executionReceipt.payload.endedAt,
     executionId: run.executionId,
     caseId: run.caseId,
     repeat: run.repeat,
@@ -396,6 +412,14 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       casePackVisibility === 'held-out',
       publicContract,
       executionSignerIds,
+      {
+        campaignId: campaign.campaign.id,
+        executionCommit: campaign.environment.executionCommit,
+        casePackSha256,
+        packCommitmentId: heldOutPackTrust?.commitmentId ?? null,
+        campaignStartedAt: campaign.campaign.startedAt,
+        campaignEndedAt: campaign.campaign.endedAt,
+      },
     )),
   )
   const expectedRuns = thresholds.caseCount * thresholds.repeats * 2

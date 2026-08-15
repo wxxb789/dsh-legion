@@ -9,7 +9,7 @@
   "qualityAdjudicationReceiptFields": ["schemaVersion", "batchId", "blinded", "signerId", "payload", "signature"],
   "qualityAdjudicationPayloadFields": ["campaignId", "strategy", "startedAt", "endedAt", "catalogDigest", "executionCommit", "deploymentHardBudget", "casePackSha256", "rubricSha256", "thresholdsSha256", "scoredRunsSha256"],
   "executionReceiptFields": ["schemaVersion", "signerId", "payload", "signature"],
-  "executionReceiptPayloadFields": ["executionId", "caseId", "repeat", "pairId", "arm", "order", "exposure", "status", "artifact", "provenance", "usage", "timing", "infraReceipt"],
+  "executionReceiptPayloadFields": ["campaignId", "executionCommit", "casePackSha256", "packCommitmentId", "startedAt", "endedAt", "executionId", "caseId", "repeat", "pairId", "arm", "order", "exposure", "status", "artifact", "provenance", "usage", "timing", "infraReceipt"],
   "compatibilityReceiptFields": ["schemaVersion", "requestedDshVersion", "resolvedDshVersion", "nodeVersion", "packageVersion", "tarballSha256", "consumerLockfileFile", "consumerLockfileSha256", "dshDependencies", "status"],
   "heldOutPackTrustFields": ["packId", "packSha256", "issuer", "commitmentId", "committedAt", "unsealedAt", "signature"],
   "packageEntry": {"main":"lib/index.js","types":"lib/index.d.ts","bin":{"dsh-legion":"lib/bin.js"},"exports":{".":{"types":"./lib/index.d.ts","default":"./lib/index.js"},"./contracts/v1.json":"./contracts/v1.json","./contracts/compatibility.json":"./contracts/compatibility.json","./package.json":"./package.json"}},

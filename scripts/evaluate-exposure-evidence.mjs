@@ -80,6 +80,14 @@ if (left.evidence.rubricSha256 !== right.evidence.rubricSha256
 const windowsAreIndependent = Date.parse(left.evidence.endedAt) <= Date.parse(right.evidence.startedAt)
   || Date.parse(right.evidence.endedAt) <= Date.parse(left.evidence.startedAt)
 if (!windowsAreIndependent) reasons.push('campaign execution windows overlap')
+const jointCampaignEnd = Math.max(
+  Date.parse(left.evidence.endedAt),
+  Date.parse(right.evidence.endedAt),
+)
+if (Date.parse(left.evidence.casePack.unsealedAt) < jointCampaignEnd
+  || Date.parse(right.evidence.casePack.unsealedAt) < jointCampaignEnd) {
+  reasons.push('held-out pack embargo does not cover the complete campaign pair')
+}
 const result = {
   schemaVersion: 'legion-exposure-evidence-v1',
   strategy: left.strategy,
