@@ -389,18 +389,11 @@ describe('real-model quality campaign scorer', () => {
     mkdirSync(leftRoot)
     mkdirSync(rightRoot)
     try {
-      const adjudicator = generateKeyPairSync('ed25519')
-      const executor = generateKeyPairSync('ed25519')
+      const leftAdjudicator = generateKeyPairSync('ed25519')
+      const rightAdjudicator = generateKeyPairSync('ed25519')
+      const leftExecutor = generateKeyPairSync('ed25519')
+      const rightExecutor = generateKeyPairSync('ed25519')
       const trustStorePath = join(root, 'trusted-adjudicators.json')
-      writeFileSync(trustStorePath, JSON.stringify({
-        schemaVersion: 'legion-adjudicator-trust-v1',
-        adjudicators: {
-          'quality-lab': adjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
-        },
-        executors: {
-          'execution-lab': executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
-        },
-      }))
       const openPack = JSON.parse(
         readFileSync(join(ROOT, 'benchmarks/quality/review-v1.json'), 'utf8'),
       ) as { id: string; track: string; cases: unknown[]; campaignVariant?: string }
@@ -412,6 +405,39 @@ describe('real-model quality campaign scorer', () => {
       const rightPackBytes = JSON.stringify(rightPack, null, 2)
       writeFileSync(leftPackPath, leftPackBytes)
       writeFileSync(rightPackPath, rightPackBytes)
+      const heldOutPacks = {
+        [sha256(leftPackBytes)]: {
+          packId: leftPack.id,
+          issuer: 'benchmark-issuer-a',
+          commitmentId: 'pack-commitment-a',
+          committedAt: '2026-07-01T00:00:00.000Z',
+          unsealedAt: '2026-08-02T00:00:00.000Z',
+        },
+        [sha256(rightPackBytes)]: {
+          packId: rightPack.id,
+          issuer: 'benchmark-issuer-b',
+          commitmentId: 'pack-commitment-b',
+          committedAt: '2026-07-01T00:00:00.000Z',
+          unsealedAt: '2026-08-04T00:00:00.000Z',
+        },
+      }
+      const writeTrustStore = (
+        adjudicators: Record<string, string>,
+        executors: Record<string, string>,
+      ) => writeFileSync(trustStorePath, JSON.stringify({
+        schemaVersion: 'legion-adjudicator-trust-v1',
+        adjudicators,
+        executors,
+        heldOutPacks,
+      }))
+      const leftAdjudicatorPem = leftAdjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      const rightAdjudicatorPem = rightAdjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      const leftExecutorPem = leftExecutor.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      const rightExecutorPem = rightExecutor.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
 
       const leftDocument = campaign(leftRoot)
       leftDocument.campaign.id = 'campaign-a'
@@ -424,10 +450,10 @@ describe('real-model quality campaign scorer', () => {
       rightDocument.campaign.endedAt = '2026-08-04T00:00:00.000Z'
       rightDocument.campaign.casePackId = rightPack.id
       rightDocument.campaign.casePackSha256 = sha256(rightPackBytes)
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', executor.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
-      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
-      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       const left = join(leftRoot, 'campaign.json')
       const right = join(rightRoot, 'campaign.json')
       writeFileSync(left, JSON.stringify(leftDocument, null, 2))
@@ -440,34 +466,45 @@ describe('real-model quality campaign scorer', () => {
       expect(eligible.status).toBe(0)
       expect(JSON.parse(eligible.stdout)).toMatchObject({ eligible: true })
 
-      const adjudicatorPem = adjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString()
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', adjudicator.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', adjudicator.privateKey)
-      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
-      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
-      writeFileSync(left, JSON.stringify(leftDocument, null, 2))
-      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
       writeFileSync(trustStorePath, JSON.stringify({
         schemaVersion: 'legion-adjudicator-trust-v1',
-        adjudicators: { 'quality-lab': adjudicatorPem },
-        executors: { 'execution-lab': adjudicatorPem },
+        adjudicators: { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        executors: { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+        heldOutPacks: {},
       }))
+      const uncommittedPack = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(uncommittedPack.status).not.toBe(0)
+      expect(uncommittedPack.stderr).toContain('held-out pack trust entry')
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
+
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftAdjudicator.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightAdjudicator.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
+      writeFileSync(left, JSON.stringify(leftDocument, null, 2))
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftAdjudicatorPem, 'execution-lab-b': rightAdjudicatorPem },
+      )
       const sharedRole = spawnSync(process.execPath, [
         'scripts/evaluate-exposure-evidence.mjs', ...args,
       ], { cwd: ROOT, encoding: 'utf8' })
       expect(sharedRole.status).not.toBe(0)
       expect(sharedRole.stderr).toContain('trust roles must use distinct keys')
-      writeFileSync(trustStorePath, JSON.stringify({
-        schemaVersion: 'legion-adjudicator-trust-v1',
-        adjudicators: { 'quality-lab': adjudicatorPem },
-        executors: {
-          'execution-lab': executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
-        },
-      }))
-      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', executor.privateKey)
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
-      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
-      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab-a', leftExecutor.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab-a', leftAdjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       writeFileSync(left, JSON.stringify(leftDocument, null, 2))
       writeFileSync(right, JSON.stringify(rightDocument, null, 2))
 
@@ -487,8 +524,8 @@ describe('real-model quality campaign scorer', () => {
       })
 
       for (const run of rightDocument.runs) run.executionId = run.executionId.replace('execution-b-', 'execution-a-')
-      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
-      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab-b', rightExecutor.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab-b', rightAdjudicator.privateKey)
       writeFileSync(right, JSON.stringify(rightDocument, null, 2))
       const replayed = spawnSync(process.execPath, [
         'scripts/evaluate-exposure-evidence.mjs', ...args,

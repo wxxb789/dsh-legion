@@ -75,6 +75,7 @@ const checks = [
   ['executionReceiptFields', contract.executionReceiptFields, ['schemaVersion', 'signerId', 'payload', 'signature']],
   ['executionReceiptPayloadFields', contract.executionReceiptPayloadFields, ['executionId', 'caseId', 'repeat', 'pairId', 'arm', 'order', 'exposure', 'status', 'artifact', 'provenance', 'usage', 'timing', 'infraReceipt']],
   ['compatibilityReceiptFields', contract.compatibilityReceiptFields, ['schemaVersion', 'requestedDshVersion', 'resolvedDshVersion', 'nodeVersion', 'packageVersion', 'tarballSha256', 'consumerLockfileFile', 'consumerLockfileSha256', 'dshDependencies', 'status']],
+  ['heldOutPackTrustFields', contract.heldOutPackTrustFields, ['packId', 'issuer', 'commitmentId', 'committedAt', 'unsealedAt']],
   ['authorityOwners', contract.authorityOwners, {
     modelStrategyExposure: 'deployment',
     childLifecycle: 'dsh-subagent',

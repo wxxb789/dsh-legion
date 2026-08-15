@@ -33,12 +33,14 @@ if (left.campaignId === right.campaignId
   reasons.push('campaign identities are not independent')
 }
 if (left.evidence.adjudicationBatch === right.evidence.adjudicationBatch
-  || left.evidence.adjudicationReceiptSha256 === right.evidence.adjudicationReceiptSha256) {
+  || left.evidence.adjudicationReceiptSha256 === right.evidence.adjudicationReceiptSha256
+  || left.evidence.adjudicationSigner === right.evidence.adjudicationSigner) {
   reasons.push('campaign adjudication receipts are not independent')
 }
 if (left.evidence.casePack.visibility !== 'held-out'
   || right.evidence.casePack.visibility !== 'held-out'
-  || left.evidence.casePack.sha256 === right.evidence.casePack.sha256) {
+  || left.evidence.casePack.sha256 === right.evidence.casePack.sha256
+  || left.evidence.casePack.commitmentId === right.evidence.casePack.commitmentId) {
   reasons.push('two distinct held-out case packs are required')
 }
 if (left.evidence.catalogDigest !== currentCatalogDigest
@@ -51,6 +53,10 @@ if (left.evidence.executionCommit !== right.evidence.executionCommit) {
 const leftExecutionIds = new Set(left.evidence.executionIds)
 if (right.evidence.executionIds.some(executionId => leftExecutionIds.has(executionId))) {
   reasons.push('campaigns reuse one or more execution identities')
+}
+const leftExecutionSigners = new Set(left.evidence.executionSigners)
+if (right.evidence.executionSigners.some(signerId => leftExecutionSigners.has(signerId))) {
+  reasons.push('campaigns reuse one or more executor trust principals')
 }
 if (left.evidence.rubricSha256 !== right.evidence.rubricSha256
   || left.evidence.thresholdsSha256 !== right.evidence.thresholdsSha256) {

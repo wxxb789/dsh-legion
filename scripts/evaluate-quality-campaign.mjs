@@ -273,7 +273,8 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
     readFile(thresholdPath),
     readFile(contractPath),
   ])
-  const casePackVisibility = sha256(casePackBytes) === sha256(openCasePackBytes)
+  const casePackSha256 = sha256(casePackBytes)
+  const casePackVisibility = casePackSha256 === sha256(openCasePackBytes)
     ? 'development'
     : 'held-out'
   const casePack = JSON.parse(casePackBytes.toString('utf8'))
@@ -291,15 +292,37 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
   if (casePackVisibility === 'held-out'
     && (trustStore?.schemaVersion !== 'legion-adjudicator-trust-v1'
       || typeof trustStore.adjudicators !== 'object'
-      || typeof trustStore.executors !== 'object')) {
+      || typeof trustStore.executors !== 'object'
+      || typeof trustStore.heldOutPacks !== 'object')) {
     throw new Error('held-out campaign requires a valid trusted adjudicator/executor store')
   }
   if (campaign.campaign.casePackId !== casePack.id
-    || campaign.campaign.casePackSha256 !== sha256(casePackBytes)
+    || campaign.campaign.casePackSha256 !== casePackSha256
     || campaign.campaign.thresholdsSha256 !== sha256(thresholdBytes)
     || !/^sha256:[a-f0-9]{64}$/.test(campaign.environment?.catalogDigest ?? '')
     || typeof campaign.environment?.executionCommit !== 'string') {
     throw new Error('campaign evidence digest mismatch')
+  }
+  const heldOutPackTrust = casePackVisibility === 'held-out'
+    ? trustStore.heldOutPacks[casePackSha256]
+    : undefined
+  if (casePackVisibility === 'held-out') {
+    assertExactKeys(
+      heldOutPackTrust,
+      publicContract.heldOutPackTrustFields,
+      'held-out pack trust entry',
+    )
+    if (heldOutPackTrust.packId !== casePack.id
+      || typeof heldOutPackTrust.issuer !== 'string'
+      || heldOutPackTrust.issuer.length === 0
+      || typeof heldOutPackTrust.commitmentId !== 'string'
+      || heldOutPackTrust.commitmentId.length === 0
+      || !Number.isFinite(Date.parse(heldOutPackTrust.committedAt))
+      || !Number.isFinite(Date.parse(heldOutPackTrust.unsealedAt))
+      || Date.parse(heldOutPackTrust.committedAt) >= Date.parse(campaign.campaign.startedAt)
+      || Date.parse(heldOutPackTrust.unsealedAt) < Date.parse(campaign.campaign.endedAt)) {
+      throw new Error('held-out pack trust entry does not prove pre-execution commitment and embargo')
+    }
   }
   if (casePack.track !== track || casePack.cases.length !== thresholds.caseCount) {
     throw new Error('case pack does not match campaign track or threshold count')
@@ -367,7 +390,7 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
     catalogDigest: campaign.environment.catalogDigest,
     executionCommit: campaign.environment.executionCommit,
     deploymentHardBudget: campaign.environment.deploymentHardBudget === true,
-    casePackSha256: sha256(casePackBytes),
+    casePackSha256,
     rubricSha256: campaign.campaign.rubric.sha256,
     thresholdsSha256: sha256(thresholdBytes),
     scoredRunsSha256: sha256(canonical(scoredRunRecords)),
@@ -527,13 +550,19 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       campaignSha256: sha256(campaignBytes),
       casePack: {
         id: casePack.id,
-        sha256: sha256(casePackBytes),
+        sha256: casePackSha256,
         visibility: casePackVisibility,
+        issuer: heldOutPackTrust?.issuer ?? null,
+        commitmentId: heldOutPackTrust?.commitmentId ?? null,
+        committedAt: heldOutPackTrust?.committedAt ?? null,
+        unsealedAt: heldOutPackTrust?.unsealedAt ?? null,
       },
       thresholdsSha256: sha256(thresholdBytes),
       rubricSha256: campaign.campaign.rubric.sha256,
       adjudicationReceiptSha256: campaign.campaign.adjudicationReceipt.sha256,
       adjudicationBatch: adjudication.batchId,
+      adjudicationSigner: adjudication.signerId,
+      executionSigners: [...executionSignerIds].sort(),
       catalogDigest: campaign.environment?.catalogDigest,
       executionCommit: campaign.environment?.executionCommit,
       executionIds,
