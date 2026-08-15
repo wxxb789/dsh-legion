@@ -54,6 +54,10 @@ describe('versioned result contracts', () => {
       .toThrow(/violated review-v1/)
     expect(() => materializeStructuredResult('review-v1', { ...input, verdict: 'maybe' }))
       .toThrow(/violated review-v1/)
+    expect(() => materializeStructuredResult('review-v1', {
+      ...input,
+      findings: [{ ...input.findings[0], evidence: [] }],
+    })).toThrow(/violated review-v1|must not be empty/)
   })
 
   it('keeps text contract schema-free', () => {

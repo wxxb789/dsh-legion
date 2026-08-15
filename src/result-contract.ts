@@ -18,7 +18,7 @@ const findingItem = {
   properties: {
     title: { type: 'string' as const },
     detail: { type: 'string' as const },
-    evidence: { type: 'array' as const, items: evidenceItem },
+    evidence: { type: 'array' as const, items: evidenceItem, minItems: 1 },
   },
   required: ['title', 'detail', 'evidence'],
 }
@@ -30,7 +30,7 @@ const reviewFindingItem = {
     severity: { type: 'string' as const, enum: ['low', 'medium', 'high', 'critical'] },
     title: { type: 'string' as const },
     detail: { type: 'string' as const },
-    evidence: { type: 'array' as const, items: evidenceItem },
+    evidence: { type: 'array' as const, items: evidenceItem, minItems: 1 },
     recommendation: { type: 'string' as const },
   },
   required: ['severity', 'title', 'detail', 'evidence', 'recommendation'],
@@ -85,6 +85,7 @@ function textArray(value: unknown, at: string): string[] {
 
 function evidence(value: unknown, at: string): JsonValue[] {
   if (!Array.isArray(value)) throw new Error(`dsh-legion: structured result ${at} is not an array`)
+  if (value.length === 0) throw new Error(`dsh-legion: structured result ${at} must not be empty`)
   return value.map((item, index) => {
     const source = record(item)
     return {

@@ -1,16 +1,21 @@
 import { createHash } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const outputArgument = process.argv.slice(2).find(argument => argument !== '--')
+const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
+const sourceMode = arguments_.find(argument => argument.startsWith('--source='))?.slice(9)
+  ?? 'workspace'
+if (!['git', 'workspace'].includes(sourceMode)) {
+  throw new Error(`unsupported reproducible-pack source mode: ${sourceMode}`)
+}
+const outputArgument = arguments_.find(argument => !argument.startsWith('--source='))
 const outputDirectory = outputArgument === undefined ? undefined : resolve(outputArgument)
-const sandbox = await mkdtemp(join(tmpdir(), 'dsh-legion-reproducible-pack-'))
-const canonicalTempRoot = await realpath(tmpdir())
+const canonicalTempRoot = await realpath(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const sandbox = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-reproducible-pack-'))
 const canonicalSandboxRoot = await realpath(sandbox)
 const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
 if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
@@ -35,6 +40,10 @@ const copySource = source => {
   if (relativeSource === '') return true
   return !excludedRoots.has(relativeSource.split(/[\\/]/u)[0])
 }
+const sourceArchive = join(sandbox, 'source.tar')
+if (sourceMode === 'git') {
+  run('git', ['archive', '--format=tar', '--output', sourceArchive, 'HEAD'], root)
+}
 
 try {
   const digests = []
@@ -44,7 +53,12 @@ try {
     const packageRoot = join(roundRoot, 'package')
     const destination = join(roundRoot, 'pack')
     await mkdir(roundRoot)
-    await cp(root, packageRoot, { recursive: true, filter: copySource })
+    if (sourceMode === 'git') {
+      await mkdir(packageRoot)
+      run('tar', ['-xf', sourceArchive, '-C', packageRoot], root)
+    } else {
+      await cp(root, packageRoot, { recursive: true, filter: copySource })
+    }
     await symlink(
       join(root, 'node_modules'),
       join(packageRoot, 'node_modules'),

@@ -1,6 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
@@ -52,12 +51,13 @@ class PackedAdapter extends LlmAdapter {
   }
 }
 
-const sessionRoot = mkdtempSync(join(tmpdir(), 'dsh-legion-packed-e2e-'))
-const resourceRoot = mkdtempSync(join(process.cwd(), '.packed-resources-'))
+const trustedTempRoot = realpathSync(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const sessionRoot = mkdtempSync(join(trustedTempRoot, 'dsh-legion-packed-e2e-'))
+const resourceRoot = mkdtempSync(join(trustedTempRoot, 'dsh-legion-packed-resources-'))
 const resourceRootName = basename(resourceRoot)
 const ctx = new Context()
 try {
-  ctx.baseUrl = pathToFileURL(process.cwd()).href + '/'
+  ctx.baseUrl = pathToFileURL(trustedTempRoot).href + '/'
   writeFileSync(join(resourceRoot, 'packed.md'), 'Use the packed artifact instruction.\n')
 
   await mountAgentLoopTestDependencies(ctx)

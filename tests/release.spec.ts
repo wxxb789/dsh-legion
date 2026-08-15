@@ -109,7 +109,7 @@ describe('reproducible CI and release contracts', () => {
     expect(actionRefs.every(reference => /@[a-f0-9]{40}$/.test(reference!))).toBe(true)
     expect(workflow).toContain('id-token: write')
     expect(workflow).toContain('node scripts/verify-release.mjs')
-    expect(workflow).toContain('pnpm run verify:reproducible-pack -- dist')
+    expect(workflow).toContain('pnpm run verify:reproducible-pack -- --source=git dist')
     expect(workflow).not.toContain('npm pack --ignore-scripts --pack-destination dist')
     expect(workflow).toContain('runs-on: ubuntu-24.04')
     expect(workflow).toContain('node-version: 24.19.0')

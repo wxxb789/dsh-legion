@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -9,8 +8,8 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
 const publicContract = JSON.parse(await readFile(join(projectRoot, 'contracts', 'v1.json'), 'utf8'))
 const dshVersionSpec = process.env.DSH_VERSION ?? '0.1.0-rc.6'
-const sandboxRoot = await mkdtemp(join(tmpdir(), 'dsh-legion-packed-delegation-'))
-const canonicalTempRoot = await realpath(tmpdir())
+const canonicalTempRoot = await realpath(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
 const canonicalSandboxRoot = await realpath(sandboxRoot)
 const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
 if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
