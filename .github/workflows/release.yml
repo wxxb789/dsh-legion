@@ -26,9 +26,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
       - run: node scripts/verify-release.mjs "$GITHUB_REF_NAME"
-      - run: pnpm run build
-      - run: pnpm run verify:reproducible-pack
-      - run: mkdir -p dist && npm pack --ignore-scripts --pack-destination dist
+      - run: pnpm run verify:reproducible-pack -- dist
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: package-tarball
