@@ -420,6 +420,13 @@ type InvalidMemberStage<Team extends TeamSpec, Stage> = Stage extends {
 : Stage
 type InvalidMemberStages<Team extends TeamSpec, Stages extends readonly StrategyStageSpec[]> =
   Stages[number] extends infer Stage ? InvalidMemberStage<Team, Stage> : never
+type RequiredTeamMembers<Team extends TeamSpec> = {
+  [Name in keyof Team['members'] & string]: MemberMinimum<Team['members'][Name]> extends 0
+    ? never
+    : Name
+}[keyof Team['members'] & string]
+type MissingRequiredMembers<Team extends TeamSpec, Stages extends readonly StrategyStageSpec[]> =
+  Exclude<RequiredTeamMembers<Team>, StageMembers<Stages>>
 
 /** Type-level authoring helper; runtime data still crosses the normal schema/compiler seam. */
 export function defineStrategy<const Spec extends StrategySpec>(
@@ -439,7 +446,8 @@ export function defineStrategyFor<
     & (Exclude<StageMembers<Spec['stages']>, keyof Team['spec']['members'] & string> extends never
       ? unknown
       : never)
-    & (InvalidMemberStages<Team['spec'], Spec['stages']> extends never ? unknown : never),
+    & (InvalidMemberStages<Team['spec'], Spec['stages']> extends never ? unknown : never)
+    & (MissingRequiredMembers<Team['spec'], Spec['stages']> extends never ? unknown : never),
 ): Spec {
   return spec
 }

@@ -236,6 +236,26 @@ defineStrategy({
   ],
 })
 
+const requiredSlotsTeam = defineTeam('required-slots', {
+  description: 'Required slots.',
+  members: {
+    first: { profile: 'deep', minParticipants: 1 },
+    second: { profile: 'review', minParticipants: 1 },
+  },
+})
+// @ts-expect-error A typed Strategy must cover every Team slot with positive minimum participation.
+defineStrategyFor(requiredSlotsTeam, {
+  description: 'Misses a required slot.', team: 'required-slots',
+  stages: [{
+    kind: 'delegate', id: 'first', member: 'first',
+    inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+    output: { artifact: 'result', contract: 'text' }, prompt: 'Run first.',
+  }],
+  completion: { artifact: 'result', contract: 'text' },
+  limits: { maxAgents: 1, maxConcurrent: 1, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+  memberFailure: 'fail',
+})
+
 // @ts-expect-error Completion must reference an existing single artifact with the same contract.
 defineStrategy({
   ...typedStrategy,
