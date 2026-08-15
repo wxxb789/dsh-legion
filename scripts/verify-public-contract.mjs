@@ -6,6 +6,10 @@ import * as legion from '../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const contract = JSON.parse(await readFile(resolve(root, 'contracts/v1.json'), 'utf8'))
+const compatibilityPolicy = JSON.parse(await readFile(
+  resolve(root, 'contracts/compatibility.json'),
+  'utf8',
+))
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const declarationBytes = await readFile(resolve(root, 'lib/index.d.ts'))
 const declarationSource = declarationBytes.toString('utf8').replace(/\r\n/g, '\n')
@@ -34,6 +38,13 @@ for (const statement of sourceFile.statements) {
 const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
 const checks = [
   ['schemaVersion', contract.schemaVersion, 'dsh-legion-public-contract-v1'],
+  ['compatibilityPolicy.schemaVersion', compatibilityPolicy.schemaVersion, 'dsh-legion-compatibility-policy-v1'],
+  ['compatibilityPolicy.dshPeerRange', compatibilityPolicy.dshPeerRange, manifest.peerDependencies['@deepseek-ai/dsh-agent']],
+  ['compatibilityPolicy.peerRanges', [...new Set(Object.entries(manifest.peerDependencies)
+    .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+    .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
+  ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.0-rc.6'],
+  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.0-rc.6'],
   ['packageMajor', contract.packageMajor, Number.parseInt(manifest.version.split('.')[0], 10)],
   ['declarationExports', contract.declarationExports, [...declarationExports].sort()],
   ['runtimeExports', contract.runtimeExports, Object.keys(legion).sort()],

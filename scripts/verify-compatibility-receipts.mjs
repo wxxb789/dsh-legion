@@ -7,13 +7,17 @@ import { load } from 'js-yaml'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const directory = resolve(process.argv[2] ?? 'dist')
 const contract = JSON.parse(await readFile(resolve(root, 'contracts/v1.json'), 'utf8'))
+const compatibilityPolicy = JSON.parse(await readFile(
+  resolve(root, 'contracts/compatibility.json'),
+  'utf8',
+))
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const names = await readdir(directory)
 const tarballs = names.filter(name => name.endsWith('.tgz'))
 if (tarballs.length !== 1) throw new Error(`release requires exactly one tarball, found ${String(tarballs.length)}`)
 const tarballBytes = await readFile(resolve(directory, tarballs[0]))
 const tarballSha256 = `sha256:${createHash('sha256').update(tarballBytes).digest('hex')}`
-const receiptNames = names.filter(name => /^compatibility-(minimum|latest-compatible)-(22\.19\.0|24\.x)\.json$/.test(name)).sort()
+const receiptNames = names.filter(name => /^compatibility-(minimum|latest-compatible)-(22\.19\.0|24\.19\.0)\.json$/.test(name)).sort()
 if (receiptNames.length !== 4) throw new Error(`release requires four compatibility receipts, found ${String(receiptNames.length)}`)
 const expectedFields = [...contract.compatibilityReceiptFields].sort()
 const expectedDshPackages = [
@@ -22,7 +26,7 @@ const expectedDshPackages = [
   'dsh-system-prompt', 'dsh-tools',
 ]
 for (const name of receiptNames) {
-  const slot = /^compatibility-(minimum|latest-compatible)-(22\.19\.0|24\.x)\.json$/.exec(name)
+  const slot = /^compatibility-(minimum|latest-compatible)-(22\.19\.0|24\.19\.0)\.json$/.exec(name)
   if (slot === null) throw new Error(`invalid compatibility receipt filename ${name}`)
   const [, channel, node] = slot
   const receipt = JSON.parse(await readFile(resolve(directory, name), 'utf8'))
@@ -42,10 +46,10 @@ for (const name of receiptNames) {
   ]
   const lockfileSha256 = `sha256:${createHash('sha256').update(lockfileBytes).digest('hex')}`
   const fields = Object.keys(receipt).sort()
-  const expectedRequest = channel === 'minimum' ? '0.1.0-rc.6' : '>=0.1.0-rc.6 <0.2.0'
-  const nodeMatches = node === '22.19.0'
-    ? receipt.nodeVersion === 'v22.19.0'
-    : /^v24\.\d+\.\d+$/.test(receipt.nodeVersion)
+  const expectedRequest = channel === 'minimum'
+    ? compatibilityPolicy.minimumDshVersion
+    : compatibilityPolicy.latestTestedDshVersion
+  const nodeMatches = receipt.nodeVersion === `v${node}`
   const dependencyNames = Array.isArray(receipt.dshDependencies)
     ? receipt.dshDependencies.map(item => item?.name).sort()
     : []
@@ -53,8 +57,10 @@ for (const name of receiptNames) {
     || receipt.schemaVersion !== contract.compatibilityReceiptVersion
     || receipt.requestedDshVersion !== expectedRequest
     || !nodeMatches
-    || (channel === 'minimum' && receipt.resolvedDshVersion !== '0.1.0-rc.6')
-    || (channel === 'latest-compatible' && !receipt.resolvedDshVersion.startsWith('0.1.'))
+    || (channel === 'minimum'
+      && receipt.resolvedDshVersion !== compatibilityPolicy.minimumDshVersion)
+    || (channel === 'latest-compatible'
+      && receipt.resolvedDshVersion !== compatibilityPolicy.latestTestedDshVersion)
     || receipt.packageVersion !== manifest.version
     || receipt.tarballSha256 !== tarballSha256
     || receipt.consumerLockfileFile !== expectedLockfile

@@ -12,6 +12,9 @@ const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
 const contract = JSON.parse(readFileSync(join(ROOT, 'contracts/v1.json'), 'utf8')) as {
   compatibilityReceiptVersion: string
 }
+const compatibilityPolicy = JSON.parse(
+  readFileSync(join(ROOT, 'contracts/compatibility.json'), 'utf8'),
+) as { minimumDshVersion: string; latestTestedDshVersion: string }
 const DSH_PACKAGES = [
   'dsh-agent', 'dsh-agent-loop', 'dsh-agent-loop-testkit', 'dsh-llm', 'dsh-session',
   'dsh-session-persistence-jsonl', 'dsh-subagent', 'dsh-subagent-spawn-in-process',
@@ -23,8 +26,10 @@ function fixture(root: string): void {
   writeFileSync(join(root, `dsh-legion-${manifest.version}.tgz`), tarball)
   const tarballSha256 = `sha256:${createHash('sha256').update(tarball).digest('hex')}`
   for (const channel of ['minimum', 'latest-compatible']) {
-    for (const node of ['22.19.0', '24.x']) {
-      const resolved = channel === 'minimum' ? '0.1.0-rc.6' : '0.1.0-rc.9'
+    for (const node of ['22.19.0', '24.19.0']) {
+      const resolved = channel === 'minimum'
+        ? compatibilityPolicy.minimumDshVersion
+        : compatibilityPolicy.latestTestedDshVersion
       const lockfileName = `compatibility-${channel}-${node}.lock.yaml`
       const lockfile = [
         "lockfileVersion: '9.0'",
@@ -35,9 +40,9 @@ function fixture(root: string): void {
       writeFileSync(join(root, lockfileName), lockfile)
       writeFileSync(join(root, `compatibility-${channel}-${node}.json`), JSON.stringify({
         schemaVersion: contract.compatibilityReceiptVersion,
-        requestedDshVersion: channel === 'minimum' ? '0.1.0-rc.6' : '>=0.1.0-rc.6 <0.2.0',
+        requestedDshVersion: resolved,
         resolvedDshVersion: resolved,
-        nodeVersion: node === '22.19.0' ? 'v22.19.0' : 'v24.0.0',
+        nodeVersion: `v${node}`,
         packageVersion: manifest.version,
         tarballSha256,
         consumerLockfileFile: lockfileName,
@@ -74,7 +79,7 @@ describe('release compatibility receipt verifier', () => {
     try {
       fixture(root)
       const copied = readFileSync(join(root, 'compatibility-minimum-22.19.0.json'))
-      writeFileSync(join(root, 'compatibility-latest-compatible-24.x.json'), copied)
+      writeFileSync(join(root, 'compatibility-latest-compatible-24.19.0.json'), copied)
       expect(verify(root).status).not.toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })

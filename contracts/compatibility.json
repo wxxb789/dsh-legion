@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "dsh-legion-compatibility-policy-v1",
+  "dshPeerRange": ">=0.1.0-rc.6 <0.2.0",
+  "minimumDshVersion": "0.1.0-rc.6",
+  "latestTestedDshVersion": "0.1.0-rc.6"
+}
