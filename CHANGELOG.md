@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Immutable lowering to `dsh-delegate`, `dsh-subagent-fanout`, and `dsh-goal` primitive IR plus deterministic StrategyPlanDigest.
 - Public direct/fanout `executeStrategyPlan()` adapter with real one-shot DSH children, artifact handoff, deadline/output bounds, disposal, and explicit terminal outcomes.
 - Blocking deterministic direct-vs-strategy protocol benchmark with versioned structural and child-count thresholds.
+- Offline real-model campaign scorer with 12-case review/research development packs, paired cluster bootstrap confidence intervals, safety/cost/latency gates, and two-held-out-campaign exposure validation.
 - Ordinary defaults-as-data templates for `independent-review`, `research-panel`, and `plan-execute-review`, mirrored by the shipped preset.
 
 ### Changed

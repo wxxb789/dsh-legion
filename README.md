@@ -357,6 +357,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0008: Versioned config and rollback](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0008-versioned-config-and-rollback.md)
 - [ADR 0009: Reproducible provenance releases](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0009-reproducible-provenance-releases.md)
 - [ADR 0010: Declarative Team/Strategy IR](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0010-declarative-team-strategy-ir.md)
+- [ADR 0011: Two-tier Strategy benchmark gate](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0011-two-tier-strategy-benchmark-gate.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

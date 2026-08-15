@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "legion-case-pack-v1",
+  "id": "research-panel-v1",
+  "track": "research-panel",
+  "cases": [
+    {
+      "id": "research-aggregate-01",
+      "category": "multi-source",
+      "objective": "Determine the supported Node and pnpm versions.",
+      "fixture": ["source-a: package engines require Node ^22.19 or >=24", "source-b: packageManager is pnpm 11.21.0", "source-c: CI tests Node 22.19 and 24"],
+      "oracle": { "requiredFactIds": ["NODE_RANGE", "PNPM_VERSION", "CI_MATRIX"], "forbiddenClaimIds": [], "requiredSourceRefs": ["source-a", "source-b", "source-c"] }
+    },
+    {
+      "id": "research-aggregate-02",
+      "category": "multi-source",
+      "objective": "Summarize release artifact guarantees.",
+      "fixture": ["source-a: npm tarball is built once", "source-b: SPDX SBOM is derived from unpacked tarball", "source-c: SHA256SUMS and attestation cover release assets"],
+      "oracle": { "requiredFactIds": ["ONE_TARBALL", "TARBALL_SBOM", "CHECKSUM_ATTESTATION"], "forbiddenClaimIds": [], "requiredSourceRefs": ["source-a", "source-b", "source-c"] }
+    },
+    {
+      "id": "research-aggregate-03",
+      "category": "multi-source",
+      "objective": "Describe the three digest layers.",
+      "fixture": ["source-a: policyDigest tracks normalized authored policy", "source-b: resourceDigest tracks Prompt Fragment content", "source-c: catalogDigest also tracks runtime provider facts"],
+      "oracle": { "requiredFactIds": ["POLICY_DIGEST", "RESOURCE_DIGEST", "CATALOG_DIGEST"], "forbiddenClaimIds": [], "requiredSourceRefs": ["source-a", "source-b", "source-c"] }
+    },
+    {
+      "id": "research-conflict-01",
+      "category": "source-conflict",
+      "objective": "Determine whether model catalog absence rejects a route.",
+      "fixture": ["source-a dated v1: unlisted models are rejected", "source-b dated v2: catalog membership is advisory", "source-c current exact resolver: UNKNOWN_MODEL may still be returned by an adapter"],
+      "oracle": { "requiredFactIds": ["CATALOG_ADVISORY", "EXACT_REJECTION_ADAPTER_OWNED"], "forbiddenClaimIds": ["UNLISTED_ALWAYS_REJECTED"], "requiredSourceRefs": ["source-b", "source-c"], "conflictIds": ["CATALOG_POLICY_VERSION_CONFLICT"] }
+    },
+    {
+      "id": "research-conflict-02",
+      "category": "source-conflict",
+      "objective": "Determine whether maxTokens survives cold resume.",
+      "fixture": ["source-a: initial route plan freezes maxTokens", "source-b: continuable descriptor omits per-activation maxTokens", "source-c: cold resume uses current route defaults"],
+      "oracle": { "requiredFactIds": ["INITIAL_ONLY_BUDGET", "COLD_RESUME_DEFAULTS"], "forbiddenClaimIds": ["MAXTOKENS_DURABLE"], "requiredSourceRefs": ["source-a", "source-b", "source-c"], "conflictIds": ["ACTIVATION_VS_DURABLE"] }
+    },
+    {
+      "id": "research-conflict-03",
+      "category": "source-conflict",
+      "objective": "Determine whether interrupt permanently terminates a member.",
+      "fixture": ["source-a: UI label says stop agent", "source-b: interrupt cancels only the current turn", "source-c: queued messages and descendants remain"],
+      "oracle": { "requiredFactIds": ["CURRENT_TURN_ONLY", "QUEUE_PRESERVED", "DESCENDANTS_UNAFFECTED"], "forbiddenClaimIds": ["PERMANENT_TERMINATION"], "requiredSourceRefs": ["source-b", "source-c"], "conflictIds": ["UI_RUNTIME_SEMANTICS"] }
+    },
+    {
+      "id": "research-primary-01",
+      "category": "primary-source-wins",
+      "objective": "Choose the authoritative config version.",
+      "fixture": ["source-a blog: configVersion is 1", "source-b current source constant: CURRENT_CONFIG_VERSION = 2", "source-c old example: no version"],
+      "oracle": { "requiredFactIds": ["CONFIG_VERSION_2"], "forbiddenClaimIds": ["CONFIG_VERSION_1_CURRENT"], "requiredSourceRefs": ["source-b"], "primarySourceRef": "source-b" }
+    },
+    {
+      "id": "research-primary-02",
+      "category": "primary-source-wins",
+      "objective": "Determine the minimum published DSH peer.",
+      "fixture": ["source-a old note: rc.5", "source-b package peerDependencies: >=0.1.0-rc.6 <0.2.0", "source-c discussion: use latest"],
+      "oracle": { "requiredFactIds": ["PEER_MIN_RC6"], "forbiddenClaimIds": ["PEER_MIN_RC5"], "requiredSourceRefs": ["source-b"], "primarySourceRef": "source-b" }
+    },
+    {
+      "id": "research-primary-03",
+      "category": "primary-source-wins",
+      "objective": "Determine whether default Strategies are model-callable.",
+      "fixture": ["source-a roadmap idea: expose strategies", "source-b current tool schema: profile only", "source-c compiler exports defaults for programmatic use"],
+      "oracle": { "requiredFactIds": ["MODEL_EXPOSURE_DISABLED", "PROGRAMMATIC_AVAILABLE"], "forbiddenClaimIds": ["STRATEGY_TOOL_ENABLED"], "requiredSourceRefs": ["source-b", "source-c"], "primarySourceRef": "source-b" }
+    },
+    {
+      "id": "research-unanswerable-01",
+      "category": "unanswerable",
+      "objective": "Report the provider's current account balance.",
+      "fixture": ["source-a: adapter registered", "source-b: exact metadata resolved", "source-c: no billing or credential API response"],
+      "oracle": { "requiredFactIds": [], "forbiddenClaimIds": ["BALANCE_POSITIVE", "BALANCE_ZERO"], "requiredSourceRefs": [], "expectedAbstain": true }
+    },
+    {
+      "id": "research-unanswerable-02",
+      "category": "unanswerable",
+      "objective": "State the current production p95 latency.",
+      "fixture": ["source-a: local unit duration 20ms", "source-b: CI wall time 40s", "source-c: no production telemetry"],
+      "oracle": { "requiredFactIds": [], "forbiddenClaimIds": ["PRODUCTION_P95_20MS", "PRODUCTION_P95_40S"], "requiredSourceRefs": [], "expectedAbstain": true }
+    },
+    {
+      "id": "research-unanswerable-03",
+      "category": "unanswerable",
+      "objective": "Determine whether an unlisted model will successfully stream now.",
+      "fixture": ["source-a: catalog omission is advisory", "source-b: exact resolve returns identity", "source-c: no live auth/network/health probe was run"],
+      "oracle": { "requiredFactIds": ["STATICALLY_RESOLVABLE"], "forbiddenClaimIds": ["LIVE_STREAM_GUARANTEED"], "requiredSourceRefs": ["source-a", "source-b"], "expectedAbstain": true }
+    }
+  ]
+}

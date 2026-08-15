@@ -54,6 +54,8 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'examples/legion.agent.cordis.fragment.yml')),
       access(resolve(ROOT, 'benchmarks/protocol-thresholds.json')),
       access(resolve(ROOT, 'scripts/benchmark-protocol.mjs')),
+      access(resolve(ROOT, 'scripts/evaluate-quality-campaign.mjs')),
+      access(resolve(ROOT, 'scripts/evaluate-exposure-evidence.mjs')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))
       .toMatch(/^#!\/usr\/bin\/env node/)

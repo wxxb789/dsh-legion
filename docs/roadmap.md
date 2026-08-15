@@ -52,7 +52,8 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Strategy registration and validation shared by Legion defaults and third-party Catalog Layers.
 - [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
 - [x] Blocking deterministic direct-vs-strategy protocol benchmark with versioned thresholds; it is not model-quality evidence.
-- [ ] Complete two paired real-model quality campaigns per Strategy with safety/cost/latency gates.
+- [x] Frozen 12-case review/research development packs plus offline paired-bootstrap campaign and exposure scorers.
+- [ ] Complete two paired held-out real-model quality campaigns per Strategy with safety/cost/latency gates.
 - [ ] Model-enable default `independent-review` after real-model benchmarks. (IR and direct subagent adapter complete.)
 - [ ] Model-enable default `research-panel` after real-model benchmarks. (IR and fanout/synthesis adapter complete.)
 - [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR complete; goal adapter pending.)

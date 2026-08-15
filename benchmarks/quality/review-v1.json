@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "legion-case-pack-v1",
+  "id": "independent-review-v1",
+  "track": "independent-review",
+  "cases": [
+    {
+      "id": "review-correctness-01",
+      "category": "correctness",
+      "objective": "Review a bounded queue patch for terminal-state correctness.",
+      "fixture": "The patch lets both timeout and completion write terminal state; no compare-and-set or first-wins guard is present. Completion can overwrite timeout.",
+      "oracle": { "requiredFindingIds": ["DOUBLE_TERMINAL_COMMIT"], "forbiddenFindingIds": [], "expectedVerdicts": ["needs-changes", "block"], "requiredEvidenceRefs": ["fixture:terminal-write"] }
+    },
+    {
+      "id": "review-correctness-02",
+      "category": "correctness",
+      "objective": "Review fanout aggregation when one member fails.",
+      "fixture": "The aggregator reports completed whenever any result exists, even when minSuccess is two and only one member completed.",
+      "oracle": { "requiredFindingIds": ["MIN_SUCCESS_IGNORED"], "forbiddenFindingIds": [], "expectedVerdicts": ["needs-changes", "block"], "requiredEvidenceRefs": ["fixture:min-success"] }
+    },
+    {
+      "id": "review-correctness-03",
+      "category": "correctness",
+      "objective": "Review a generation-based artifact commit patch.",
+      "fixture": "A reload increments generation, but an older asynchronous run commits without comparing its captured generation to the active generation.",
+      "oracle": { "requiredFindingIds": ["STALE_GENERATION_COMMIT"], "forbiddenFindingIds": [], "expectedVerdicts": ["needs-changes", "block"], "requiredEvidenceRefs": ["fixture:generation-check"] }
+    },
+    {
+      "id": "review-security-01",
+      "category": "security",
+      "objective": "Review a tool restriction merge.",
+      "fixture": "Deployment denies write and edit. The patch replaces the deny list with a profile allow list and thereby restores write.",
+      "oracle": { "requiredFindingIds": ["TOOL_AUTHORITY_WIDENING"], "forbiddenFindingIds": [], "expectedVerdicts": ["block"], "requiredEvidenceRefs": ["fixture:tool-policy"] }
+    },
+    {
+      "id": "review-security-02",
+      "category": "security",
+      "objective": "Review structured model output handling.",
+      "fixture": "Provider-owned structured output is cast to the trusted Review type without schema validation and includes an undeclared executable field.",
+      "oracle": { "requiredFindingIds": ["UNVALIDATED_STRUCTURED_OUTPUT"], "forbiddenFindingIds": [], "expectedVerdicts": ["block"], "requiredEvidenceRefs": ["fixture:structured-boundary"] }
+    },
+    {
+      "id": "review-security-03",
+      "category": "security",
+      "objective": "Review a resource path resolver.",
+      "fixture": "The resolver checks string prefix before readFile but never resolves symlinks; root/linked points outside the allowed root.",
+      "oracle": { "requiredFindingIds": ["SYMLINK_ROOT_ESCAPE"], "forbiddenFindingIds": [], "expectedVerdicts": ["block"], "requiredEvidenceRefs": ["fixture:linked-path"] }
+    },
+    {
+      "id": "review-clean-01",
+      "category": "clean",
+      "objective": "Review a deliberate immutable copy implementation.",
+      "fixture": "The patch clones and freezes a four-field config object. A reviewer comment suggests replacing it with a generic serializer, but no correctness or security issue exists.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["STYLE_AS_BLOCKER", "GENERIC_SERIALIZER_REQUIRED"], "expectedVerdicts": ["pass"], "requiredEvidenceRefs": [] }
+    },
+    {
+      "id": "review-clean-02",
+      "category": "clean",
+      "objective": "Review an intentional provider-managed depth sentinel.",
+      "fixture": "An external product owns recursion and the config uses maxDepth: provider-managed. Tests prove no local depth claim is made.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["NUMERIC_DEPTH_REQUIRED"], "expectedVerdicts": ["pass"], "requiredEvidenceRefs": [] }
+    },
+    {
+      "id": "review-clean-03",
+      "category": "clean",
+      "objective": "Review a deterministic sort before hashing.",
+      "fixture": "Map keys are sorted recursively before SHA-256. The extra sort is intentional for stable digests and all tests pass.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["REMOVE_CANONICAL_SORT"], "expectedVerdicts": ["pass"], "requiredEvidenceRefs": [] }
+    },
+    {
+      "id": "review-ambiguity-01",
+      "category": "evidence-insufficiency",
+      "objective": "Review a patch whose cancellation test output is missing.",
+      "fixture": "The author states cancellation tests passed but provides neither logs nor assertions. Code inspection alone cannot prove disposal settles.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["DISPOSAL_CONFIRMED_BROKEN"], "expectedVerdicts": ["needs-changes"], "requiredEvidenceRefs": [], "allowedOpenRisks": ["CANCELLATION_EVIDENCE_MISSING"] }
+    },
+    {
+      "id": "review-ambiguity-02",
+      "category": "evidence-insufficiency",
+      "objective": "Review a provider metadata change with no upstream contract citation.",
+      "fixture": "The change interprets an absent reasoning field as false. The supplied materials do not define whether absence is unknown or negative.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["MODEL_DEFINITELY_NON_REASONING"], "expectedVerdicts": ["needs-changes"], "requiredEvidenceRefs": [], "allowedOpenRisks": ["REASONING_SEMANTICS_UNVERIFIED"] }
+    },
+    {
+      "id": "review-ambiguity-03",
+      "category": "evidence-insufficiency",
+      "objective": "Review a claimed performance improvement without measurements.",
+      "fixture": "The implementation may reduce allocations, but no benchmark, profile, or workload is supplied and behavior tests remain green.",
+      "oracle": { "requiredFindingIds": [], "forbiddenFindingIds": ["PERFORMANCE_REGRESSION_CONFIRMED"], "expectedVerdicts": ["pass", "needs-changes"], "requiredEvidenceRefs": [], "allowedOpenRisks": ["PERFORMANCE_UNMEASURED"] }
+    }
+  ]
+}

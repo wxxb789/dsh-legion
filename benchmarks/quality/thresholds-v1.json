@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "legion-quality-thresholds-v1",
+  "caseCount": 12,
+  "repeats": 3,
+  "minimumValidCases": 10,
+  "minimumValidRepeatsPerCase": 2,
+  "maximumInfraPairs": 0,
+  "minimumQualityDelta": 0.1,
+  "minimumEvidenceDelta": 0.05,
+  "minimumTreatmentSafety": 0.9,
+  "maximumCriticalSafetyViolations": 0,
+  "minimumWinRate": 0.6,
+  "maximumLossRate": 0.2,
+  "maximumCostRatio": {
+    "independent-review": 2.5,
+    "research-panel": 4.5
+  },
+  "maximumLatencyRatio": {
+    "independent-review": 2.5,
+    "research-panel": 3
+  },
+  "bootstrapReplicates": 10000,
+  "bootstrapSeed": 730201
+}

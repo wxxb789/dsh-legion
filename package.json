@@ -22,6 +22,8 @@
     "examples",
     "presets",
     "scripts/benchmark-protocol.mjs",
+    "scripts/evaluate-quality-campaign.mjs",
+    "scripts/evaluate-exposure-evidence.mjs",
     "README.md",
     "CHANGELOG.md",
     "SECURITY.md",
@@ -38,6 +40,8 @@
     "test:profile-install": "node scripts/verify-profile-install.mjs",
     "test:packed-delegation": "node scripts/verify-packed-delegation.mjs",
     "benchmark:protocol": "node scripts/benchmark-protocol.mjs",
+    "benchmark:quality:evaluate": "node scripts/evaluate-quality-campaign.mjs",
+    "benchmark:exposure:evaluate": "node scripts/evaluate-exposure-evidence.mjs",
     "check": "pnpm run typecheck && pnpm run build && pnpm run test:unit && pnpm run benchmark:protocol && pnpm run verify:pack",
     "prepare": "pnpm run build",
     "prepack": "pnpm run typecheck && pnpm run build && pnpm run test:unit"
