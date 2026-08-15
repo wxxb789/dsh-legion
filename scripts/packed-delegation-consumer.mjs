@@ -135,7 +135,9 @@ try {
   })
 
   const schema = ctx.tools.schemas().find(item => item.name === 'legion')
-  const strategyNames = schema?.parameters?.properties?.strategy?.enum
+  const parameterBranches = schema?.parameters?.oneOf ?? [schema?.parameters]
+  const strategyNames = parameterBranches
+    .flatMap(branch => branch?.properties?.strategy?.enum ?? [])
   if (!Array.isArray(strategyNames) || !strategyNames.includes('packed-strategy')) {
     throw new Error('packed Config v2 Strategy is absent from the Legion tool schema')
   }
