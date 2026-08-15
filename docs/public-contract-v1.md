@@ -23,7 +23,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 - Execution receipts are `legion-execution-receipt-v1` with exact envelope fields `schemaVersion, signerId, payload, signature`; their payload binds execution identity, pair/arm/order/exposure/status, artifact, provenance, usage, timing, and optional infra receipt.
 - Blind adjudication receipts are `legion-adjudication-receipt-v2` with exact envelope fields `schemaVersion, batchId, blinded, signerId, payload, signature`; their payload binds campaign identity/Strategy/window, catalog and execution commit, hard-budget assertion, pack/rubric/threshold digests, and the complete scored run set.
 - Compatibility receipts are `dsh-legion-compatibility-receipt-v1`; they bind one exact tarball digest to requested/resolved DSH generation, Node version, consumer lockfile, installed DSH packages, package version, and passed status.
-- Held-out exposure requires externally registered, issuer-signed pre-execution pack commitments with post-run embargo, distinct trusted executor and adjudicator Ed25519 principals across campaigns, canonical disjoint execution identities, non-overlapping windows, and the current catalog generation.
+- Held-out exposure requires externally registered, issuer-signed pre-execution pack commitments with post-run embargo, distinct trusted executor, adjudicator, and pack-issuer Ed25519 principals/keys across campaigns, canonical disjoint execution identities, non-overlapping windows, and the current catalog generation.
 
 ## Authority and non-contracts
 

@@ -40,8 +40,10 @@ if (left.evidence.adjudicationBatch === right.evidence.adjudicationBatch
 if (left.evidence.casePack.visibility !== 'held-out'
   || right.evidence.casePack.visibility !== 'held-out'
   || left.evidence.casePack.sha256 === right.evidence.casePack.sha256
-  || left.evidence.casePack.commitmentId === right.evidence.casePack.commitmentId) {
-  reasons.push('two distinct held-out case packs are required')
+  || left.evidence.casePack.commitmentId === right.evidence.casePack.commitmentId
+  || left.evidence.casePack.issuer === right.evidence.casePack.issuer
+  || left.evidence.casePack.issuerKeySha256 === right.evidence.casePack.issuerKeySha256) {
+  reasons.push('two independently issued held-out case packs are required')
 }
 if (left.evidence.catalogDigest !== currentCatalogDigest
   || right.evidence.catalogDigest !== currentCatalogDigest) {

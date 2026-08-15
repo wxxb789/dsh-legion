@@ -572,6 +572,9 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
         sha256: casePackSha256,
         visibility: casePackVisibility,
         issuer: heldOutPackTrust?.issuer ?? null,
+        issuerKeySha256: casePackVisibility === 'held-out'
+          ? sha256(trustStore.packIssuers[heldOutPackTrust.issuer])
+          : null,
         commitmentId: heldOutPackTrust?.commitmentId ?? null,
         committedAt: heldOutPackTrust?.committedAt ?? null,
         unsealedAt: heldOutPackTrust?.unsealedAt ?? null,

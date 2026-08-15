@@ -483,6 +483,38 @@ describe('real-model quality campaign scorer', () => {
       expect(eligible.status).toBe(0)
       expect(JSON.parse(eligible.stdout)).toMatchObject({ eligible: true })
 
+      const mutableRightPackTrust = heldOutPacks[rightPackSha256]
+      if (mutableRightPackTrust === undefined) throw new Error('missing right pack trust fixture')
+      const originalRightPackSignature = mutableRightPackTrust.signature
+      const { signature: _signature, ...rightPackCommitment } = mutableRightPackTrust
+      mutableRightPackTrust.signature = signPayload(
+        null,
+        Buffer.from(canonical(rightPackCommitment)),
+        leftPackIssuer.privateKey,
+      ).toString('base64')
+      const leftIssuerKey = leftPackIssuer.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      writeFileSync(trustStorePath, JSON.stringify({
+        schemaVersion: 'legion-adjudicator-trust-v1',
+        adjudicators: { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        executors: { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+        packIssuers: {
+          'benchmark-issuer-a': leftIssuerKey,
+          'benchmark-issuer-b': leftIssuerKey,
+        },
+        heldOutPacks,
+      }))
+      const sharedPackIssuerKey = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(sharedPackIssuerKey.status).not.toBe(0)
+      expect(JSON.parse(sharedPackIssuerKey.stdout).reasons)
+        .toContain('two independently issued held-out case packs are required')
+      mutableRightPackTrust.signature = originalRightPackSignature
+      writeTrustStore(
+        { 'quality-lab-a': leftAdjudicatorPem, 'quality-lab-b': rightAdjudicatorPem },
+        { 'execution-lab-a': leftExecutorPem, 'execution-lab-b': rightExecutorPem },
+      )
+
       const mutableLeftPackTrust = heldOutPacks[leftPackSha256]
       if (mutableLeftPackTrust === undefined) throw new Error('missing left pack trust fixture')
       const originalCommittedAt = mutableLeftPackTrust.committedAt
