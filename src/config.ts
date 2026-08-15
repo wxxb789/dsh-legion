@@ -171,9 +171,9 @@ export const Config: z<Config> = z.object({
   guidance: z.string(),
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
-  catalogLayers: z.array(CatalogLayerSchema).max(31).default([]),
-  teams: z.dict(TeamSpecSchema).default({}),
-  strategies: z.dict(StrategySpecSchema).default({}),
+  catalogLayers: z.array(CatalogLayerSchema).max(31),
+  teams: z.dict(TeamSpecSchema),
+  strategies: z.dict(StrategySpecSchema),
 })
 
 function cloneAuthoredValue(value: unknown): unknown {
