@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +10,9 @@ const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'u
 const publicContract = JSON.parse(await readFile(join(projectRoot, 'contracts', 'v1.json'), 'utf8'))
 const dshVersionSpec = process.env.DSH_VERSION ?? '0.1.0-rc.6'
 const sandboxRoot = await mkdtemp(join(tmpdir(), 'dsh-legion-packed-delegation-'))
-const relativeSandbox = relative(tmpdir(), sandboxRoot)
+const canonicalTempRoot = await realpath(tmpdir())
+const canonicalSandboxRoot = await realpath(sandboxRoot)
+const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
 if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
   throw new Error(`refusing to use unexpected temporary path: ${sandboxRoot}`)
 }
