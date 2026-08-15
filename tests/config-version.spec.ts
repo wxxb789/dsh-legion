@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CURRENT_CONFIG_VERSION,
+  Config as ConfigSchema,
   exportConfigDocument,
   materializeConfig,
   type Config,
@@ -43,6 +44,7 @@ describe('versioned config migration and rollback', () => {
 
     expect(migrated.configVersion).toBe(CURRENT_CONFIG_VERSION)
     expect(migrated).toEqual(explicit)
+    expect(materializeConfig(ConfigSchema({ ...authored, configVersion: 1 }))).toEqual(explicit)
     expect(compileCatalog(authored, runtime).policyDigest)
       .toBe(compileCatalog(explicit, runtime).policyDigest)
   })
@@ -67,13 +69,9 @@ describe('versioned config migration and rollback', () => {
       .toThrow(/unsupported configVersion 3/)
   })
 
-  it('requires explicit v2 before any v2-only field is authored, even when empty', () => {
-    expect(() => materializeConfig({ ...authored, teams: {} }))
-      .toThrow(/configVersion 2 is required/)
-    expect(() => materializeConfig({ ...authored, strategies: {} }))
-      .toThrow(/configVersion 2 is required/)
-    expect(() => materializeConfig({ ...authored, catalogLayers: [] }))
-      .toThrow(/configVersion 2 is required/)
+  it('tolerates schema-normalized empty namespaces but requires v2 for non-empty data', () => {
+    expect(() => materializeConfig({ ...authored, teams: {}, strategies: {}, catalogLayers: [] }))
+      .not.toThrow()
     expect(() => materializeConfig({
       ...authored,
       teams: {

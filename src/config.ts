@@ -228,8 +228,9 @@ function assertKnownConfigKeys(input: unknown): void {
   }
   const authoredVersion = source?.configVersion ?? 1
   if (authoredVersion === 1
-    && source !== undefined
-    && ['catalogLayers', 'teams', 'strategies'].some(key => Object.hasOwn(source, key))) {
+    && (Array.isArray(source?.catalogLayers) && source.catalogLayers.length > 0
+      || Object.keys(record(source?.teams) ?? {}).length > 0
+      || Object.keys(record(source?.strategies) ?? {}).length > 0)) {
     throw new Error('dsh-legion: configVersion 2 is required for catalogLayers, teams, or strategies')
   }
   assertKnownKeys(
