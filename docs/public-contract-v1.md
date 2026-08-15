@@ -1,6 +1,6 @@
-# Public contract v1 candidate
+# Public contract v1
 
-This document freezes the intended dsh-legion 1.x compatibility surface. The machine-readable vocabulary is `contracts/v1.json`; `pnpm run verify:contract` checks it against built exports.
+This document freezes the dsh-legion 1.x compatibility surface. The machine-readable vocabulary is `contracts/v1.json`; `pnpm run verify:contract` checks it against built exports.
 
 ## Stable authored data
 
@@ -16,13 +16,22 @@ This document freezes the intended dsh-legion 1.x compatibility surface. The mac
 - Strategy tool calls require `{ kind: strategy, strategy, objective, limits? }` and deployment `enableStrategies: true`.
 - Branch fields cannot be mixed and invocation limits can only narrow authored limits.
 - Team Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.
-- Plans and execution snapshots bind policy, runtime Profile catalog, orchestration generation, Objective, and limits before child admission.
+- Opaque Plans and execution snapshots bind one branded Strategy generation (policy + runtime Profile catalog + orchestration), Objective, and limits before child admission.
+
+## Evidence receipt contracts
+
+- Execution receipts are `legion-execution-receipt-v1` with exact envelope fields `schemaVersion, signerId, payload, signature`; their payload binds execution identity, pair/arm/order/exposure/status, artifact, provenance, usage, timing, and optional infra receipt.
+- Blind adjudication receipts are `legion-adjudication-receipt-v2` with exact envelope fields `schemaVersion, batchId, blinded, signerId, payload, signature`; their payload binds campaign identity/Strategy/window, catalog and execution commit, hard-budget assertion, pack/rubric/threshold digests, and the complete scored run set.
+- Compatibility receipts are `dsh-legion-compatibility-receipt-v1`; they bind one exact tarball digest to requested/resolved DSH generation, Node version, consumer lockfile, installed DSH packages, package version, and passed status.
+- Held-out exposure requires trusted executor and adjudicator Ed25519 roles, canonical disjoint execution identities, two distinct packs/adjudications, non-overlapping windows, and the current catalog generation.
 
 ## Authority and non-contracts
 
 - DSH owns Agent/Session/subagent lifecycle, providers, tools, sandbox, approval, credentials, and cancellation.
 - Model Strategy exposure defaults off and is owned by deployment configuration.
 - Aggregate token and monetary-cost admission are not v1 fields because no authoritative Host reservation seam exists (ADR 0013).
+- Model facts are point observations, not an atomic adapter-generation lease; DSH remains start authority (ADR 0007).
+- Every published child is cleanup-owned; a provider that ignores disposal is reported as cleanup pending rather than falsely declared quiescent.
 - No retry, route replay, hidden default branch, persistent Team runtime, mailbox, or task store is implied.
 - Open benchmark packs and explicit opt-in do not constitute signed held-out evidence for automatic curated exposure.
 

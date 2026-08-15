@@ -83,7 +83,7 @@ const team: TeamNameType = TeamName('coding')
 const strategy: StrategyNameType = StrategyName('independent-review')
 const artifact: ArtifactNameType = ArtifactName('evidence')
 const member = MemberSlotName('executor')
-const teamRun: TeamRunIdType = TeamRunId('team-run-123')
+const teamRun: TeamRunIdType = TeamRunId('team-run-123e4567-e89b-42d3-a456-426614174000')
 const profileAsString: string = profile
 void config
 void routedConfig

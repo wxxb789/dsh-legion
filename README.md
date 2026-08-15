@@ -35,7 +35,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.6.0` adds an explicit, default-off model Strategy authority gate over config v2 Teams, executable Strategy plans, atomic execution snapshots, and the curated defaults-as-data catalog.
+`1.0.0` is the stable customization-first release: config v2 Profiles, Catalog Layers, Teams, executable Strategies, atomic execution snapshots, explicit model authority, evidence gates, and the curated defaults-as-data catalog.
 
 Supported:
 
@@ -261,7 +261,7 @@ catalogLayers:
         memberFailure: fail
 ```
 
-`compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
+Member Slot `minParticipants` is a Team participation requirement: a positive minimum requires the Strategy to select that slot, while zero permits omission; a stage that selects the slot still starts its declared one/fanout participant count. `compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
 
 The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. The shipped preset keeps them absent from the model-facing tool. A deployment may explicitly set `enableStrategies: true` to expose its active user/default catalog under its own authority; that opt-in is not a claim that curated defaults passed the real-model exposure gate. Programmatic callers may execute every compiled plan through `executeStrategyPlan(ctx, createStrategyExecutionSnapshot(profileCatalog, orchestrationCatalog), plan, parent, signal)`. The Strategy vocabulary contains only executable one-shot subagent stages; DSH Goals remain a separate single-objective session lifecycle rather than a Strategy member primitive.
 
@@ -269,7 +269,7 @@ The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-revi
 
 When enabled, the same `legion` tool accepts a strict Strategy branch: `{ "kind": "strategy", "strategy": "independent-review", "objective": "...", "limits": { "deadlineMs": 60000 } }`. Profile calls retain the legacy `{ profile?, description, prompt, run_in_background? }` shape; fields cannot be mixed across branches.
 
-`createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. `maxConcurrent` is a hard per-Team-Run ceiling for the current serial-stage/single-fanout IR; separate concurrent tool calls own separate Team Runs. Deployment-global admission requires the Host authority described by ADR 0013. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
+`createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. `maxConcurrent` is a hard per-Team-Run ceiling for the current serial-stage/single-fanout IR; separate concurrent tool calls own separate Team Runs. Deployment-global admission requires the Host authority described by ADR 0013. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and owns every published run through quiescent, failed, or explicitly pending cleanup. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
 ### Prompt Fragments
 
@@ -361,7 +361,8 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0011: Two-tier Strategy benchmark gate](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0011-two-tier-strategy-benchmark-gate.md)
 - [ADR 0012: Explicit model Strategy authority](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
 - [ADR 0013: Aggregate budgets require Host admission authority](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0013-aggregate-budgets-require-host-admission-authority.md)
-- [Public contract v1 candidate](https://github.com/wxxb789/dsh-legion/blob/main/docs/public-contract-v1.md)
+- [ADR 0014: V1 deep Modules own lifecycle and publication](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0014-v1-deep-modules-own-lifecycle-and-publication.md)
+- [Public contract v1](https://github.com/wxxb789/dsh-legion/blob/main/docs/public-contract-v1.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

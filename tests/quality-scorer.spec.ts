@@ -17,6 +17,24 @@ const canonical = (value: unknown): string => {
   return JSON.stringify(value)
 }
 
+function executionPayload(run: Record<string, unknown>): Record<string, unknown> {
+  return {
+    executionId: run.executionId,
+    caseId: run.caseId,
+    repeat: run.repeat,
+    pairId: run.pairId,
+    arm: run.arm,
+    order: run.order,
+    exposure: run.exposure,
+    status: run.status,
+    artifact: run.artifact,
+    provenance: run.provenance,
+    usage: run.usage,
+    timing: run.timing,
+    infraReceipt: run.infraReceipt ?? null,
+  }
+}
+
 function campaign(root: string, options: { critical?: boolean; cost?: boolean; hardBudget?: boolean } = {}) {
   const casePackBytes = readFileSync(join(ROOT, 'benchmarks/quality/review-v1.json'))
   const thresholdBytes = readFileSync(join(ROOT, 'benchmarks/quality/thresholds-v1.json'))
@@ -40,6 +58,7 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
       caseId: id,
       repeat,
       pairId: `${id}-r${String(repeat)}`,
+      executionId: `execution-a-${id}-r${String(repeat)}-direct`,
       arm: 'direct',
       order: repeat % 2 === 1 ? 1 : 2,
       exposure: 'direct-delegation',
@@ -60,6 +79,7 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
       caseId: id,
       repeat,
       pairId: `${id}-r${String(repeat)}`,
+      executionId: `execution-a-${id}-r${String(repeat)}-treatment`,
       arm: 'treatment',
       order: repeat % 2 === 1 ? 2 : 1,
       exposure: 'strategy:independent-review',
@@ -82,16 +102,33 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
       timing: { startedMonotonicMs: 0, endedMonotonicMs: 200 },
     },
   ]))
-  const scoredRunRecords = [...runs]
+  const runsWithReceipts = runs.map((run, index) => {
+    const payload = executionPayload(run as unknown as Record<string, unknown>)
+    const executionReceipt = contentRef(`execution-${String(index)}.json`, JSON.stringify({
+      schemaVersion: 'legion-execution-receipt-v1',
+      signerId: 'development',
+      payload,
+      signature: null,
+    }))
+    return { ...run, executionReceipt }
+  })
+  const scoredRunRecords = [...runsWithReceipts]
     .sort((left, right) => `${left.pairId}:${left.arm}`.localeCompare(`${right.pairId}:${right.arm}`))
   const adjudicationPayload = {
+    campaignId: 'review-campaign-a',
+    strategy: 'independent-review',
+    startedAt: '2026-08-01T00:00:00.000Z',
+    endedAt: '2026-08-02T00:00:00.000Z',
+    catalogDigest: stable,
+    executionCommit: 'commit-a',
+    deploymentHardBudget: options.hardBudget === true,
     casePackSha256: sha256(casePackBytes),
     rubricSha256: rubricRef.sha256,
     thresholdsSha256: sha256(thresholdBytes),
     scoredRunsSha256: sha256(canonical(scoredRunRecords)),
   }
   const adjudicationRef = contentRef('adjudication.json', JSON.stringify({
-    schemaVersion: 'legion-adjudication-receipt-v1',
+    schemaVersion: 'legion-adjudication-receipt-v2',
     batchId: 'blind-batch-a',
     blinded: true,
     signerId: 'development',
@@ -116,8 +153,31 @@ function campaign(root: string, options: { critical?: boolean; cost?: boolean; h
       executionCommit: 'commit-a',
       deploymentHardBudget: options.hardBudget === true,
     },
-    runs,
+    runs: runsWithReceipts,
   }
+}
+
+function refreshExecutionReceipts(
+  root: string,
+  document: ReturnType<typeof campaign>,
+  signerId = 'development',
+  privateKey?: KeyObject,
+): void {
+  document.runs.forEach((run, index) => {
+    const payload = executionPayload(run as unknown as Record<string, unknown>)
+    const signature = privateKey === undefined
+      ? null
+      : signPayload(null, Buffer.from(canonical(payload)), privateKey).toString('base64')
+    const content = JSON.stringify({
+      schemaVersion: 'legion-execution-receipt-v1',
+      signerId,
+      payload,
+      signature,
+    })
+    const uri = `artifacts/execution-${String(index)}.json`
+    writeFileSync(join(root, uri), content)
+    run.executionReceipt = { uri, sha256: sha256(content) }
+  })
 }
 
 function refreshAdjudication(
@@ -130,6 +190,13 @@ function refreshAdjudication(
   const scoredRunRecords = [...document.runs]
     .sort((left, right) => `${left.pairId}:${left.arm}`.localeCompare(`${right.pairId}:${right.arm}`))
   const payload = {
+    campaignId: document.campaign.id,
+    strategy: document.campaign.strategy,
+    startedAt: document.campaign.startedAt,
+    endedAt: document.campaign.endedAt,
+    catalogDigest: document.environment.catalogDigest,
+    executionCommit: document.environment.executionCommit,
+    deploymentHardBudget: document.environment.deploymentHardBudget === true,
     casePackSha256: document.campaign.casePackSha256,
     rubricSha256: document.campaign.rubric.sha256,
     thresholdsSha256: document.campaign.thresholdsSha256,
@@ -139,7 +206,7 @@ function refreshAdjudication(
     ? null
     : signPayload(null, Buffer.from(canonical(payload)), privateKey).toString('base64')
   const content = JSON.stringify({
-    schemaVersion: 'legion-adjudication-receipt-v1',
+    schemaVersion: 'legion-adjudication-receipt-v2',
     batchId,
     blinded: true,
     signerId,
@@ -210,6 +277,46 @@ describe('real-model quality campaign scorer', () => {
     }
   })
 
+  it('rejects campaign provenance edited after adjudication', () => {
+    const root = mkdtempSync(join(tmpdir(), 'legion-quality-provenance-'))
+    try {
+      const document = campaign(root)
+      document.environment.catalogDigest = `sha256:${'f'.repeat(64)}`
+      expect(() => evaluate(root, document)).toThrow(/not bound to campaign scores and evidence/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects undeclared receipt envelope fields under a frozen receipt version', () => {
+    const root = mkdtempSync(join(tmpdir(), 'legion-quality-receipt-schema-'))
+    try {
+      const document = campaign(root)
+      const path = join(root, document.campaign.adjudicationReceipt.uri)
+      const receipt = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+      receipt.extra = true
+      const content = JSON.stringify(receipt)
+      writeFileSync(path, content)
+      document.campaign.adjudicationReceipt.sha256 = sha256(content)
+      expect(() => evaluate(root, document)).toThrow(/adjudication receipt fields mismatch/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects non-canonical execution identities before replay comparison', () => {
+    const root = mkdtempSync(join(tmpdir(), 'legion-quality-execution-id-'))
+    try {
+      const document = campaign(root)
+      document.runs[0]!.executionId = ' execution-a'
+      refreshExecutionReceipts(root, document)
+      refreshAdjudication(root, document, 'blind-batch-a')
+      expect(() => evaluate(root, document)).toThrow(/canonical ASCII/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('fails a critical treatment safety violation even when quality improves', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-quality-fail-'))
     try {
@@ -230,6 +337,7 @@ describe('real-model quality campaign scorer', () => {
       if (direct === undefined) throw new Error('missing direct fixture')
       direct.status = 'safety_failure'
       direct.scores.criticalSafetyViolations = 0
+      refreshExecutionReceipts(root, document)
       refreshAdjudication(root, document, 'blind-batch-a')
       const result = evaluate(root, document)
       expect(result.status).not.toBe(0)
@@ -260,6 +368,7 @@ describe('real-model quality campaign scorer', () => {
       delete mutable.scores
       mutable.infraReceipt = { uri: 'artifacts/infra.json', sha256: sha256(receipt) }
       treatment.status = 'safety_failure'
+      refreshExecutionReceipts(root, document)
       refreshAdjudication(root, document, 'blind-batch-a')
       const result = evaluate(root, document)
       expect(result.status).not.toBe(0)
@@ -280,12 +389,16 @@ describe('real-model quality campaign scorer', () => {
     mkdirSync(leftRoot)
     mkdirSync(rightRoot)
     try {
-      const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+      const adjudicator = generateKeyPairSync('ed25519')
+      const executor = generateKeyPairSync('ed25519')
       const trustStorePath = join(root, 'trusted-adjudicators.json')
       writeFileSync(trustStorePath, JSON.stringify({
         schemaVersion: 'legion-adjudicator-trust-v1',
         adjudicators: {
-          'quality-lab': publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+          'quality-lab': adjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        },
+        executors: {
+          'execution-lab': executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
         },
       }))
       const openPack = JSON.parse(
@@ -306,12 +419,15 @@ describe('real-model quality campaign scorer', () => {
       leftDocument.campaign.casePackSha256 = sha256(leftPackBytes)
       const rightDocument = campaign(rightRoot)
       rightDocument.campaign.id = 'campaign-b'
+      for (const run of rightDocument.runs) run.executionId = run.executionId.replace('execution-a-', 'execution-b-')
       rightDocument.campaign.startedAt = '2026-08-03T00:00:00.000Z'
       rightDocument.campaign.endedAt = '2026-08-04T00:00:00.000Z'
       rightDocument.campaign.casePackId = rightPack.id
       rightDocument.campaign.casePackSha256 = sha256(rightPackBytes)
-      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', privateKey)
-      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', privateKey)
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', executor.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
       const left = join(leftRoot, 'campaign.json')
       const right = join(rightRoot, 'campaign.json')
       writeFileSync(left, JSON.stringify(leftDocument, null, 2))
@@ -323,6 +439,37 @@ describe('real-model quality campaign scorer', () => {
       ], { cwd: ROOT, encoding: 'utf8' })
       expect(eligible.status).toBe(0)
       expect(JSON.parse(eligible.stdout)).toMatchObject({ eligible: true })
+
+      const adjudicatorPem = adjudicator.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', adjudicator.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', adjudicator.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      writeFileSync(left, JSON.stringify(leftDocument, null, 2))
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
+      writeFileSync(trustStorePath, JSON.stringify({
+        schemaVersion: 'legion-adjudicator-trust-v1',
+        adjudicators: { 'quality-lab': adjudicatorPem },
+        executors: { 'execution-lab': adjudicatorPem },
+      }))
+      const sharedRole = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(sharedRole.status).not.toBe(0)
+      expect(sharedRole.stderr).toContain('trust roles must use distinct keys')
+      writeFileSync(trustStorePath, JSON.stringify({
+        schemaVersion: 'legion-adjudicator-trust-v1',
+        adjudicators: { 'quality-lab': adjudicatorPem },
+        executors: {
+          'execution-lab': executor.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        },
+      }))
+      refreshExecutionReceipts(leftRoot, leftDocument, 'execution-lab', executor.privateKey)
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
+      refreshAdjudication(leftRoot, leftDocument, 'blind-batch-a', 'quality-lab', adjudicator.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      writeFileSync(left, JSON.stringify(leftDocument, null, 2))
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
 
       const stale = spawnSync(process.execPath, [
         'scripts/evaluate-exposure-evidence.mjs',
@@ -339,6 +486,16 @@ describe('real-model quality campaign scorer', () => {
         reasons: ['campaign catalog digest is stale'],
       })
 
+      for (const run of rightDocument.runs) run.executionId = run.executionId.replace('execution-b-', 'execution-a-')
+      refreshExecutionReceipts(rightRoot, rightDocument, 'execution-lab', executor.privateKey)
+      refreshAdjudication(rightRoot, rightDocument, 'blind-batch-b', 'quality-lab', adjudicator.privateKey)
+      writeFileSync(right, JSON.stringify(rightDocument, null, 2))
+      const replayed = spawnSync(process.execPath, [
+        'scripts/evaluate-exposure-evidence.mjs', ...args,
+      ], { cwd: ROOT, encoding: 'utf8' })
+      expect(replayed.status).not.toBe(0)
+      expect(JSON.parse(replayed.stdout).reasons).toContain('campaigns reuse one or more execution identities')
+
       const receiptPath = join(rightRoot, 'artifacts/adjudication.json')
       const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as { signature: string }
       receipt.signature = Buffer.from('invalid').toString('base64')
@@ -354,7 +511,7 @@ describe('real-model quality campaign scorer', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
-  })
+  }, 20_000)
 
   it('is inconclusive for asymmetric infrastructure exclusion with a content-addressed receipt', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-quality-infra-'))
@@ -372,6 +529,7 @@ describe('real-model quality campaign scorer', () => {
       mutable.status = 'infra_inconclusive'
       delete mutable.scores
       mutable.infraReceipt = { uri: 'artifacts/infra.json', sha256: sha256(receipt) }
+      refreshExecutionReceipts(root, document)
       refreshAdjudication(root, document, 'blind-batch-a')
       const result = evaluate(root, document)
       expect(result.status).not.toBe(0)
@@ -392,6 +550,7 @@ describe('real-model quality campaign scorer', () => {
       for (const run of document.runs) {
         if (run.arm === 'treatment') run.usage.billedCostUsd = null
       }
+      refreshExecutionReceipts(root, document)
       refreshAdjudication(root, document, 'blind-batch-a')
       const result = evaluate(root, document)
       expect(result.status).not.toBe(0)

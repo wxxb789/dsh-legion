@@ -1,3 +1,4 @@
+import { deepCopy, deepFreeze } from './internal/value.ts'
 import type { CatalogLayer, StrategySpec, TeamSpec } from './orchestration-contract.ts'
 import { ORCHESTRATION_NAME } from './orchestration-contract.ts'
 
@@ -22,20 +23,6 @@ export interface ResolvedCatalogLayers<Profile> {
     readonly teams: Readonly<Record<string, string>>
     readonly strategies: Readonly<Record<string, string>>
   }
-}
-
-function deepCopy<Value>(value: Value): Value {
-  if (Array.isArray(value)) return value.map(deepCopy) as Value
-  if (typeof value !== 'object' || value === null) return value
-  return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, deepCopy(child)]),
-  ) as Value
-}
-
-function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
 }
 
 interface MutableState<Value> {
@@ -81,7 +68,7 @@ function applyNamespace<Value>(
   }
 }
 
-/** Resolve ordered catalog layers; later definitions replace and later tombstones disable. */
+/** Internal resolver for schema-validated layers; external callers cross materializeConfig(). */
 export function resolveCatalogLayers<Profile>(
   layers: readonly CatalogLayer<Profile>[],
 ): ResolvedCatalogLayers<Profile> {

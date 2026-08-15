@@ -139,9 +139,12 @@ function rendered(result: { content: Array<{ type: string; text?: string }> }): 
 function legionParameterProperties(ctx: Context): Record<string, { enum?: string[]; required?: boolean }> {
   const schema = ctx.tools.schemas().find(item => item.name === 'legion')
   if (schema === undefined) throw new Error('expected Legion tool schema')
-  return (schema.parameters as {
-    properties: Record<string, { enum?: string[]; required?: boolean }>
-  }).properties
+  const parameters = schema.parameters as {
+    properties?: Record<string, { enum?: string[]; required?: boolean }>
+    oneOf?: Array<{ properties?: Record<string, { enum?: string[]; required?: boolean }> }>
+  }
+  if (parameters.properties !== undefined) return parameters.properties
+  return Object.assign({}, ...parameters.oneOf?.map(branch => branch.properties ?? {}) ?? [])
 }
 
 const baseConfig = {
@@ -267,8 +270,15 @@ describe('dsh-legion', () => {
         ? { output: [{ type: 'text', text: 'execution evidence' }], stopReason: 'completed' }
         : { output: [{ type: 'text', text: 'reviewed' }], structured: review, stopReason: 'completed' },
     })])
+    const rawParameters = ctx.tools.schemas().find(item => item.name === 'legion')?.parameters as {
+      oneOf?: Array<{ additionalProperties?: boolean; required?: string[] }>
+    }
+    expect(rawParameters.oneOf).toMatchObject([
+      { additionalProperties: false, required: ['description', 'prompt'] },
+      { additionalProperties: false, required: ['kind', 'strategy', 'objective'] },
+    ])
     const properties = legionParameterProperties(ctx)
-    expect(properties.kind?.enum).toEqual(['profile', 'strategy'])
+    expect(properties.kind).toBeDefined()
     expect(properties.strategy?.enum).toEqual([
       'independent-review', 'plan-execute-review', 'research-panel',
     ])
@@ -346,6 +356,7 @@ describe('dsh-legion', () => {
       defaultProfile: 'quick',
     }
     const ctx = await setup(config)
+    const register = vi.spyOn(ctx.tools, 'register')
     const properties = () => legionParameterProperties(ctx)
     expect(properties()).not.toHaveProperty('strategy')
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
@@ -366,6 +377,7 @@ describe('dsh-legion', () => {
     expect(properties()).not.toHaveProperty('strategy')
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
       .not.toContain('Team Strategies')
+    expect(register).not.toHaveBeenCalled()
   })
 
   it('rejects unknown model tool arguments at the trust boundary', async () => {
@@ -857,6 +869,36 @@ describe('dsh-legion', () => {
     const result = await pending
     expect(result.isError).toBe(true)
     expect(observedAbort).toBe(true)
+    expect(disposed).toBe(true)
+  })
+
+  it('bounds foreground cancellation even when child result ignores AbortSignal', async () => {
+    let started = false
+    let disposed = false
+    const ctx = await setup(baseConfig, [provider('spawn', {
+      onStart: () => { started = true },
+      result: () => ({
+        output: [],
+        stopReason: 'completed',
+      }),
+      onDispose: () => { disposed = true },
+    })])
+    const original = ctx.subagents.getProvider('spawn')
+    if (original === undefined) throw new Error('missing provider')
+    const start = original.start.bind(original)
+    vi.spyOn(original, 'start').mockImplementation(async request => {
+      const child = await start(request)
+      return { ...child, result: new Promise(() => {}) }
+    })
+    const controller = new AbortController()
+    const pending = execute(ctx, {
+      description: 'ignored cancellation',
+      prompt: 'Never settle voluntarily.',
+      run_in_background: false,
+    }, parent(), controller.signal)
+    await vi.waitFor(() => { expect(started).toBe(true) })
+    controller.abort('bounded cancellation')
+    await expect(pending).resolves.toMatchObject({ isError: true })
     expect(disposed).toBe(true)
   })
 

@@ -6,6 +6,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const STATUS = new Set(['valid', 'task_failure', 'safety_failure', 'infra_inconclusive', 'invalid_artifact'])
 const ARMS = ['direct', 'treatment']
+const QUALITY_ADJUDICATION_RECEIPT_VERSION = 'legion-adjudication-receipt-v2'
+const EXECUTION_RECEIPT_VERSION = 'legion-execution-receipt-v1'
+
+function assertExactKeys(value, expected, at) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${at} must be an object`)
+  }
+  const actual = Object.keys(value).sort()
+  const wanted = [...expected].sort()
+  if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+    throw new Error(`${at} fields mismatch: expected ${wanted.join(', ')}, got ${actual.join(', ')}`)
+  }
+}
 
 function sha256(bytes) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
@@ -91,11 +104,24 @@ async function validateContentRef(reference, campaignDirectory, artifactCache, a
   return reference
 }
 
-async function validateRun(run, caseIds, campaignDirectory, artifactCache) {
+async function validateRun(
+  run,
+  caseIds,
+  campaignDirectory,
+  artifactCache,
+  trustStore,
+  heldOut,
+  publicContract,
+  executionSignerIds,
+) {
   if (typeof run !== 'object' || run === null || Array.isArray(run)) throw new Error('run must be an object')
   if (!caseIds.has(run.caseId)) throw new Error(`unknown caseId ${String(run.caseId)}`)
   if (!Number.isInteger(run.repeat) || run.repeat < 1 || run.repeat > 3) throw new Error('repeat must be 1..3')
   if (!ARMS.includes(run.arm)) throw new Error('arm must be direct or treatment')
+  if (typeof run.executionId !== 'string'
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(run.executionId)) {
+    throw new Error('run executionId must be a canonical ASCII provider or harness receipt identity')
+  }
   if (![1, 2].includes(run.order)) throw new Error('run order must be 1 or 2')
   if (!STATUS.has(run.status)) throw new Error('unknown run status')
   if (run.pairId !== `${run.caseId}-r${String(run.repeat)}`) throw new Error('pairId mismatch')
@@ -108,6 +134,7 @@ async function validateRun(run, caseIds, campaignDirectory, artifactCache) {
     validateContentRef(run.provenance?.config, campaignDirectory, artifactCache, 'config provenance'),
     validateContentRef(run.provenance?.budget, campaignDirectory, artifactCache, 'budget provenance'),
     validateContentRef(run.provenance?.plan, campaignDirectory, artifactCache, 'plan provenance'),
+    validateContentRef(run.executionReceipt, campaignDirectory, artifactCache, 'execution receipt'),
   ])
   if (run.status === 'infra_inconclusive') {
     await validateContentRef(run.infraReceipt, campaignDirectory, artifactCache, 'infra receipt')
@@ -140,6 +167,56 @@ async function validateRun(run, caseIds, campaignDirectory, artifactCache) {
   }
   if (run.usage.billedCostUsd !== null) {
     assertNumber(run.usage.billedCostUsd, 'usage.billedCostUsd', { min: 0 })
+  }
+  const executionReceipt = JSON.parse((await readArtifact(
+    campaignDirectory,
+    run.executionReceipt.uri,
+    artifactCache,
+  )).toString('utf8'))
+  assertExactKeys(
+    executionReceipt,
+    publicContract.executionReceiptFields,
+    'execution receipt',
+  )
+  const expectedPayload = {
+    executionId: run.executionId,
+    caseId: run.caseId,
+    repeat: run.repeat,
+    pairId: run.pairId,
+    arm: run.arm,
+    order: run.order,
+    exposure: run.exposure,
+    status: run.status,
+    artifact: run.artifact,
+    provenance: run.provenance,
+    usage: run.usage,
+    timing: run.timing,
+    infraReceipt: run.infraReceipt ?? null,
+  }
+  assertExactKeys(
+    executionReceipt.payload,
+    publicContract.executionReceiptPayloadFields,
+    'execution receipt payload',
+  )
+  if (executionReceipt.schemaVersion !== EXECUTION_RECEIPT_VERSION
+    || typeof executionReceipt.signerId !== 'string'
+    || executionReceipt.signerId.length === 0
+    || canonical(executionReceipt.payload) !== canonical(expectedPayload)) {
+    throw new Error('execution receipt is invalid or not bound to run evidence')
+  }
+  executionSignerIds.add(executionReceipt.signerId)
+  if (heldOut) {
+    const publicKey = trustStore?.executors?.[executionReceipt.signerId]
+    if (typeof publicKey !== 'string'
+      || typeof executionReceipt.signature !== 'string'
+      || !verify(
+        null,
+        Buffer.from(canonical(executionReceipt.payload)),
+        createPublicKey(publicKey),
+        Buffer.from(executionReceipt.signature, 'base64'),
+      )) {
+      throw new Error('held-out execution signature is invalid or untrusted')
+    }
   }
   return run
 }
@@ -189,16 +266,34 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
   )
   const casePackPath = casePackOverride === undefined ? openCasePackPath : resolve(casePackOverride)
   const thresholdPath = resolve(root, 'benchmarks', 'quality', 'thresholds-v1.json')
-  const [casePackBytes, openCasePackBytes, thresholdBytes] = await Promise.all([
+  const contractPath = resolve(root, 'contracts', 'v1.json')
+  const [casePackBytes, openCasePackBytes, thresholdBytes, contractBytes] = await Promise.all([
     readFile(casePackPath),
     readFile(openCasePackPath),
     readFile(thresholdPath),
+    readFile(contractPath),
   ])
   const casePackVisibility = sha256(casePackBytes) === sha256(openCasePackBytes)
     ? 'development'
     : 'held-out'
   const casePack = JSON.parse(casePackBytes.toString('utf8'))
   const thresholds = JSON.parse(thresholdBytes.toString('utf8'))
+  const publicContract = JSON.parse(contractBytes.toString('utf8'))
+  if (publicContract.qualityAdjudicationReceiptVersion !== QUALITY_ADJUDICATION_RECEIPT_VERSION
+    || publicContract.executionReceiptVersion !== EXECUTION_RECEIPT_VERSION) {
+    throw new Error('public contract evidence receipt version drifted')
+  }
+  const trustStore = casePackVisibility === 'held-out'
+    ? trustStoreOverride === undefined
+      ? undefined
+      : JSON.parse(await readFile(resolve(trustStoreOverride), 'utf8'))
+    : undefined
+  if (casePackVisibility === 'held-out'
+    && (trustStore?.schemaVersion !== 'legion-adjudicator-trust-v1'
+      || typeof trustStore.adjudicators !== 'object'
+      || typeof trustStore.executors !== 'object')) {
+    throw new Error('held-out campaign requires a valid trusted adjudicator/executor store')
+  }
   if (campaign.campaign.casePackId !== casePack.id
     || campaign.campaign.casePackSha256 !== sha256(casePackBytes)
     || campaign.campaign.thresholdsSha256 !== sha256(thresholdBytes)
@@ -228,41 +323,70 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
     campaign.campaign.adjudicationReceipt.uri,
     artifactCache,
   )).toString('utf8'))
-  if (adjudication.schemaVersion !== 'legion-adjudication-receipt-v1'
+  assertExactKeys(
+    adjudication,
+    publicContract.qualityAdjudicationReceiptFields,
+    'adjudication receipt',
+  )
+  if (adjudication.schemaVersion !== QUALITY_ADJUDICATION_RECEIPT_VERSION
     || typeof adjudication.batchId !== 'string'
+    || adjudication.batchId.length === 0
     || typeof adjudication.signerId !== 'string'
+    || adjudication.signerId.length === 0
     || typeof adjudication.payload !== 'object'
     || adjudication.payload === null
     || adjudication.blinded !== true) {
     throw new Error('adjudication receipt is invalid or not blinded')
   }
+  const executionSignerIds = new Set()
   const runs = await Promise.all(
     campaign.runs.map(run => validateRun(
       run,
       caseIds,
       campaignDirectory,
       artifactCache,
+      trustStore,
+      casePackVisibility === 'held-out',
+      publicContract,
+      executionSignerIds,
     )),
   )
   const expectedRuns = thresholds.caseCount * thresholds.repeats * 2
   if (runs.length !== expectedRuns) throw new Error(`campaign requires exactly ${String(expectedRuns)} runs`)
+  const executionIds = runs.map(run => run.executionId).sort()
+  if (new Set(executionIds).size !== executionIds.length) {
+    throw new Error('campaign executionId values must be unique')
+  }
   const scoredRunRecords = [...runs]
     .sort((left, right) => `${left.pairId}:${left.arm}`.localeCompare(`${right.pairId}:${right.arm}`))
   const expectedAdjudicationPayload = {
+    campaignId: campaign.campaign.id,
+    strategy: track,
+    startedAt: campaign.campaign.startedAt,
+    endedAt: campaign.campaign.endedAt,
+    catalogDigest: campaign.environment.catalogDigest,
+    executionCommit: campaign.environment.executionCommit,
+    deploymentHardBudget: campaign.environment.deploymentHardBudget === true,
     casePackSha256: sha256(casePackBytes),
     rubricSha256: campaign.campaign.rubric.sha256,
     thresholdsSha256: sha256(thresholdBytes),
     scoredRunsSha256: sha256(canonical(scoredRunRecords)),
   }
+  assertExactKeys(
+    adjudication.payload,
+    publicContract.qualityAdjudicationPayloadFields,
+    'adjudication receipt payload',
+  )
   if (canonical(adjudication.payload) !== canonical(expectedAdjudicationPayload)) {
     throw new Error('adjudication receipt is not bound to campaign scores and evidence')
   }
   if (casePackVisibility === 'held-out') {
-    if (trustStoreOverride === undefined) throw new Error('held-out campaign requires a trusted adjudicator store')
-    const trustStore = JSON.parse(await readFile(resolve(trustStoreOverride), 'utf8'))
-    const publicKey = trustStore.schemaVersion === 'legion-adjudicator-trust-v1'
-      ? trustStore.adjudicators?.[adjudication.signerId]
-      : undefined
+    const publicKey = trustStore.adjudicators[adjudication.signerId]
+    const executorKeys = [...executionSignerIds].map(signerId => trustStore.executors[signerId])
+    if (executionSignerIds.has(adjudication.signerId)
+      || (typeof publicKey === 'string' && executorKeys.includes(publicKey))) {
+      throw new Error('held-out executor and adjudicator trust roles must use distinct keys')
+    }
     if (typeof publicKey !== 'string'
       || typeof adjudication.signature !== 'string'
       || !verify(
@@ -412,6 +536,7 @@ export async function evaluateQualityCampaign(campaignPath, casePackOverride, tr
       adjudicationBatch: adjudication.batchId,
       catalogDigest: campaign.environment?.catalogDigest,
       executionCommit: campaign.environment?.executionCommit,
+      executionIds,
       startedAt: campaign.campaign.startedAt,
       endedAt: campaign.campaign.endedAt,
     },

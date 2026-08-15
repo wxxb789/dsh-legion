@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -100,14 +100,14 @@ export {
   RoutePlanError,
   applyRoutePlan,
   compileRoutePlan,
-  materializeModelFactsSnapshot,
+  materializeModelFactsObservations,
   observeModelRoutes,
 } from './route.ts'
 export type {
   EffectiveOutputBudget,
   ExactModelFact,
   MetadataUnknownCause,
-  ModelFactsSnapshot,
+  ModelFactsObservations,
   RouteDecision,
   RouteEvidence,
   RoutePlan,
@@ -125,6 +125,7 @@ export {
   RoutePlanDigest,
   ArtifactName,
   MemberSlotName,
+  StrategyGenerationId,
   StrategyName,
   StrategyPlanDigest,
   TeamName,
@@ -147,12 +148,6 @@ export type {
   ProviderSnapshotSource,
   RenderExplainOptions,
 } from './explain.ts'
-export { resolveCatalogLayers } from './catalog-layer.ts'
-export type {
-  CatalogEntryProvenance,
-  CatalogNamespace,
-  ResolvedCatalogLayers,
-} from './catalog-layer.ts'
 export {
   ARTIFACT_CONTRACTS,
   ORCHESTRATION_NAME,
@@ -427,7 +422,7 @@ function selectedRouteId(value: JsonValue | undefined): string | undefined {
   return typeof selected.id === 'string' ? selected.id : undefined
 }
 
-function registerTool(ctx: Context, snapshot: StrategyExecutionSnapshot): () => void {
+function createToolDefinition(ctx: Context, snapshot: StrategyExecutionSnapshot): ToolDefinition {
   const { profiles: catalog, orchestration } = snapshot
   const profileNames = Object.keys(catalog.activeProfiles)
   const strategyNames = catalog.enableStrategies
@@ -442,7 +437,7 @@ function registerTool(ctx: Context, snapshot: StrategyExecutionSnapshot): () => 
     ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
     : `Configured semantic profile. Defaults to ${catalog.defaultProfile}.`
 
-  return ctx.tools.register(defineTool({
+  const definition = defineTool({
     name: catalog.toolName,
     description: (hasStrategySurface
       ? 'Delegate through a configured Legion Profile or execute an explicitly enabled bounded Team Strategy. '
@@ -625,13 +620,82 @@ function registerTool(ctx: Context, snapshot: StrategyExecutionSnapshot): () => 
       }
 
       requireSelectedLlmAdapter(ctx, plan)
-      const run = await ctx.subagents.start(plan.subagentProvider, {
-        ...request,
-        signal: exec.signal,
-      })
-      return settleForeground(plan, run)
+      return settleForeground(
+        plan,
+        () => ctx.subagents.start(plan.subagentProvider, {
+          ...request,
+          signal: exec.signal,
+        }),
+        exec.signal,
+        cleanup => {
+          if (cleanup.kind !== 'quiescent') {
+            ctx.logger.warn(`dsh-legion: late foreground cleanup ended ${cleanup.kind}`)
+          }
+        },
+      )
     },
-  }))
+  })
+  if (!hasStrategySurface) return definition
+  const flat = definition.parameters as {
+    properties: Record<string, unknown>
+  }
+  const profileProperties = Object.fromEntries(
+    ['kind', 'profile', 'description', 'prompt', 'run_in_background']
+      .flatMap(key => flat.properties[key] === undefined ? [] : [[key, flat.properties[key]]]),
+  )
+  profileProperties.kind = { type: 'string', const: 'profile' }
+  const strategyProperties = Object.fromEntries(
+    ['kind', 'strategy', 'objective']
+      .map(key => [key, flat.properties[key]]),
+  )
+  strategyProperties.kind = { type: 'string', const: 'strategy' }
+  strategyProperties.limits = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      maxAgents: { type: 'integer', minimum: 1 },
+      maxConcurrent: { type: 'integer', minimum: 1 },
+      deadlineMs: { type: 'integer', minimum: 1 },
+      maxOutputBytes: { type: 'integer', minimum: 1 },
+    },
+  }
+  return {
+    ...definition,
+    parameters: {
+      type: 'object',
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: profileProperties,
+          required: ['description', 'prompt'],
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: strategyProperties,
+          required: ['kind', 'strategy', 'objective'],
+        },
+      ],
+    },
+  }
+}
+
+function delegatingToolDefinition(
+  name: string,
+  current: () => ToolDefinition,
+): ToolDefinition {
+  return {
+    name,
+    get description() { return current().description },
+    get parameters() { return current().parameters },
+    get output() { return current().output },
+    isConcurrencySafe(args) { return current().isConcurrencySafe?.(args) ?? false },
+    execute(args, execution) {
+      const definition = current()
+      return definition.execute(args, execution)
+    },
+  }
 }
 
 function profileResourceBase(ctx: Context, config: Config): string | undefined {
@@ -655,6 +719,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     : await loadProfileResources(resolvedConfig, { baseDirectory: resourceBase })
   ctx.fiber.assertActive()
   let activeSnapshot: StrategyExecutionSnapshot | undefined
+  let activeDefinition: ToolDefinition | undefined
   let disposeTool: (() => void) | undefined
   let refreshing = false
   let registrationFailed = false
@@ -669,27 +734,36 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const nextOrchestration = compileOrchestrationCatalog(nextProfiles)
       assertOrchestrationCatalogUsable(nextOrchestration)
       const nextSnapshot = createStrategyExecutionSnapshot(nextProfiles, nextOrchestration)
-      const previousSnapshot = activeSnapshot
-      disposeTool?.()
-      disposeTool = undefined
-      try {
-        if (Object.keys(nextProfiles.activeProfiles).length > 0) {
-          disposeTool = registerTool(ctx, nextSnapshot)
-        }
+      const nextDefinition = Object.keys(nextProfiles.activeProfiles).length === 0
+        ? undefined
+        : createToolDefinition(ctx, nextSnapshot)
+      if (nextDefinition === undefined) {
         activeSnapshot = nextSnapshot
-      } catch (error: unknown) {
-        registrationFailed = true
-        activeSnapshot = undefined
-        if (previousSnapshot !== undefined
-          && Object.keys(previousSnapshot.profiles.activeProfiles).length > 0) {
-          try {
-            disposeTool = registerTool(ctx, previousSnapshot)
-            activeSnapshot = previousSnapshot
-          } catch {
-            disposeTool = undefined
-          }
+        activeDefinition = undefined
+        disposeTool?.()
+        disposeTool = undefined
+      } else if (disposeTool === undefined) {
+        const previousSnapshot = activeSnapshot
+        activeSnapshot = nextSnapshot
+        activeDefinition = nextDefinition
+        try {
+          disposeTool = ctx.tools.register(delegatingToolDefinition(
+            nextProfiles.toolName,
+            () => {
+              if (activeDefinition === undefined) throw new Error('dsh-legion: no published tool generation')
+              return activeDefinition
+            },
+          ))
+        } catch (error: unknown) {
+          registrationFailed = true
+          activeSnapshot = previousSnapshot
+          activeDefinition = undefined
+          throw error
         }
-        throw error
+      } else {
+        activeSnapshot = nextSnapshot
+        activeDefinition = nextDefinition
+        ctx.emit('tools/change')
       }
     } finally {
       refreshing = false
@@ -709,6 +783,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => {
     disposeTool?.()
     disposeTool = undefined
+    activeDefinition = undefined
     activeSnapshot = undefined
   }, 'dsh-legion.activeTool()')
 

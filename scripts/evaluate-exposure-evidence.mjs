@@ -48,6 +48,10 @@ if (left.evidence.catalogDigest !== currentCatalogDigest
 if (left.evidence.executionCommit !== right.evidence.executionCommit) {
   reasons.push('campaign execution commits differ')
 }
+const leftExecutionIds = new Set(left.evidence.executionIds)
+if (right.evidence.executionIds.some(executionId => leftExecutionIds.has(executionId))) {
+  reasons.push('campaigns reuse one or more execution identities')
+}
 if (left.evidence.rubricSha256 !== right.evidence.rubricSha256
   || left.evidence.thresholdsSha256 !== right.evidence.thresholdsSha256) {
   reasons.push('campaign rubric or thresholds differ')

@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
+const publicContract = JSON.parse(await readFile(join(projectRoot, 'contracts', 'v1.json'), 'utf8'))
 const dshVersionSpec = process.env.DSH_VERSION ?? '0.1.0-rc.6'
 const sandboxRoot = await mkdtemp(join(tmpdir(), 'dsh-legion-packed-delegation-'))
 const relativeSandbox = relative(tmpdir(), sandboxRoot)
@@ -77,6 +79,8 @@ const verifyDshGeneration = async (consumerDir, expected) => {
     )
   }
   process.stdout.write(`verified one DSH dependency generation (${expected}) across ${String(observed.length)} entries\n`)
+  return [...new Map(observed.map(item => [item.name, item])).values()]
+    .sort((left, right) => left.name.localeCompare(right.name))
 }
 
 const runNode = (args, cwd) => {
@@ -96,8 +100,13 @@ try {
   const consumerDir = join(sandboxRoot, 'consumer')
   await mkdir(packDir, { recursive: true })
   await mkdir(consumerDir, { recursive: true })
-  run('npm', ['pack', '--ignore-scripts', '--pack-destination', packDir], projectRoot)
   const tarball = join(packDir, `dsh-legion-${String(manifest.version)}.tgz`)
+  const suppliedTarball = process.env.DSH_LEGION_TARBALL
+  if (suppliedTarball === undefined) {
+    run('npm', ['pack', '--ignore-scripts', '--pack-destination', packDir], projectRoot)
+  } else {
+    await copyFile(resolve(suppliedTarball), tarball)
+  }
 
   await writeFile(join(consumerDir, 'package.json'), JSON.stringify({
     name: 'dsh-legion-packed-delegation-consumer',
@@ -135,13 +144,37 @@ try {
     '@deepseek-ai/cordis@4.0.1',
     ...dshPackages,
   ], consumerDir)
-  await verifyDshGeneration(consumerDir, dshVersion)
+  const dshDependencies = await verifyDshGeneration(consumerDir, dshVersion)
 
   await copyFile(
     join(projectRoot, 'scripts', 'packed-delegation-consumer.mjs'),
     join(consumerDir, 'packed-delegation-consumer.mjs'),
   )
   runNode(['packed-delegation-consumer.mjs'], consumerDir)
+  const receiptPath = process.env.DSH_COMPATIBILITY_RECEIPT
+  if (receiptPath !== undefined) {
+    const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
+    const installedManifest = JSON.parse(await readFile(
+      join(consumerDir, 'node_modules', 'dsh-legion', 'package.json'),
+      'utf8',
+    ))
+    const consumerLockfile = await readFile(join(consumerDir, 'pnpm-lock.yaml'))
+    const consumerLockfileSha256 = createHash('sha256').update(consumerLockfile).digest('hex')
+    const lockfilePath = resolve(receiptPath.replace(/\.json$/, '.lock.yaml'))
+    await writeFile(lockfilePath, consumerLockfile)
+    await writeFile(resolve(receiptPath), JSON.stringify({
+      schemaVersion: publicContract.compatibilityReceiptVersion,
+      requestedDshVersion: dshVersionSpec,
+      resolvedDshVersion: dshVersion,
+      nodeVersion: process.version,
+      packageVersion: installedManifest.version,
+      tarballSha256: `sha256:${tarballSha256}`,
+      consumerLockfileFile: basename(lockfilePath),
+      consumerLockfileSha256: `sha256:${consumerLockfileSha256}`,
+      dshDependencies,
+      status: 'passed',
+    }, null, 2) + '\n')
+  }
 } finally {
   await rm(sandboxRoot, { recursive: true, force: true })
 }

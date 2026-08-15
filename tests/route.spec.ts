@@ -16,7 +16,7 @@ import {
   applyRoutePlan,
   compileRoutePlan,
   observeModelRoutes,
-  type ModelFactsSnapshot,
+  type ModelFactsObservations,
 } from '../src/route.ts'
 
 class MetadataAdapter extends LlmAdapter {
@@ -183,7 +183,7 @@ describe('exact route planning', () => {
   it('binds bounded metadata-unknown causes into route evidence and digest', () => {
     const compiled = catalog()
     const profile = routableProfile(compiled)
-    const facts = (errorCode: string): ModelFactsSnapshot => ({
+    const facts = (errorCode: string): ModelFactsObservations => ({
       facts: routes.map((route, index) => index === 1
         ? {
             kind: 'metadata-unknown',
@@ -255,7 +255,7 @@ describe('exact route planning', () => {
     })
     const profile = compiled.activeProfiles.deep
     if (profile?.routes === undefined) throw new Error('expected routable profile')
-    const facts: ModelFactsSnapshot = {
+    const facts: ModelFactsObservations = {
       facts: [{
         kind: 'resolved',
         routeId: 'medium',
@@ -285,7 +285,7 @@ describe('exact route planning', () => {
 
   it('returns a frozen unroutable plan when every adapter is missing', () => {
     const compiled = catalog()
-    const facts: ModelFactsSnapshot = {
+    const facts: ModelFactsObservations = {
       facts: routes.map(route => ({
         kind: 'adapter-missing',
         routeId: route.id,
@@ -346,7 +346,7 @@ describe('exact route planning', () => {
 
   it('applies exactly one selected route and additive instructions to a delegation plan', () => {
     const compiled = catalog()
-    const facts: ModelFactsSnapshot = {
+    const facts: ModelFactsObservations = {
       facts: [
         { kind: 'adapter-missing', routeId: 'small', provider: 'missing', model: 'small-model' },
         {

@@ -11,6 +11,7 @@ import {
   type JsonValue,
   type ObjectJsonSchema,
 } from '@deepseek-ai/dsh-tools'
+import { deepFreeze } from './internal/value.ts'
 import {
   ERROR_DIAGNOSTIC_CODES,
   WARNING_DIAGNOSTIC_CODES,
@@ -116,7 +117,7 @@ const diagnosticProperties = {
   profile: { type: 'string' as const },
 }
 
-export const EXPLAIN_VIEW_V1_SCHEMA: ObjectJsonSchema = {
+export const EXPLAIN_VIEW_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
   type: 'object',
   additionalProperties: false,
   properties: {
@@ -214,7 +215,7 @@ export const EXPLAIN_VIEW_V1_SCHEMA: ObjectJsonSchema = {
     'version', 'kind', 'source', 'summary', 'policyDigest', 'catalogDigest', 'tool', 'profiles',
     'diagnostics',
   ],
-}
+})
 
 export interface ExplainOptions {
   readonly providerSnapshot: ProviderSnapshotSource

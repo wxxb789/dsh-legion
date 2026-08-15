@@ -1,5 +1,6 @@
 import { validateJsonSchemaValue, type ObjectJsonSchema, type JsonValue } from '@deepseek-ai/dsh-tools'
 import type { ResultContract } from './config.ts'
+import { deepFreeze } from './internal/value.ts'
 
 const evidenceItem = {
   type: 'object' as const,
@@ -35,7 +36,7 @@ const reviewFindingItem = {
   required: ['severity', 'title', 'detail', 'evidence', 'recommendation'],
 }
 
-export const FINDINGS_V1_SCHEMA: ObjectJsonSchema = {
+export const FINDINGS_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
   type: 'object',
   additionalProperties: false,
   properties: {
@@ -46,9 +47,9 @@ export const FINDINGS_V1_SCHEMA: ObjectJsonSchema = {
     openRisks: { type: 'array', items: { type: 'string' } },
   },
   required: ['summary', 'findings', 'decisions', 'verification', 'openRisks'],
-}
+})
 
-export const REVIEW_V1_SCHEMA: ObjectJsonSchema = {
+export const REVIEW_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
   type: 'object',
   additionalProperties: false,
   properties: {
@@ -58,15 +59,11 @@ export const REVIEW_V1_SCHEMA: ObjectJsonSchema = {
     verification: { type: 'array', items: { type: 'string' } },
   },
   required: ['verdict', 'summary', 'findings', 'verification'],
-}
+})
 
 /** Resolve one versioned result contract to its one-shot child schema. */
 export function outputSchemaFor(contract: ResultContract): ObjectJsonSchema | undefined {
-  switch (contract) {
-    case 'text': return undefined
-    case 'findings-v1': return FINDINGS_V1_SCHEMA
-    case 'review-v1': return REVIEW_V1_SCHEMA
-  }
+  return RESULT_CONTRACT_REGISTRY[contract].schema
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -97,38 +94,28 @@ function evidence(value: unknown, at: string): JsonValue[] {
   })
 }
 
-/**
- * Revalidate and project provider-owned `unknown` into a detached, contract-owned
- * JSON value. Live objects and undeclared properties never cross this seam.
- */
-export function materializeStructuredResult(contract: ResultContract, value: unknown): JsonValue | undefined {
-  const schema = outputSchemaFor(contract)
-  if (schema === undefined) return undefined
-  const violations = validateJsonSchemaValue(schema, value, 'structured')
-  if (violations.length > 0) {
-    throw new Error(`dsh-legion: structured result violated ${contract}: ${violations.join('; ')}`)
-  }
+function projectFindings(value: unknown): JsonValue {
   const source = record(value)
-
-  if (contract === 'findings-v1') {
-    const findings = source.findings
-    if (!Array.isArray(findings)) throw new Error('dsh-legion: structured result findings is not an array')
-    return {
-      summary: text(source.summary, 'summary'),
-      findings: findings.map((item, index) => {
-        const finding = record(item)
-        return {
-          title: text(finding.title, `findings[${String(index)}].title`),
-          detail: text(finding.detail, `findings[${String(index)}].detail`),
-          evidence: evidence(finding.evidence, `findings[${String(index)}].evidence`),
-        }
-      }),
-      decisions: textArray(source.decisions, 'decisions'),
-      verification: textArray(source.verification, 'verification'),
-      openRisks: textArray(source.openRisks, 'openRisks'),
-    }
+  const findings = source.findings
+  if (!Array.isArray(findings)) throw new Error('dsh-legion: structured result findings is not an array')
+  return {
+    summary: text(source.summary, 'summary'),
+    findings: findings.map((item, index) => {
+      const finding = record(item)
+      return {
+        title: text(finding.title, `findings[${String(index)}].title`),
+        detail: text(finding.detail, `findings[${String(index)}].detail`),
+        evidence: evidence(finding.evidence, `findings[${String(index)}].evidence`),
+      }
+    }),
+    decisions: textArray(source.decisions, 'decisions'),
+    verification: textArray(source.verification, 'verification'),
+    openRisks: textArray(source.openRisks, 'openRisks'),
   }
+}
 
+function projectReview(value: unknown): JsonValue {
+  const source = record(value)
   const findings = source.findings
   if (!Array.isArray(findings)) throw new Error('dsh-legion: structured result findings is not an array')
   return {
@@ -146,4 +133,29 @@ export function materializeStructuredResult(contract: ResultContract, value: unk
     }),
     verification: textArray(source.verification, 'verification'),
   }
+}
+
+interface ResultContractCodec {
+  readonly schema?: ObjectJsonSchema
+  readonly project: (value: unknown) => JsonValue | undefined
+}
+
+const RESULT_CONTRACT_REGISTRY: Record<ResultContract, ResultContractCodec> = {
+  text: { project: () => undefined },
+  'findings-v1': { schema: FINDINGS_V1_SCHEMA, project: projectFindings },
+  'review-v1': { schema: REVIEW_V1_SCHEMA, project: projectReview },
+}
+
+/**
+ * Revalidate and project provider-owned `unknown` into a detached, contract-owned
+ * JSON value. Live objects and undeclared properties never cross this seam.
+ */
+export function materializeStructuredResult(contract: ResultContract, value: unknown): JsonValue | undefined {
+  const codec = RESULT_CONTRACT_REGISTRY[contract]
+  if (codec.schema === undefined) return undefined
+  const violations = validateJsonSchemaValue(codec.schema, value, 'structured')
+  if (violations.length > 0) {
+    throw new Error(`dsh-legion: structured result violated ${contract}: ${violations.join('; ')}`)
+  }
+  return codec.project(value)
 }

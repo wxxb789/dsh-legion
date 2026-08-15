@@ -175,17 +175,19 @@ describe('Team and Strategy compiler', () => {
       teams: {
         roomy: {
           description: 'Roomy ceiling.',
-          members: {
-            workers: { profile: 'deep', minParticipants: 2, maxParticipants: 2 },
-            single: { profile: 'deep' },
-          },
+          members: { single: { profile: 'deep' } },
           limits: { maxMembers: 4, maxConcurrentMembers: 1 },
+        },
+        multi: {
+          description: 'Required multi-participant slot.',
+          members: { workers: { profile: 'deep', minParticipants: 2, maxParticipants: 2 } },
+          limits: { maxMembers: 2, maxConcurrentMembers: 2 },
         },
       },
       strategies: {
         invalid: {
           description: 'Single delegate cannot satisfy two participants.',
-          team: 'roomy',
+          team: 'multi',
           stages: [{
             kind: 'delegate',
             id: 'run',
@@ -239,7 +241,103 @@ describe('Team and Strategy compiler', () => {
     }))
   })
 
+  it('requires positive-minimum Member Slots while permitting omitted zero-minimum slots', () => {
+    const materialized = materializeConfig({
+      configVersion: 2,
+      profiles: config.profiles,
+      teams: {
+        participation: {
+          description: 'Participation constraints.',
+          members: {
+            executor: { profile: 'deep', minParticipants: 1 },
+            'required-reviewer': { profile: 'review', minParticipants: 1 },
+            'optional-observer': { profile: 'quick', minParticipants: 0 },
+          },
+        },
+      },
+      strategies: {
+        incomplete: {
+          description: 'Omits required reviewer.',
+          team: 'participation',
+          stages: [{
+            kind: 'delegate', id: 'run', member: 'executor',
+            inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+            output: { artifact: 'result', contract: 'text' }, prompt: 'Run.',
+          }],
+          completion: { artifact: 'result', contract: 'text' },
+          limits: { maxAgents: 1, maxConcurrent: 1, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+          memberFailure: 'fail',
+        },
+      },
+    })
+    const profiles = compileCatalog(materialized, runtime)
+    const orchestration = compileOrchestrationCatalog(profiles)
+    expect(orchestration.strategies.incomplete).toBeUndefined()
+    expect(orchestration.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED',
+      strategy: 'incomplete',
+    }))
+    expect(orchestration.diagnostics.some(item => item.message.includes('optional-observer'))).toBe(false)
+  })
+
+  it('enforces Team maxMembers across maximum per-slot participation demand', () => {
+    const materialized = materializeConfig({
+      configVersion: 2,
+      profiles: config.profiles,
+      teams: {
+        bounded: {
+          description: 'Bounded Team.',
+          members: {
+            first: { profile: 'deep', maxParticipants: 2 },
+            second: { profile: 'deep', maxParticipants: 2 },
+          },
+          limits: { maxMembers: 2, maxConcurrentMembers: 2 },
+        },
+      },
+      strategies: {
+        overbooked: {
+          description: 'Overbooks two slots.', team: 'bounded',
+          stages: [
+            {
+              kind: 'fanout', id: 'first', member: 'first', count: 2, minSuccess: 2,
+              allowDegraded: false,
+              inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+              output: { artifact: 'first-result', contract: 'text' }, prompt: 'First.',
+            },
+            {
+              kind: 'fanout', id: 'second', member: 'second', count: 2, minSuccess: 2,
+              allowDegraded: false,
+              inputs: [{ artifact: 'first-result', contract: 'text', collection: true }],
+              output: { artifact: 'second-result', contract: 'text' }, prompt: 'Second.',
+            },
+          ],
+          completion: { artifact: 'second-result', contract: 'text' },
+          limits: { maxAgents: 4, maxConcurrent: 2, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+          memberFailure: 'fail',
+        },
+      },
+    })
+    const profiles = compileCatalog(materialized, runtime)
+    const orchestration = compileOrchestrationCatalog(profiles)
+    expect(orchestration.strategies.overbooked).toBeUndefined()
+    expect(orchestration.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED',
+      message: expect.stringContaining('maxMembers'),
+    }))
+  })
+
   it('rejects inherited properties and cross-variant stage fields at the external boundary', () => {
+    expect(() => materializeConfig({
+      configVersion: 2,
+      profiles: config.profiles,
+      teams: {
+        invalid: {
+          description: 'Invalid slot.',
+          members: { 'Bad Slot': { profile: 'deep' } },
+        },
+      },
+    })).toThrow(/invalid slot name/)
+
     const inheritedTeam = Object.assign(Object.create({ hidden: true }), {
       description: 'Inherited.',
       members: { executor: { profile: 'deep' } },
@@ -280,6 +378,44 @@ describe('Team and Strategy compiler', () => {
         },
       },
     })).toThrow(/unknown field.*count/)
+  })
+
+  it('rejects duplicate artifact producers before accepted-byte accounting', () => {
+    const materialized = materializeConfig({
+      configVersion: 2,
+      profiles: config.profiles,
+      teams: {
+        coding: { description: 'Coding.', members: { executor: { profile: 'deep' } } },
+      },
+      strategies: {
+        duplicate: {
+          description: 'Duplicate artifact producer.',
+          team: 'coding',
+          stages: [
+            {
+              kind: 'delegate', id: 'first', member: 'executor',
+              inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+              output: { artifact: 'result', contract: 'text' }, prompt: 'First.',
+            },
+            {
+              kind: 'delegate', id: 'second', member: 'executor',
+              inputs: [{ artifact: 'result', contract: 'text' }],
+              output: { artifact: 'result', contract: 'text' }, prompt: 'Second.',
+            },
+          ],
+          completion: { artifact: 'result', contract: 'text' },
+          limits: { maxAgents: 2, maxConcurrent: 1, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+          memberFailure: 'fail',
+        },
+      },
+    })
+    const profiles = compileCatalog(materialized, runtime)
+    const orchestration = compileOrchestrationCatalog(profiles)
+    expect(orchestration.strategies.duplicate).toBeUndefined()
+    expect(orchestration.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'STRATEGY_ARTIFACT_DUPLICATE',
+      stage: 'second',
+    }))
   })
 
   it('rejects the non-portable session Goal lifecycle as a Strategy stage', () => {

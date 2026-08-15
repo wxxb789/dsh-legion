@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-15
+
+### Added
+
+- Stable machine-verified v1 runtime, declaration, package-entry, request, result, receipt, and authority contracts.
+- Shared ChildRunLifecycle with cancellation-aware admission, late-publication ownership, execution/cleanup phase separation, and explicit cleanup-pending evidence.
+- Trusted executor and blind-adjudicator receipts, canonical disjoint campaign execution identities, and exact compatibility closure receipts.
+
+### Changed
+
+- Strategy fanout uses runtime-bounded admission, cancels in-flight work once minSuccess is impossible, and enforces Team maxMembers across slot demand.
+- Config ingestion rejects accessors/cycles, MaterializedConfig is deeply immutable, Plans and generations are opaque, and internal value/result codecs centralize invariants.
+- Model route facts are explicitly point observations pending a Host generation lease; the misleading pre-1 `ModelFactsSnapshot` name is replaced by `ModelFactsObservations`.
+- The pre-1 generic `resolveCatalogLayers` package-root export is removed; untrusted callers must use the strict `materializeConfig` ingestion seam.
+- CI and tag releases share reusable gates; one exact tarball passes packed matrices before SBOM, attestation, checksums, and publication.
+- Build entries run sequentially and are stress-tested for deterministic `lib` output.
+
 ## [0.6.0] - 2026-08-15
 
 ### Added
@@ -22,6 +39,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The shipped preset and examples keep model Strategy exposure disabled.
 - Packed compatibility now executes a real Config v2 Strategy, and tag publishing waits for Windows quality, profile installation, and minimum/latest packed DSH matrices.
 - Aggregate token/cost limits remain absent until a Host-owned admission authority exists; v1 hard limits have explicit per-Team-Run scope.
+- Foreground and Strategy paths now share one cancellation-aware ChildRunLifecycle; fanout admission is runtime-bounded and cleanup-pending is explicit.
+- Materialized Config is deeply immutable, Plans and Strategy generations are opaque, Route facts are point observations, and result contracts use one codec registry.
+- Signed evidence binds trusted execution receipts and complete campaign provenance; release compatibility, SBOM, attestation, and publish consume one exact tarball through reusable gates.
 
 ## [0.5.0] - 2026-08-15
 
@@ -146,7 +166,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/wxxb789/dsh-legion/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/wxxb789/dsh-legion/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...v0.4.0

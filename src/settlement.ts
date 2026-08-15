@@ -1,6 +1,7 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
+import { settleChildRun, type ChildCleanup } from './child-run.ts'
 import type { DelegationPlan } from './compiler.ts'
 import { materializeStructuredResult } from './result-contract.ts'
 
@@ -35,50 +36,60 @@ function textOf(output: ContentBlock[]): string {
     .join('')
 }
 
-/** Settle and release one foreground run without losing either failure. */
+/** Start, settle, and release one foreground run through the shared child lifecycle Module. */
 export async function settleForeground(
   plan: DelegationPlan,
-  run: SubagentRun,
+  start: () => Promise<SubagentRun>,
+  signal: AbortSignal,
+  onLateCleanup?: (cleanup: ChildCleanup) => void,
 ): Promise<ForegroundResult> {
-  const [execution] = await Promise.allSettled([
-    run.result.then((result): ForegroundResult => {
-      const failure = stopReasonError(result)
-      if (failure !== undefined) {
-        const partial = textOf(result.output)
-        throw new Error(partial.length === 0
-          ? failure
-          : `${failure}\nPartial output before the run ended:\n${partial}`)
-      }
-      const structured = materializeStructuredResult(plan.result, result.structured)
-      return {
-        kind: 'foreground',
-        profile: plan.profile,
-        runId: run.id,
-        resultContract: plan.result,
-        policyDigest: plan.policyDigest,
-        catalogDigest: plan.catalogDigest,
-        resourceDigest: plan.resourceDigest,
-        ...plan.routePlan === undefined
-          ? {}
-          : { routePlan: plan.routePlan as unknown as JsonValue },
-        output: result.output as unknown as JsonValue[],
-        ...structured === undefined ? {} : { structured },
-      }
-    }),
-  ])
-
-  const [disposal] = await Promise.allSettled([Promise.resolve().then(() => run.dispose())])
-  if (execution.status === 'rejected') {
-    if (disposal.status === 'rejected') {
-      throw new AggregateError(
-        [execution.reason, disposal.reason],
-        `Legion child execution failed and disposal also failed: ${String(execution.reason)}; ${String(disposal.reason)}`,
-      )
-    }
-    throw execution.reason
+  const settlement = await settleChildRun({
+    start,
+    signal,
+    ...onLateCleanup === undefined ? {} : { onLateCleanup },
+  })
+  const errors: unknown[] = []
+  let result: SubagentResult | undefined
+  if (settlement.execution.kind === 'completed') {
+    result = settlement.execution.result
+  } else if (settlement.execution.kind === 'failed') {
+    result = settlement.execution.result
+    const failure = result === undefined
+      ? settlement.execution.error
+      : new Error(textOf(result.output).length === 0
+          ? stopReasonError(result) ?? String(settlement.execution.error)
+          : `${stopReasonError(result) ?? String(settlement.execution.error)}\nPartial output before the run ended:\n${textOf(result.output)}`)
+    errors.push(failure)
+  } else {
+    errors.push(new Error(`Legion child run was cancelled: ${String(settlement.execution.reason)}`))
   }
-  if (disposal.status === 'rejected') throw disposal.reason
-  return execution.value
+  if (settlement.cleanup.kind === 'failed') errors.push(settlement.cleanup.error)
+  if (settlement.cleanup.kind === 'pending') errors.push(new Error('Legion child cleanup is still pending'))
+  if (errors.length > 0) {
+    if (errors.length === 1) throw errors[0]
+    throw new AggregateError(
+      errors,
+      `Legion child execution and cleanup both failed: ${errors.map(error => String(error).slice(0, 500)).join('; ')}`,
+    )
+  }
+  if (result === undefined || settlement.run === undefined) {
+    throw new Error('Legion foreground child returned no completed run')
+  }
+  const structured = materializeStructuredResult(plan.result, result.structured)
+  return {
+    kind: 'foreground',
+    profile: plan.profile,
+    runId: settlement.run.id,
+    resultContract: plan.result,
+    policyDigest: plan.policyDigest,
+    catalogDigest: plan.catalogDigest,
+    resourceDigest: plan.resourceDigest,
+    ...plan.routePlan === undefined
+      ? {}
+      : { routePlan: plan.routePlan as unknown as JsonValue },
+    output: result.output as unknown as JsonValue[],
+    ...structured === undefined ? {} : { structured },
+  }
 }
 
 /** Project canonical JSON text blocks for the model-facing result. */

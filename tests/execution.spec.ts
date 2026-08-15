@@ -466,6 +466,8 @@ describe('bounded Strategy execution adapter', () => {
     if (!compiled.ok) throw new Error('expected strategy plan')
     const controller = new AbortController()
     const pending = executeStrategyPlan(runtime.ctx, snapshot, compiled.plan, parent, controller.signal)
+    for (let step = 0; step < 30 && runtime.starts.length === 0; step += 1) await Promise.resolve()
+    expect(runtime.starts).toHaveLength(1)
     controller.abort('human cancelled')
     await expect(pending).resolves.toMatchObject({ kind: 'cancelled', reason: 'human cancelled' })
     expect(runtime.disposed).toHaveLength(1)
@@ -551,7 +553,7 @@ describe('bounded Strategy execution adapter', () => {
       compiled.plan,
       parent,
       new AbortController().signal,
-    )).rejects.toThrow(/catalog generation does not match/)
+    )).rejects.toThrow(/Plan generation does not match/)
     expect(runtime.starts).toHaveLength(0)
   })
 

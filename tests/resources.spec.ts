@@ -79,8 +79,10 @@ describe('profile prompt resource loader', () => {
   it('does not probe configured roots that no profile references', async () => {
     const { root, resources } = project()
     writeFileSync(join(resources, 'prompts', 'quick.md'), 'Use evidence.')
-    const authored = config(['prompts/quick.md'])
-    authored.resourceRoots = { local: 'resources', unused: 'missing-directory' }
+    const authored = {
+      ...config(['prompts/quick.md']),
+      resourceRoots: { local: 'resources', unused: 'missing-directory' },
+    }
     const snapshot = await loadProfileResources(authored, { baseDirectory: root })
     expect(snapshot.profiles.quick?.[0]?.content).toBe('Use evidence.')
   })
@@ -189,8 +191,7 @@ describe('profile prompt resource loader', () => {
     mkdirSync(outside)
     writeFileSync(join(outside, 'prompt.md'), 'secret')
     symlinkSync(outside, join(root, 'linked-root'), process.platform === 'win32' ? 'junction' : 'dir')
-    const linked = config(['prompt.md'])
-    linked.resourceRoots = { local: 'linked-root' }
+    const linked = { ...config(['prompt.md']), resourceRoots: { local: 'linked-root' } }
     await expectResourceError(
       loadProfileResources(linked, { baseDirectory: root }),
       'RESOURCE_ROOT_LINK_UNSUPPORTED',

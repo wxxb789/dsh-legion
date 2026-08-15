@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 
-describe('public contract v1 candidate', () => {
+describe('public contract v1', () => {
   it('matches built exported vocabularies and default authority', () => {
     const result = spawnSync(process.execPath, ['scripts/verify-public-contract.mjs'], {
       cwd: ROOT,
@@ -14,7 +14,7 @@ describe('public contract v1 candidate', () => {
     })
     expect(result.status).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).toContain('public contract v1 candidate verified')
+    expect(result.stdout).toContain('public contract v1 verified')
   })
 
   it('freezes strict Profile and Strategy request field sets', () => {

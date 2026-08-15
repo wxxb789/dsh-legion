@@ -2,16 +2,16 @@ import z from '@deepseek-ai/schemastery'
 import type { ResultContract } from './config.ts'
 
 export const ORCHESTRATION_NAME = /^[a-z][a-z0-9-]*$/
-export const ARTIFACT_CONTRACTS = [
+export const ARTIFACT_CONTRACTS = Object.freeze([
   'objective-v1',
   'text',
   'findings-v1',
   'review-v1',
-] as const
-export const STRATEGY_STAGE_KINDS = ['delegate', 'fanout', 'synthesize'] as const
-export const STRATEGY_LIMIT_FIELDS = [
+] as const)
+export const STRATEGY_STAGE_KINDS = Object.freeze(['delegate', 'fanout', 'synthesize'] as const)
+export const STRATEGY_LIMIT_FIELDS = Object.freeze([
   'maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes',
-] as const
+] as const)
 export type ArtifactContract = (typeof ARTIFACT_CONTRACTS)[number]
 
 export interface MemberSlotSpec {
@@ -227,6 +227,9 @@ export function assertKnownOrchestrationKeys(
       }
       if (members !== undefined) {
         for (const [slot, member] of Object.entries(members)) {
+          if (!ORCHESTRATION_NAME.test(slot)) {
+            throw new Error(`dsh-legion: ${at}.teams.${name}.members has invalid slot name "${slot}"`)
+          }
           assertKnownKeys(
             member,
             ['profile', 'minParticipants', 'maxParticipants', 'tags'],
@@ -299,9 +302,22 @@ type StageOutputName<Stage> = Stage extends { readonly output: { readonly artifa
 type StageOutputContract<Stage> = Stage extends {
   readonly output: { readonly contract: infer Contract extends ArtifactContract }
 } ? Contract : never
+type TupleOf<Length extends number, Values extends readonly unknown[] = []> =
+  Values['length'] extends Length ? Values : TupleOf<Length, readonly [...Values, unknown]>
+type LessThan<Left extends number, Right extends number> =
+  TupleOf<Right> extends readonly [...TupleOf<Left>, ...infer Rest]
+    ? Rest extends readonly [] ? false : true
+    : false
+type StageOutputAvailability<Stage> = Stage extends {
+  readonly kind: 'fanout'
+  readonly allowDegraded: true
+  readonly minSuccess: infer Minimum extends number
+  readonly count: infer Count extends number
+} ? LessThan<Minimum, Count> extends true ? 'degraded' : 'required' : 'required'
 type StageOutputType<Stage> = {
   readonly contract: StageOutputContract<Stage>
   readonly collection: Stage extends { readonly kind: 'fanout' } ? true : false
+  readonly availability: StageOutputAvailability<Stage>
 }
 type StageInputUnion<Stage> = Stage extends { readonly inputs: readonly (infer Input)[] }
   ? Input
@@ -309,6 +325,7 @@ type StageInputUnion<Stage> = Stage extends { readonly inputs: readonly (infer I
 type ArtifactType = {
   readonly contract: ArtifactContract
   readonly collection: boolean
+  readonly availability: 'required' | 'degraded'
 }
 type InvalidStageInput<Stage, Env extends Readonly<Record<string, ArtifactType>>> =
   StageInputUnion<Stage> extends infer Input
@@ -316,10 +333,15 @@ type InvalidStageInput<Stage, Env extends Readonly<Record<string, ArtifactType>>
         readonly artifact: infer Name extends string
         readonly contract: infer Contract
         readonly collection?: infer Collection
+        readonly optional?: infer Optional
       }
       ? Name extends keyof Env
         ? Contract extends Env[Name]['contract']
-          ? (Collection extends true ? true : false) extends Env[Name]['collection'] ? never : Input
+          ? (Collection extends true ? true : false) extends Env[Name]['collection']
+            ? (Optional extends true ? true : false) extends (Env[Name]['availability'] extends 'degraded' ? true : false)
+              ? never
+              : Input
+            : Input
           : Input
         : Input
       : Input
@@ -328,7 +350,11 @@ type InvalidStageInput<Stage, Env extends Readonly<Record<string, ArtifactType>>
 type StageEnvironment<
   Stages extends readonly StrategyStageSpec[],
   Env extends Readonly<Record<string, ArtifactType>> = {
-    readonly objective: { readonly contract: 'objective-v1'; readonly collection: false }
+    readonly objective: {
+      readonly contract: 'objective-v1'
+      readonly collection: false
+      readonly availability: 'required'
+    }
   },
 > = Stages extends readonly [
   infer Head extends StrategyStageSpec,
@@ -370,6 +396,30 @@ export function defineTeam<const Name extends string, const Spec extends TeamSpe
 }
 
 type StageMembers<Stages extends readonly StrategyStageSpec[]> = Stages[number]['member']
+type MemberMinimum<Member> = Member extends { readonly minParticipants: infer Value extends number }
+  ? Value : 0
+type MemberMaximum<Member> = Member extends { readonly maxParticipants: infer Value extends number }
+  ? Value : 1
+type InvalidMemberStage<Team extends TeamSpec, Stage> = Stage extends {
+  readonly member: infer Name extends keyof Team['members'] & string
+} ? Team['members'][Name] extends infer Member
+  ? Stage extends {
+      readonly kind: 'fanout'
+      readonly count: infer Count extends number
+      readonly minSuccess: infer MinimumSuccess extends number
+      readonly allowDegraded: infer AllowDegraded
+    }
+    ? LessThan<Count, MemberMinimum<Member>> extends true ? Stage
+      : LessThan<MemberMaximum<Member>, Count> extends true ? Stage
+        : LessThan<Count, MinimumSuccess> extends true ? Stage
+          : AllowDegraded extends false
+            ? Count extends MinimumSuccess ? never : Stage
+            : never
+    : LessThan<1, MemberMinimum<Member>> extends true ? Stage : never
+  : Stage
+: Stage
+type InvalidMemberStages<Team extends TeamSpec, Stages extends readonly StrategyStageSpec[]> =
+  Stages[number] extends infer Stage ? InvalidMemberStage<Team, Stage> : never
 
 /** Type-level authoring helper; runtime data still crosses the normal schema/compiler seam. */
 export function defineStrategy<const Spec extends StrategySpec>(
@@ -388,7 +438,8 @@ export function defineStrategyFor<
     & (Spec['team'] extends Team['name'] ? unknown : never)
     & (Exclude<StageMembers<Spec['stages']>, keyof Team['spec']['members'] & string> extends never
       ? unknown
-      : never),
+      : never)
+    & (InvalidMemberStages<Team['spec'], Spec['stages']> extends never ? unknown : never),
 ): Spec {
   return spec
 }

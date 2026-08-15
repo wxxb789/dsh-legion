@@ -44,6 +44,8 @@ describe('versioned config migration and rollback', () => {
 
     expect(migrated.configVersion).toBe(CURRENT_CONFIG_VERSION)
     expect(migrated.enableStrategies).toBe(false)
+    expect(Object.isFrozen(migrated)).toBe(true)
+    expect(Object.isFrozen(migrated.profiles.deep?.routes)).toBe(true)
     expect(migrated).toEqual(explicit)
     expect(materializeConfig(ConfigSchema({ ...authored, configVersion: 1 }))).toEqual(explicit)
     expect(compileCatalog(authored, runtime).policyDigest)
@@ -65,6 +67,26 @@ describe('versioned config migration and rollback', () => {
     })
   })
 
+  it('rejects invalid runtime export targets instead of treating them as legacy', () => {
+    expect(() => exportConfigDocument(authored, 99 as never))
+      .toThrow(/unsupported config export target 99/)
+  })
+
+  it('rejects accessors and circular references without executing authored code', () => {
+    let reads = 0
+    const accessor = { ...authored } as Record<string, unknown>
+    Object.defineProperty(accessor, 'profiles', {
+      enumerable: true,
+      get() { reads += 1; return authored.profiles },
+    })
+    expect(() => materializeConfig(accessor)).toThrow(/plain data, not an accessor/)
+    expect(reads).toBe(0)
+
+    const circular: Record<string, unknown> = { ...authored }
+    circular.self = circular
+    expect(() => materializeConfig(circular)).toThrow(/circular references/)
+  })
+
   it('rejects null and unknown future versions instead of guessing or partially migrating', () => {
     expect(() => materializeConfig({ ...authored, configVersion: null }))
       .toThrow(/unsupported configVersion null/)
@@ -76,6 +98,8 @@ describe('versioned config migration and rollback', () => {
     expect(() => materializeConfig({ ...authored, teams: {}, strategies: {}, catalogLayers: [] }))
       .not.toThrow()
     expect(() => materializeConfig({ ...authored, enableStrategies: true }))
+      .toThrow(/configVersion 2 is required/)
+    expect(() => materializeConfig(ConfigSchema({ ...authored, enableStrategies: true })))
       .toThrow(/configVersion 2 is required/)
     expect(() => materializeConfig({
       ...authored,

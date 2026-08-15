@@ -84,6 +84,7 @@ Default Strategies ship as ordinary off-by-default data; automatic model exposur
 - Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling profile-local DSH Skill registrations.
 - Redacted provider health only if startup-time health becomes a real requirement.
 - Unified recovery seam before Legion attempts cross-route fallback.
+- Generation-bound LLM resolve/reserve/start lease before Route observations can claim atomic adapter topology.
 - Host-owned Team budget admission/reservation/reconciliation seam before Legion declares aggregate token or monetary-cost limits.
 
 ## Non-goals

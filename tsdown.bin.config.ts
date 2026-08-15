@@ -1,13 +1,13 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/bin.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
   target: 'es2024',
   fixedExtension: false,
   deps: { neverBundle: [/^@deepseek-ai\//] },
-  dts: true,
+  dts: false,
   clean: false,
 })

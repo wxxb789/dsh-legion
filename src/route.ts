@@ -40,7 +40,7 @@ export type ExactModelFact =
       readonly errorCode?: string
     }
 
-export interface ModelFactsSnapshot {
+export interface ModelFactsObservations {
   readonly facts: readonly ExactModelFact[]
 }
 
@@ -210,7 +210,7 @@ export async function observeModelRoutes(
   llm: LlmRuntime | undefined,
   routes: readonly RouteCandidate[],
   signal?: AbortSignal,
-): Promise<ModelFactsSnapshot> {
+): Promise<ModelFactsObservations> {
   const registered = new Set(llm?.listProviders().map(provider => provider.id) ?? [])
   const facts = await Promise.all(routes.map(async (route): Promise<ExactModelFact> => {
     signal?.throwIfAborted()
@@ -288,10 +288,10 @@ function boundedErrorCode(value: unknown, at: string, optional = false): string 
 }
 
 /** Runtime-validate, leaf-project, and freeze exact-model observations. */
-export function materializeModelFactsSnapshot(
+export function materializeModelFactsObservations(
   value: unknown,
   routes: readonly RouteCandidate[],
-): ModelFactsSnapshot {
+): ModelFactsObservations {
   const envelope = plainRecord(value, 'model facts snapshot')
   assertKeys(envelope, ['facts'], 'model facts snapshot')
   if (!Array.isArray(envelope.facts) || envelope.facts.length !== routes.length) {
@@ -389,7 +389,7 @@ export function materializeModelFactsSnapshot(
   return deepFreeze({ facts })
 }
 
-function factFor(route: RouteCandidate, facts: ModelFactsSnapshot): ExactModelFact {
+function factFor(route: RouteCandidate, facts: ModelFactsObservations): ExactModelFact {
   const fact = facts.facts.find(item => item.routeId === route.id)
   if (fact === undefined || fact.provider !== route.provider || fact.model !== route.model) {
     throw new Error(`dsh-legion: model facts do not match route "${route.id}"`)
@@ -458,13 +458,13 @@ function evidence(route: RouteCandidate, fact: ExactModelFact): RouteEvidence {
 export function compileRoutePlan(
   profile: RoutableProfile,
   policyDigest: PolicyDigest,
-  facts: ModelFactsSnapshot,
+  facts: ModelFactsObservations,
 ): RoutePlan {
   const routes = profile.routes
   if (routes.length === 0 || routes.length > 8) {
     throw new Error('dsh-legion: route planner requires between 1 and 8 candidates')
   }
-  const observed = materializeModelFactsSnapshot(facts, routes)
+  const observed = materializeModelFactsObservations(facts, routes)
   let selected: { index: number; candidate: Readonly<RouteCandidate>; evidence: RouteEvidence } | undefined
   const decisions: RouteDecision[] = routes.map((route, index) => {
     const candidate = candidateCopy(route)

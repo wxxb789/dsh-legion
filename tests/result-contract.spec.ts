@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { materializeStructuredResult, outputSchemaFor } from '../src/result-contract.ts'
+import {
+  REVIEW_V1_SCHEMA,
+  materializeStructuredResult,
+  outputSchemaFor,
+} from '../src/result-contract.ts'
 
 describe('versioned result contracts', () => {
+  it('publishes deeply immutable schema generations', () => {
+    expect(Object.isFrozen(outputSchemaFor('review-v1'))).toBe(true)
+    const properties = REVIEW_V1_SCHEMA.properties
+    if (properties === undefined) throw new Error('missing review schema properties')
+    expect(Object.isFrozen(properties.findings)).toBe(true)
+    expect(() => {
+      ;(properties as Record<string, unknown>).extra = { type: 'string' }
+    }).toThrow(TypeError)
+    expect(outputSchemaFor('review-v1')).not.toHaveProperty('properties.extra')
+  })
+
   it('projects findings-v1 into detached owned JSON', () => {
     const input = {
       summary: 'Found two modules.',

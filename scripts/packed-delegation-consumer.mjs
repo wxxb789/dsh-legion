@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -16,6 +17,17 @@ const consumerManifest = JSON.parse(readFileSync('package.json', 'utf8'))
 if (process.env.DSH_LEGION_PACKED_CONSUMER !== '1'
   || consumerManifest.name !== 'dsh-legion-packed-delegation-consumer') {
   throw new Error('refusing to run packed consumer fixture outside its isolated sandbox')
+}
+const packageRoot = dirname(fileURLToPath(import.meta.resolve('dsh-legion/package.json')))
+const publicContract = JSON.parse(readFileSync(join(packageRoot, 'contracts/v1.json'), 'utf8'))
+if (JSON.stringify(Object.keys(legion).sort()) !== JSON.stringify(publicContract.runtimeExports)) {
+  throw new Error('packed runtime exports drifted from the public contract')
+}
+const declarationSha256 = `sha256:${createHash('sha256')
+  .update(readFileSync(join(packageRoot, 'lib/index.d.ts')))
+  .digest('hex')}`
+if (declarationSha256 !== publicContract.declarationSha256) {
+  throw new Error('packed declaration surface drifted from the public contract')
 }
 
 class PackedAdapter extends LlmAdapter {

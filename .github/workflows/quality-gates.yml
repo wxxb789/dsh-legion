@@ -1,0 +1,90 @@
+name: Quality gates
+
+on:
+  workflow_call:
+    inputs:
+      tarball-artifact:
+        description: Optional artifact name containing the exact release tarball.
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: quality (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node: 22.19.0
+            packedProfile: false
+          - os: ubuntu-latest
+            node: 24.x
+            packedProfile: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm run check
+      - if: matrix.packedProfile
+        run: pnpm run test:profile-install
+
+  compatibility:
+    name: packed E2E (${{ matrix.dsh.channel }}, Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.19.0, 24.x]
+        dsh:
+          - channel: minimum
+            version: 0.1.0-rc.6
+          - channel: latest-compatible
+            version: '>=0.1.0-rc.6 <0.2.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - if: inputs.tarball-artifact != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.tarball-artifact }}
+          path: package-tarball
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm run build
+      - if: inputs.tarball-artifact == ''
+        run: pnpm run test:packed-delegation
+        env:
+          DSH_VERSION: ${{ matrix.dsh.version }}
+          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+      - if: inputs.tarball-artifact != ''
+        run: |
+          mapfile -t tarballs < <(find package-tarball -name '*.tgz' -type f)
+          test "${#tarballs[@]}" -eq 1
+          DSH_LEGION_TARBALL="${tarballs[0]}" pnpm run test:packed-delegation
+        env:
+          DSH_VERSION: ${{ matrix.dsh.version }}
+          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}
+          path: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.*
+          if-no-files-found: error

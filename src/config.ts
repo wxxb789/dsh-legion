@@ -8,12 +8,13 @@ import {
   type TeamSpec,
 } from './orchestration-contract.ts'
 import { resolveCatalogLayers } from './catalog-layer.ts'
+import { deepCopy, deepFreeze } from './internal/value.ts'
 
 export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
 export const CURRENT_CONFIG_VERSION = 2 as const
 export type ConfigVersion = 1 | typeof CURRENT_CONFIG_VERSION
 export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
-export const RESULT_CONTRACTS = ['text', 'findings-v1', 'review-v1'] as const
+export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
 export interface PromptFileReference {
@@ -72,21 +73,21 @@ export interface Config {
   /** Explicit document version; omission is the pre-v0.4 unversioned v1 shape. */
   readonly configVersion?: ConfigVersion
   /** Model-facing tool name. */
-  toolName: string
+  readonly toolName: string
   /** Semantic profiles selected by the coordinator instead of raw model ids. */
-  profiles: Record<string, LegionProfile>
+  readonly profiles: Record<string, LegionProfile>
   /** Profile used when the tool call omits profile. */
-  defaultProfile?: string
+  readonly defaultProfile?: string
   /** Whether the tool exposes and accepts run_in_background. */
-  enableRunInBackground: boolean
+  readonly enableRunInBackground: boolean
   /** Explicit opt-in for model-callable Strategies; defaults to false. */
   readonly enableStrategies?: boolean
   /** Additional coordinator guidance appended after the generated routing table. */
-  guidance?: string
+  readonly guidance?: string
   /** Deployment-owned aliases to directories containing prompt fragments. */
-  resourceRoots?: Record<string, string>
+  readonly resourceRoots?: Record<string, string>
   /** Maximum combined prompt-fragment bytes loaded for one profile. */
-  maxResourceBytes?: number
+  readonly maxResourceBytes?: number
   /** Ordered installed/project catalog layers; the root maps form the final deployment layer. */
   catalogLayers?: CatalogLayer<LegionProfile>[]
   /** Named declarative Teams in the final deployment layer. */
@@ -156,17 +157,17 @@ const CatalogLayerSchema = z.object({
 }) as unknown as z<CatalogLayer<LegionProfile>>
 
 export interface MaterializedConfig extends Config {
-  configVersion: typeof CURRENT_CONFIG_VERSION
-  resourceRoots: Record<string, string>
-  maxResourceBytes: number
-  enableStrategies: boolean
-  catalogLayers: []
-  teams: Record<string, TeamSpec>
-  strategies: Record<string, StrategySpec>
+  readonly configVersion: typeof CURRENT_CONFIG_VERSION
+  readonly resourceRoots: Record<string, string>
+  readonly maxResourceBytes: number
+  readonly enableStrategies: boolean
+  readonly catalogLayers: []
+  readonly teams: Record<string, TeamSpec>
+  readonly strategies: Record<string, StrategySpec>
 }
 
 export const Config: z<Config> = z.object({
-  configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]).default(CURRENT_CONFIG_VERSION),
+  configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
   toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
@@ -180,14 +181,36 @@ export const Config: z<Config> = z.object({
   strategies: z.dict(StrategySpecSchema),
 })
 
-function cloneAuthoredValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(cloneAuthoredValue)
+function cloneAuthoredValue(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet(),
+): unknown {
   if (typeof value !== 'object' || value === null) return value
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) return value
-  return Object.fromEntries(
-    Object.entries(value).map(([key, child]) => [key, cloneAuthoredValue(child)]),
-  )
+  if (ancestors.has(value)) throw new Error('dsh-legion: config must not contain circular references')
+  ancestors.add(value)
+  try {
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error('dsh-legion: config must not contain symbol properties')
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value)
+    for (const [key, descriptor] of Object.entries(descriptors)) {
+      if (descriptor.enumerable && ('get' in descriptor || 'set' in descriptor)) {
+        throw new Error(`dsh-legion: config field "${key}" must be plain data, not an accessor`)
+      }
+    }
+    if (Array.isArray(value)) {
+      return Array.from({ length: value.length }, (_, index) => {
+        const descriptor = descriptors[String(index)]
+        return descriptor === undefined ? undefined : cloneAuthoredValue(descriptor.value, ancestors)
+      })
+    }
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return value
+    return Object.fromEntries(Object.entries(descriptors).flatMap(([key, descriptor]) =>
+      descriptor.enumerable ? [[key, cloneAuthoredValue(descriptor.value, ancestors)]] : []))
+  } finally {
+    ancestors.delete(value)
+  }
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -328,8 +351,9 @@ function assertKnownConfigKeys(input: unknown): void {
 
 /** Validate, materialize defaults, and detach one untrusted Legion config. */
 export function materializeConfig(input: unknown): MaterializedConfig {
-  assertKnownConfigKeys(input)
-  const parsed = Config(cloneAuthoredValue(input) as Config | null | undefined)
+  const authored = cloneAuthoredValue(input)
+  assertKnownConfigKeys(authored)
+  const parsed = Config(authored as Config | null | undefined)
   const layerIds = new Set((parsed.catalogLayers ?? []).map(layer => layer.id))
   let deploymentLayerId = 'deployment'
   for (let suffix = 2; layerIds.has(deploymentLayerId); suffix += 1) {
@@ -354,7 +378,7 @@ export function materializeConfig(input: unknown): MaterializedConfig {
     catalogLayers: [],
   }
   validateConfig(effective)
-  return {
+  return deepFreeze({
     configVersion: CURRENT_CONFIG_VERSION,
     toolName: effective.toolName,
     enableRunInBackground: effective.enableRunInBackground,
@@ -415,7 +439,7 @@ export function materializeConfig(input: unknown): MaterializedConfig {
     catalogLayers: [],
     teams: { ...resolved.teams },
     strategies: { ...resolved.strategies },
-  }
+  })
 }
 
 /** Export one normalized current document or a rollback-compatible unversioned document. */
@@ -423,8 +447,11 @@ export function exportConfigDocument(
   input: unknown,
   target: ConfigExportTarget = CURRENT_CONFIG_VERSION,
 ): Config {
+  if (target !== CURRENT_CONFIG_VERSION && target !== 1 && target !== 'legacy-unversioned') {
+    throw new Error(`dsh-legion: unsupported config export target ${String(target)}`)
+  }
   const current = materializeConfig(input)
-  const document = current
+  const document = deepCopy(current)
   if (target === CURRENT_CONFIG_VERSION) return document
   if (current.enableStrategies
     || Object.keys(current.teams).length > 0

@@ -2,6 +2,7 @@ import { PROFILE_NAME } from './config.ts'
 
 declare const legionBrand: unique symbol
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/
+const TEAM_RUN_ID = /^team-run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 type Brand<Value, Name extends string> = Value & { readonly [legionBrand]: Name }
 
@@ -15,6 +16,7 @@ export type StrategyName = Brand<string, 'StrategyName'>
 export type MemberSlotName = Brand<string, 'MemberSlotName'>
 export type ArtifactName = Brand<string, 'ArtifactName'>
 export type StrategyPlanDigest = Brand<`sha256:${string}`, 'StrategyPlanDigest'>
+export type StrategyGenerationId = Brand<`sha256:${string}`, 'StrategyGenerationId'>
 export type TeamRunId = Brand<string, 'TeamRunId'>
 
 /** Validate and brand one public profile identity. */
@@ -72,8 +74,14 @@ export function ArtifactName(value: string): ArtifactName {
   return namedIdentity(value, 'ArtifactName')
 }
 
+export function StrategyGenerationId(value: string): StrategyGenerationId {
+  if (!SHA256_DIGEST.test(value)) throw new Error('dsh-legion: invalid Strategy generation identity')
+  return value as StrategyGenerationId
+}
+
 export function TeamRunId(value: string): TeamRunId {
-  return namedIdentity(value, 'TeamRunId')
+  if (!TEAM_RUN_ID.test(value)) throw new Error('dsh-legion: invalid Team Run identity')
+  return value as TeamRunId
 }
 
 export function StrategyPlanDigest(value: string): StrategyPlanDigest {

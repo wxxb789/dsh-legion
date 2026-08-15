@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto'
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { LegionProfile, ResultContract, RouteCandidate } from './config.ts'
 import { materializeConfig } from './config.ts'
+import { deepFreeze, sha256Digest } from './internal/value.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import type { SelectedRoutePlan } from './route.ts'
 import type { StrategySpec, TeamSpec } from './orchestration-contract.ts'
@@ -23,21 +23,21 @@ import {
   type ResourceDigest,
 } from './identity.ts'
 
-export const WARNING_DIAGNOSTIC_CODES = [
+export const WARNING_DIAGNOSTIC_CODES = Object.freeze([
   'PROFILE_PROVIDER_UNAVAILABLE',
   'PROFILE_LLM_ADAPTER_UNAVAILABLE',
   'DEFAULT_PROFILE_INACTIVE',
-] as const
+] as const)
 export type WarningDiagnosticCode = (typeof WARNING_DIAGNOSTIC_CODES)[number]
 
-export const ERROR_DIAGNOSTIC_CODES = [
+export const ERROR_DIAGNOSTIC_CODES = Object.freeze([
   'PROFILE_CONTINUABLE_UNSUPPORTED',
   'PROFILE_DEPTH_UNSUPPORTED',
   'PROFILE_PERSONA_UNSUPPORTED',
   'PROFILE_TOOL_FILTER_UNSUPPORTED',
   'PROFILE_OUTPUT_SCHEMA_UNSUPPORTED',
   'PROFILE_STRUCTURED_BACKGROUND_UNSUPPORTED',
-] as const
+] as const)
 export type ErrorDiagnosticCode = (typeof ERROR_DIAGNOSTIC_CODES)[number]
 
 export type Diagnostic =
@@ -207,26 +207,6 @@ function copyProfile(
     defaultMode,
     allowedModes: Object.freeze([...allowedModes]),
   })
-}
-
-function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
-}
-
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical)
-  if (typeof value !== 'object' || value === null) return value
-  const record = value as Record<string, unknown>
-  return Object.fromEntries(
-    Object.keys(record).sort().flatMap((key) =>
-      record[key] === undefined ? [] : [[key, canonical(record[key])]]),
-  )
-}
-
-function sha256(value: unknown): `sha256:${string}` {
-  return `sha256:${createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')}`
 }
 
 function providerError(
@@ -433,8 +413,8 @@ export function compileCatalog(
     teams: deepFreeze({ ...config.teams }),
     strategies: deepFreeze({ ...config.strategies }),
     diagnostics: frozenDiagnostics,
-    policyDigest: policyDigest(sha256({ version: 1, kind: 'legion-policy', policy })),
-    catalogDigest: catalogDigest(sha256({ version: 1, kind: 'legion-catalog', policy, runtime })),
+    policyDigest: policyDigest(sha256Digest({ version: 1, kind: 'legion-policy', policy })),
+    catalogDigest: catalogDigest(sha256Digest({ version: 1, kind: 'legion-catalog', policy, runtime })),
     resourceDigest: resources.digest,
   })
 }

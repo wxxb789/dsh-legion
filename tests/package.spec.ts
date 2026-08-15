@@ -57,6 +57,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/evaluate-quality-campaign.mjs')),
       access(resolve(ROOT, 'scripts/evaluate-exposure-evidence.mjs')),
       access(resolve(ROOT, 'scripts/verify-public-contract.mjs')),
+      access(resolve(ROOT, 'scripts/verify-compatibility-receipts.mjs')),
       access(resolve(ROOT, 'contracts/v1.json')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))

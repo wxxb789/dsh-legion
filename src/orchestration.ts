@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
 import type { CompiledCatalog, EffectiveProfile } from './compiler.ts'
+import { deepFreeze, sha256Digest } from './internal/value.ts'
 import type {
   ArtifactContract,
   StrategyLimits,
@@ -10,12 +10,14 @@ import type {
 import {
   ArtifactName,
   MemberSlotName,
+  StrategyGenerationId,
   StrategyName,
   StrategyPlanDigest,
   TeamName,
   type ArtifactName as ArtifactNameType,
   type MemberSlotName as MemberSlotNameType,
   type ProfileName,
+  type StrategyGenerationId as StrategyGenerationIdType,
   type StrategyName as StrategyNameType,
   type StrategyPlanDigest as StrategyPlanDigestType,
   type TeamName as TeamNameType,
@@ -143,6 +145,7 @@ export interface CompiledOrchestrationCatalog {
   readonly strategies: Readonly<Record<string, CompiledStrategyTemplate>>
   readonly diagnostics: readonly OrchestrationDiagnostic[]
   readonly digest: `sha256:${string}`
+  readonly generationId: StrategyGenerationIdType
   readonly profilePolicyDigest: string
   readonly profileCatalogDigest: string
 }
@@ -153,14 +156,16 @@ export interface StrategyCompileRequest {
   readonly limits?: Partial<StrategyLimits>
 }
 
+declare const compiledStrategyPlanBrand: unique symbol
+
 export interface CompiledStrategyPlan {
+  readonly [compiledStrategyPlanBrand]: true
   readonly kind: 'compiled-strategy-plan'
   readonly strategy: StrategyNameType
   readonly team: TeamNameType
   readonly objective: string
   readonly objectiveDigest: `sha256:${string}`
-  readonly catalogDigest: `sha256:${string}`
-  readonly profilePolicyDigest: string
+  readonly generationId: StrategyGenerationIdType
   readonly planDigest: StrategyPlanDigestType
   readonly primitives: readonly DshPrimitive[]
   readonly artifacts: Readonly<Record<string, CompiledArtifact>>
@@ -179,24 +184,6 @@ export type StrategyCompileResult =
       readonly ok: false
       readonly diagnostics: readonly OrchestrationDiagnostic[]
     }
-
-function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
-}
-
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical)
-  if (typeof value !== 'object' || value === null) return value
-  const source = value as Record<string, unknown>
-  return Object.fromEntries(Object.keys(source).sort().flatMap(key =>
-    source[key] === undefined ? [] : [[key, canonical(source[key])]]))
-}
-
-function digest(value: unknown): `sha256:${string}` {
-  return `sha256:${createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex')}`
-}
 
 function push(
   diagnostics: OrchestrationDiagnostic[],
@@ -348,6 +335,7 @@ function compileStrategyTemplate(
   }
   const stageIds = new Set<string>()
   const primitives: DshPrimitive[] = []
+  const memberDemand = new Map(Object.keys(team.members).map(member => [member, 0]))
   let agents = 0
   let largestParallel = 1
   let hasDegraded = false
@@ -469,6 +457,10 @@ function compileStrategyTemplate(
       hasDegraded ||= stage.allowDegraded && stage.minSuccess < stage.count
     }
     if (diagnostics.slice(stageDiagnosticStart).some(item => item.severity === 'error')) continue
+    memberDemand.set(
+      stage.member,
+      Math.max(memberDemand.get(stage.member) ?? 0, expectedAgentCount(stage)),
+    )
     const availability: ArtifactAvailability = stage.kind === 'fanout'
       && stage.allowDegraded
       && stage.minSuccess < stage.count
@@ -502,6 +494,27 @@ function compileStrategyTemplate(
         mode: stage.kind === 'delegate' ? stage.mode ?? 'foreground' : 'foreground',
       }))
     }
+  }
+  for (const member of Object.values(team.members)) {
+    if ((memberDemand.get(String(member.name)) ?? 0) < member.minParticipants) {
+      push(
+        diagnostics,
+        'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED',
+        'error',
+        `strategy "${name}" does not satisfy required participation for member "${member.name}"`,
+        { strategy: name },
+      )
+    }
+  }
+  const participatingMembers = [...memberDemand.values()].reduce((total, demand) => total + demand, 0)
+  if (participatingMembers > team.maxMembers) {
+    push(
+      diagnostics,
+      'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED',
+      'error',
+      `strategy "${name}" requires ${String(participatingMembers)} Team participants but maxMembers is ${String(team.maxMembers)}`,
+      { strategy: name },
+    )
   }
   if (agents > spec.limits.maxAgents) {
     push(
@@ -616,11 +629,13 @@ export function compileOrchestrationCatalog(
     teams,
     strategies,
   }
+  const catalogDigest = sha256Digest(identity)
   return deepFreeze({
     teams,
     strategies,
     diagnostics,
-    digest: digest(identity),
+    digest: catalogDigest,
+    generationId: StrategyGenerationId(catalogDigest),
     profilePolicyDigest: profiles.policyDigest,
     profileCatalogDigest: profiles.catalogDigest,
   })
@@ -681,12 +696,11 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
 }
 
 export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
-  const objectiveDigest = digest({ version: 1, kind: 'legion-objective', objective: plan.objective })
+  const objectiveDigest = sha256Digest({ version: 1, kind: 'legion-objective', objective: plan.objective })
   const identity = {
     version: 1,
     kind: 'legion-strategy-plan',
-    catalogDigest: plan.catalogDigest,
-    profilePolicyDigest: plan.profilePolicyDigest,
+    generationId: plan.generationId,
     strategy: plan.strategy,
     team: plan.team,
     objectiveDigest,
@@ -697,7 +711,7 @@ export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
     memberFailure: plan.memberFailure,
   }
   if (plan.objectiveDigest !== objectiveDigest
-    || StrategyPlanDigest(digest(identity)) !== plan.planDigest) {
+    || StrategyPlanDigest(sha256Digest(identity)) !== plan.planDigest) {
     throw new Error('dsh-legion: compiled Strategy Plan digest does not match its policy')
   }
 }
@@ -791,12 +805,11 @@ export function compileStrategy(
     )
     return deepFreeze({ ok: false, diagnostics })
   }
-  const objectiveDigest = digest({ version: 1, kind: 'legion-objective', objective })
+  const objectiveDigest = sha256Digest({ version: 1, kind: 'legion-objective', objective })
   const planIdentity = {
     version: 1,
     kind: 'legion-strategy-plan',
-    catalogDigest: catalog.digest,
-    profilePolicyDigest: catalog.profilePolicyDigest,
+    generationId: catalog.generationId,
     strategy: strategy.name,
     team: strategy.team,
     objectiveDigest,
@@ -806,20 +819,19 @@ export function compileStrategy(
     limits,
     memberFailure: strategy.memberFailure,
   }
-  const plan: CompiledStrategyPlan = deepFreeze({
+  const plan = deepFreeze({
     kind: 'compiled-strategy-plan',
     strategy: strategy.name,
     team: strategy.team,
     objective,
     objectiveDigest,
-    catalogDigest: catalog.digest,
-    profilePolicyDigest: catalog.profilePolicyDigest,
-    planDigest: StrategyPlanDigest(digest(planIdentity)),
+    generationId: catalog.generationId,
+    planDigest: StrategyPlanDigest(sha256Digest(planIdentity)),
     primitives: strategy.primitives,
     artifacts: strategy.artifacts,
     completion: strategy.completion,
     limits,
     memberFailure: strategy.memberFailure,
-  })
+  }) as CompiledStrategyPlan
   return deepFreeze({ ok: true, plan, diagnostics })
 }

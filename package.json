@@ -1,6 +1,6 @@
 {
   "name": "dsh-legion",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "description": "Configurable multi-agent teams and orchestration policy for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -26,13 +26,14 @@
     "scripts/evaluate-quality-campaign.mjs",
     "scripts/evaluate-exposure-evidence.mjs",
     "scripts/verify-public-contract.mjs",
+    "scripts/verify-compatibility-receipts.mjs",
     "README.md",
     "CHANGELOG.md",
     "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "pnpm run clean && tsdown",
+    "build": "pnpm run clean && tsdown && tsdown --config tsdown.bin.config.ts",
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
@@ -40,6 +41,7 @@
     "verify:pack": "npm pack --dry-run --ignore-scripts",
     "verify:release": "node scripts/verify-release.mjs",
     "verify:contract": "node scripts/verify-public-contract.mjs",
+    "verify:compatibility-receipts": "node scripts/verify-compatibility-receipts.mjs",
     "test:profile-install": "node scripts/verify-profile-install.mjs",
     "test:packed-delegation": "node scripts/verify-packed-delegation.mjs",
     "benchmark:protocol": "node scripts/benchmark-protocol.mjs",

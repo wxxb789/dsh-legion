@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { settleChildRun } from './child-run.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-tools'
-import type { SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
+import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
 import type { CompiledCatalog, DelegationPlan } from './compiler.ts'
 import { compileDelegationPlan } from './compiler.ts'
 import { assertCompiledStrategyPlan } from './orchestration.ts'
@@ -14,17 +15,16 @@ import type {
   FanoutPrimitive,
 } from './orchestration.ts'
 import { TeamRunId, type TeamRunId as TeamRunIdType } from './identity.ts'
+import { deepFreeze } from './internal/value.ts'
 import { materializeStructuredResult } from './result-contract.ts'
 import { applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
-export const TEAM_RUN_OUTCOMES = ['completed', 'degraded', 'cancelled', 'failed'] as const
+export const TEAM_RUN_OUTCOMES = Object.freeze(['completed', 'degraded', 'cancelled', 'failed'] as const)
 
 export interface StrategyExecutionSnapshot {
   readonly kind: 'strategy-execution-snapshot'
-  readonly catalogDigest: CompiledOrchestrationCatalog['digest']
-  readonly profilePolicyDigest: CompiledCatalog['policyDigest']
-  readonly profileCatalogDigest: CompiledCatalog['catalogDigest']
+  readonly generationId: CompiledOrchestrationCatalog['generationId']
   readonly profiles: CompiledCatalog
   readonly orchestration: CompiledOrchestrationCatalog
 }
@@ -100,12 +100,6 @@ class PrimitiveFailure extends Error {
   }
 }
 
-function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
-}
-
 export function createStrategyExecutionSnapshot(
   profiles: CompiledCatalog,
   orchestration: CompiledOrchestrationCatalog,
@@ -116,9 +110,7 @@ export function createStrategyExecutionSnapshot(
   }
   return deepFreeze({
     kind: 'strategy-execution-snapshot',
-    catalogDigest: orchestration.digest,
-    profilePolicyDigest: profiles.policyDigest,
-    profileCatalogDigest: profiles.catalogDigest,
+    generationId: orchestration.generationId,
     profiles,
     orchestration,
   })
@@ -226,69 +218,6 @@ function renderPrompt(
   ].join('\n')
 }
 
-function awaitAbortable<Value>(task: Promise<Value>, signal: AbortSignal): Promise<Value> {
-  if (signal.aborted) return Promise.reject(new Error(boundedMessage(signal.reason)))
-  return new Promise<Value>((resolve, reject) => {
-    const abort = () => reject(new Error(boundedMessage(signal.reason)))
-    signal.addEventListener('abort', abort, { once: true })
-    task.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort)).catch(() => undefined)
-  })
-}
-
-async function boundedDispose(run: SubagentRun): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const disposal = run.dispose().then(
-    () => ({ kind: 'disposed' as const }),
-    (error: unknown) => ({ kind: 'error' as const, error }),
-  )
-  try {
-    const result = await Promise.race([
-      disposal,
-      new Promise<{ readonly kind: 'timeout' }>((resolveTimeout) => {
-        timer = setTimeout(() => resolveTimeout({ kind: 'timeout' }), 1000)
-      }),
-    ])
-    if (result.kind === 'error') throw result.error
-    if (result.kind === 'timeout') throw new Error('subagent disposal exceeded grace period')
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
-
-async function settleRun(
-  run: SubagentRun,
-  plan: DelegationPlan,
-  signal: AbortSignal,
-  claimExecutionFailure?: () => void,
-): Promise<SubagentResult> {
-  let result: SubagentResult | undefined
-  let resultError: unknown
-  let disposeError: unknown
-  try {
-    result = await awaitAbortable(run.result, signal)
-  } catch (error: unknown) {
-    resultError = error
-    if (!signal.aborted) claimExecutionFailure?.()
-  }
-  if (result !== undefined && result.stopReason !== 'completed') {
-    resultError = new Error(`profile "${plan.profile}" ended with ${result.stopReason}`)
-    claimExecutionFailure?.()
-  }
-  try {
-    await boundedDispose(run)
-  } catch (error: unknown) {
-    disposeError = error
-  }
-  if (resultError !== undefined || disposeError !== undefined) {
-    throw new AggregateError(
-      [resultError, disposeError].filter(value => value !== undefined),
-      `profile "${plan.profile}" child run or disposal failed`,
-    )
-  }
-  if (result === undefined) throw new Error(`profile "${plan.profile}" returned no result`)
-  return result
-}
-
 function contentText(output: ContentBlock[]): string {
   return output
     .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
@@ -335,21 +264,42 @@ async function executeOne(
   claimExecutionFailure?: () => void,
 ): Promise<JsonValue> {
   const plan = await delegationPlan(ctx, catalog, primitive, prompt, signal)
-  const run = await ctx.subagents.start(plan.subagentProvider, {
-    label: plan.label,
-    prompt: [{ type: 'text', text: plan.prompt }],
-    parent,
+  const settlement = await settleChildRun({
     signal,
-    ...plan.agentOptions === undefined ? {} : { agentOptions: plan.agentOptions },
-    ...plan.persona === undefined ? {} : { persona: plan.persona },
-    ...plan.toolFilter === undefined ? {} : { toolFilter: plan.toolFilter },
-    ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
-    ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
+    onExecution: execution => {
+      if (execution.kind === 'failed') claimExecutionFailure?.()
+    },
+    onLateCleanup: cleanup => {
+      if (cleanup.kind !== 'quiescent') {
+        ctx.logger.warn(`dsh-legion: late child cleanup ended ${cleanup.kind}`)
+      }
+    },
+    start: () => ctx.subagents.start(plan.subagentProvider, {
+      label: plan.label,
+      prompt: [{ type: 'text', text: plan.prompt }],
+      parent,
+      signal,
+      ...plan.agentOptions === undefined ? {} : { agentOptions: plan.agentOptions },
+      ...plan.persona === undefined ? {} : { persona: plan.persona },
+      ...plan.toolFilter === undefined ? {} : { toolFilter: plan.toolFilter },
+      ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
+      ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
+    }),
   })
-  return artifactValue(
-    primitive.output,
-    await settleRun(run, plan, signal, claimExecutionFailure),
-  )
+  const errors: unknown[] = []
+  if (settlement.execution.kind === 'failed') errors.push(settlement.execution.error)
+  if (settlement.cleanup.kind === 'failed') errors.push(settlement.cleanup.error)
+  if (settlement.cleanup.kind === 'pending') errors.push(new Error('subagent cleanup is still pending'))
+  if (errors.length > 0) {
+    throw new AggregateError(errors, `profile "${plan.profile}" child execution or cleanup failed`)
+  }
+  if (settlement.execution.kind === 'cancelled') {
+    throw new Error(boundedMessage(settlement.execution.reason))
+  }
+  if (settlement.execution.kind !== 'completed') {
+    throw new Error(`profile "${plan.profile}" child did not complete`)
+  }
+  return artifactValue(primitive.output, settlement.execution.result)
 }
 
 async function executeFanout(
@@ -359,43 +309,71 @@ async function executeFanout(
   prompt: string,
   parent: Agent,
   signal: AbortSignal,
+  maxConcurrent: number,
   claimTerminalFailure: () => void,
 ): Promise<{
   artifact?: MaterializedStrategyArtifact
   failures: StrategyMemberFailure[]
 }> {
+  type SettledMember =
+    | { readonly index: number; readonly value: JsonValue }
+    | { readonly index: number; readonly error: unknown }
+  const stageController = new AbortController()
+  const abortStage = () => stageController.abort(signal.reason)
+  if (signal.aborted) abortStage()
+  else signal.addEventListener('abort', abortStage, { once: true })
+  const stageSignal = stageController.signal
   let failedMembers = 0
+  let nextIndex = 0
+  let stopAdmission = false
   const maximumToleratedFailures = primitive.count - primitive.minSuccess
-  const settled = await Promise.all(Array.from({ length: primitive.count }, async (_, index) => {
-    let memberFailed = false
-    const markFailure = () => {
-      if (memberFailed) return
-      memberFailed = true
-      failedMembers += 1
-      if (failedMembers > maximumToleratedFailures) claimTerminalFailure()
-    }
-    try {
-      return {
-        index,
-        value: await executeOne(
-          ctx,
-          catalog,
-          primitive,
-          `${prompt}\n\nPanel member: ${String(index + 1)}`,
-          parent,
-          signal,
-          markFailure,
-        ),
+  const settled: Array<SettledMember | undefined> = Array.from({ length: primitive.count })
+  const worker = async (): Promise<void> => {
+    while (!stageSignal.aborted && !stopAdmission) {
+      const index = nextIndex
+      nextIndex += 1
+      if (index >= primitive.count) return
+      let memberFailed = false
+      const markFailure = () => {
+        if (memberFailed) return
+        memberFailed = true
+        failedMembers += 1
+        if (failedMembers > maximumToleratedFailures) {
+          stopAdmission = true
+          claimTerminalFailure()
+          stageController.abort('fanout minSuccess became impossible')
+        }
       }
-    } catch (error: unknown) {
-      markFailure()
-      return { index, error }
+      try {
+        settled[index] = {
+          index,
+          value: await executeOne(
+            ctx,
+            catalog,
+            primitive,
+            `${prompt}\n\nPanel member: ${String(index + 1)}`,
+            parent,
+            stageSignal,
+            markFailure,
+          ),
+        }
+      } catch (error: unknown) {
+        markFailure()
+        settled[index] = { index, error }
+      }
     }
-  }))
-  const failures = settled.flatMap(item => 'error' in item
+  }
+  const workers = Math.max(1, Math.min(primitive.count, maxConcurrent))
+  try {
+    await Promise.all(Array.from({ length: workers }, worker))
+  } finally {
+    signal.removeEventListener('abort', abortStage)
+  }
+  const completed = settled.filter((item): item is SettledMember => item !== undefined)
+  const failures = completed.flatMap(item => 'error' in item
     ? [failure(primitive, 'MEMBER_FAILED', item.error, item.index)]
     : [])
-  const values = settled.flatMap(item => 'value' in item ? [item.value] : [])
+  const values = completed.flatMap(item => 'value' in item ? [item.value] : [])
   if (values.length < primitive.minSuccess) return { failures }
   const definition: CompiledArtifact = failures.length === 0
     ? { ...primitive.output, availability: 'required' }
@@ -416,19 +394,14 @@ export async function executeStrategyPlan(
 ): Promise<TeamRunOutcome> {
   const { profiles: catalog, orchestration } = snapshot
   if (snapshot.kind !== 'strategy-execution-snapshot'
-    || snapshot.catalogDigest !== orchestration.digest
-    || snapshot.profilePolicyDigest !== catalog.policyDigest
-    || snapshot.profileCatalogDigest !== catalog.catalogDigest
+    || snapshot.generationId !== orchestration.generationId
     || orchestration.profilePolicyDigest !== catalog.policyDigest
     || orchestration.profileCatalogDigest !== catalog.catalogDigest) {
     throw new Error('dsh-legion: invalid Strategy execution snapshot generation')
   }
   assertCompiledStrategyPlan(plan)
-  if (plan.catalogDigest !== orchestration.digest) {
-    throw new Error('dsh-legion: Strategy Plan catalog generation does not match execution snapshot')
-  }
-  if (plan.profilePolicyDigest !== catalog.policyDigest) {
-    throw new Error('dsh-legion: Strategy Plan Profile policy does not match execution catalog')
+  if (plan.generationId !== snapshot.generationId) {
+    throw new Error('dsh-legion: Strategy Plan generation does not match execution snapshot')
   }
   const runId = TeamRunId(`team-run-${randomUUID()}`)
   const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
@@ -451,6 +424,7 @@ export async function executeStrategyPlan(
           prompt,
           parent,
           deadline.signal,
+          plan.limits.maxConcurrent,
           () => { terminal.claim('failed') },
         )
         failures.push(...fanout.failures)
@@ -501,6 +475,20 @@ export async function executeStrategyPlan(
     }
     const kind = failures.length === 0 ? 'completed' : 'degraded'
     if (!terminal.claim(kind)) {
+      if (terminal.value === 'failed') {
+        return deepFreeze({
+          kind: 'failed',
+          runId,
+          planDigest: plan.planDigest,
+          artifacts: list,
+          failure: firstFailure ?? {
+            stage: 'execution',
+            member: 'unknown',
+            code: 'TERMINAL_FAILURE',
+            message: 'Strategy execution failed before completion committed.',
+          },
+        })
+      }
       return deepFreeze({
         kind: 'cancelled',
         runId,
