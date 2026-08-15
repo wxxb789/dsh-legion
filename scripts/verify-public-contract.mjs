@@ -9,10 +9,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const contract = JSON.parse(await readFile(resolve(root, 'contracts/v1.json'), 'utf8'))
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const declarationBytes = await readFile(resolve(root, 'lib/index.d.ts'))
-const declarationSha256 = `sha256:${createHash('sha256').update(declarationBytes).digest('hex')}`
+const declarationSource = declarationBytes.toString('utf8').replace(/\r\n/g, '\n')
+const declarationSha256 = `sha256:${createHash('sha256').update(declarationSource).digest('hex')}`
 const sourceFile = ts.createSourceFile(
   'index.d.ts',
-  declarationBytes.toString('utf8'),
+  declarationSource,
   ts.ScriptTarget.Latest,
   true,
   ts.ScriptKind.TS,
