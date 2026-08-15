@@ -75,6 +75,7 @@ export interface ExplainViewV1 {
   readonly tool: {
     readonly name: string
     readonly backgroundEnabled: boolean
+    readonly strategyExposureEnabled?: boolean
     readonly configuredDefaultProfile?: ProfileName
     readonly activeDefaultProfile?: ProfileName
   }
@@ -155,6 +156,7 @@ export const EXPLAIN_VIEW_V1_SCHEMA: ObjectJsonSchema = {
       properties: {
         name: { type: 'string' },
         backgroundEnabled: { type: 'boolean' },
+        strategyExposureEnabled: { type: 'boolean' },
         configuredDefaultProfile: { type: 'string' },
         activeDefaultProfile: { type: 'string' },
       },
@@ -431,6 +433,7 @@ export function explainCatalog(catalog: CompiledCatalog, options: ExplainOptions
     tool: {
       name: catalog.toolName,
       backgroundEnabled: catalog.enableRunInBackground,
+      strategyExposureEnabled: catalog.enableStrategies,
       ...catalog.configuredDefaultProfile === undefined
         ? {}
         : { configuredDefaultProfile: catalog.configuredDefaultProfile },
@@ -470,6 +473,7 @@ export function renderExplainHuman(
     `Catalog digest: ${view.catalogDigest}`,
     '',
     `Profiles: ${String(view.summary.configuredProfiles)} configured, ${String(view.summary.activeProfiles)} active, ${String(view.summary.inactiveProfiles)} inactive`,
+    `Model Strategy exposure: ${view.tool.strategyExposureEnabled === true ? 'enabled' : 'disabled'}`,
     `Default: ${view.tool.configuredDefaultProfile ?? '<none>'}`
       + (view.tool.activeDefaultProfile === undefined ? ' (inactive or absent)' : ' (active)'),
   ]

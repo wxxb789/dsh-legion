@@ -79,6 +79,8 @@ export interface Config {
   defaultProfile?: string
   /** Whether the tool exposes and accepts run_in_background. */
   enableRunInBackground: boolean
+  /** Explicit opt-in for model-callable Strategies; defaults to false. */
+  readonly enableStrategies?: boolean
   /** Additional coordinator guidance appended after the generated routing table. */
   guidance?: string
   /** Deployment-owned aliases to directories containing prompt fragments. */
@@ -157,6 +159,7 @@ export interface MaterializedConfig extends Config {
   configVersion: typeof CURRENT_CONFIG_VERSION
   resourceRoots: Record<string, string>
   maxResourceBytes: number
+  enableStrategies: boolean
   catalogLayers: []
   teams: Record<string, TeamSpec>
   strategies: Record<string, StrategySpec>
@@ -168,6 +171,7 @@ export const Config: z<Config> = z.object({
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
   enableRunInBackground: z.boolean().default(true),
+  enableStrategies: z.boolean(),
   guidance: z.string(),
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
@@ -230,8 +234,11 @@ function assertKnownConfigKeys(input: unknown): void {
   if (authoredVersion === 1
     && (Array.isArray(source?.catalogLayers) && source.catalogLayers.length > 0
       || Object.keys(record(source?.teams) ?? {}).length > 0
-      || Object.keys(record(source?.strategies) ?? {}).length > 0)) {
-    throw new Error('dsh-legion: configVersion 2 is required for catalogLayers, teams, or strategies')
+      || Object.keys(record(source?.strategies) ?? {}).length > 0
+      || source?.enableStrategies === true)) {
+    throw new Error(
+      'dsh-legion: configVersion 2 is required for catalogLayers, teams, strategies, or enableStrategies',
+    )
   }
   assertKnownKeys(
     input,
@@ -241,6 +248,7 @@ function assertKnownConfigKeys(input: unknown): void {
       'profiles',
       'defaultProfile',
       'enableRunInBackground',
+      'enableStrategies',
       'guidance',
       'resourceRoots',
       'maxResourceBytes',
@@ -339,6 +347,7 @@ export function materializeConfig(input: unknown): MaterializedConfig {
   const effective: Config = {
     ...parsed,
     configVersion: CURRENT_CONFIG_VERSION,
+    enableStrategies: parsed.enableStrategies ?? false,
     profiles: { ...resolved.profiles },
     teams: { ...resolved.teams },
     strategies: { ...resolved.strategies },
@@ -349,6 +358,7 @@ export function materializeConfig(input: unknown): MaterializedConfig {
     configVersion: CURRENT_CONFIG_VERSION,
     toolName: effective.toolName,
     enableRunInBackground: effective.enableRunInBackground,
+    enableStrategies: effective.enableStrategies ?? false,
     resourceRoots: { ...effective.resourceRoots },
     maxResourceBytes: effective.maxResourceBytes ?? 64 * 1024,
     ...effective.defaultProfile === undefined ? {} : { defaultProfile: effective.defaultProfile },
@@ -416,12 +426,17 @@ export function exportConfigDocument(
   const current = materializeConfig(input)
   const document = current
   if (target === CURRENT_CONFIG_VERSION) return document
-  if (Object.keys(current.teams).length > 0 || Object.keys(current.strategies).length > 0) {
-    throw new Error('dsh-legion: config v2 Teams/Strategies cannot be rolled back to config v1')
+  if (current.enableStrategies
+    || Object.keys(current.teams).length > 0
+    || Object.keys(current.strategies).length > 0) {
+    throw new Error(
+      'dsh-legion: config v2 Strategy exposure or Teams/Strategies cannot be rolled back to config v1',
+    )
   }
   const {
     configVersion: _configVersion,
     catalogLayers: _catalogLayers,
+    enableStrategies: _enableStrategies,
     teams: _teams,
     strategies: _strategies,
     ...v1

@@ -56,6 +56,7 @@ describe('explainCatalog', () => {
       },
       tool: {
         name: 'legion',
+        strategyExposureEnabled: false,
         configuredDefaultProfile: 'quick',
         activeDefaultProfile: 'quick',
       },
@@ -70,6 +71,16 @@ describe('explainCatalog', () => {
       ],
     })
     expect(JSON.parse(JSON.stringify(view))).toEqual(view)
+  })
+
+  it('projects explicit model Strategy exposure authority', () => {
+    const view = explainCatalog(compileCatalog({
+      ...config,
+      configVersion: 2,
+      enableStrategies: true,
+    }, providers), { providerSnapshot: 'fixture' })
+    expect(view.tool.strategyExposureEnabled).toBe(true)
+    expect(renderExplainHuman(view)).toContain('Model Strategy exposure: enabled')
   })
 
   it('shows the authored primary exact route without claiming invocation selection', () => {

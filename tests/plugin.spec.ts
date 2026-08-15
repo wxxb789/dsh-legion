@@ -22,6 +22,7 @@ import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
   SubagentProvider,
+  SubagentResult,
   SubagentStartRequest,
 } from '@deepseek-ai/dsh-subagent'
 import * as legion from '../src/index.ts'
@@ -62,6 +63,7 @@ function provider(
     capabilities?: SubagentProvider['capabilities']
     continuable?: boolean
     resultError?: Error
+    result?: (request: ResolvedSubagentStartRequest) => SubagentResult
     structured?: unknown
     disposeError?: Error
     onDispose?: () => void
@@ -83,7 +85,7 @@ function provider(
         id: SessionId(`${name}-child`),
         localAgent: undefined,
         result: options.resultError === undefined
-          ? Promise.resolve({
+          ? Promise.resolve(options.result?.(request) ?? {
               output: [{ type: 'text', text: options.reply ?? 'child result' }],
               ...options.structured === undefined ? {} : { structured: options.structured },
               stopReason: options.stopReason ?? 'completed',
@@ -132,6 +134,14 @@ function execute(
 
 function rendered(result: { content: Array<{ type: string; text?: string }> }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
+}
+
+function legionParameterProperties(ctx: Context): Record<string, { enum?: string[]; required?: boolean }> {
+  const schema = ctx.tools.schemas().find(item => item.name === 'legion')
+  if (schema === undefined) throw new Error('expected Legion tool schema')
+  return (schema.parameters as {
+    properties: Record<string, { enum?: string[]; required?: boolean }>
+  }).properties
 }
 
 const baseConfig = {
@@ -203,6 +213,159 @@ describe('dsh-legion', () => {
     expect(guidance).toContain('`quick`: Cheap exploration and summaries.')
     expect(guidance).toContain('fast-route/fast-model')
     expect(guidance).toContain('Omitting profile selects `quick`.')
+  })
+
+  it('keeps Strategy authority fully absent unless explicitly enabled', async () => {
+    let starts = 0
+    const ctx = await setup(baseConfig, [provider('spawn', { onStart: () => { starts += 1 } })])
+    const properties = legionParameterProperties(ctx)
+    expect(properties).not.toHaveProperty('kind')
+    expect(properties).not.toHaveProperty('strategy')
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
+      .not.toContain('Team Strategies')
+    const result = await execute(ctx, {
+      kind: 'strategy',
+      strategy: 'independent-review',
+      objective: 'Do not start.',
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('invalid arguments')
+    expect(starts).toBe(0)
+  })
+
+  it('executes explicitly enabled Strategies through the single Legion tool and keeps legacy Profile calls', async () => {
+    const starts: ResolvedSubagentStartRequest[] = []
+    const review = {
+      verdict: 'pass',
+      summary: 'Looks good.',
+      findings: [],
+      verification: ['checked'],
+    }
+    const ctx = await setup({
+      configVersion: 2,
+      enableStrategies: true,
+      enableRunInBackground: true,
+      catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
+      profiles: {
+        deep: {
+          description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2,
+          defaultRunInBackground: false, result: 'text',
+        },
+        quick: {
+          description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2,
+          defaultRunInBackground: false, result: 'text',
+        },
+        review: {
+          description: 'Review.', subagentProvider: 'spawn', maxDepth: 2,
+          defaultRunInBackground: false, result: 'review-v1',
+        },
+      },
+      defaultProfile: 'quick',
+    }, [provider('spawn', {
+      onStart: request => starts.push(request),
+      result: request => request.outputSchema === undefined
+        ? { output: [{ type: 'text', text: 'execution evidence' }], stopReason: 'completed' }
+        : { output: [{ type: 'text', text: 'reviewed' }], structured: review, stopReason: 'completed' },
+    })])
+    const properties = legionParameterProperties(ctx)
+    expect(properties.kind?.enum).toEqual(['profile', 'strategy'])
+    expect(properties.strategy?.enum).toEqual([
+      'independent-review', 'plan-execute-review', 'research-panel',
+    ])
+    expect(properties.description?.required).not.toBe(true)
+    const guidance = (await ctx.systemPrompt.assemble()).sections
+      .find(section => section.name === 'tool:legion')?.text
+    expect(guidance).toContain('Configured bounded Team Strategies')
+    expect(guidance).toContain('`independent-review`')
+
+    const strategyResult = await execute(ctx, {
+      kind: 'strategy',
+      strategy: 'independent-review',
+      objective: 'Implement and review the change.',
+      limits: { deadlineMs: 60_000 },
+    })
+    expect(strategyResult.isError).toBe(false)
+    if (strategyResult.isError) throw new Error(rendered(strategyResult))
+    expect(strategyResult.value).toMatchObject({
+      kind: 'strategy',
+      strategy: 'independent-review',
+      outcome: {
+        kind: 'completed',
+        final: { name: 'review', contract: 'review-v1', value: review },
+      },
+    })
+    expect(starts).toHaveLength(2)
+
+    const legacyProfileResult = await execute(ctx, {
+      profile: 'quick',
+      description: 'legacy profile call',
+      prompt: 'Remain compatible.',
+      run_in_background: false,
+    })
+    expect(legacyProfileResult.isError).toBe(false)
+    expect(starts).toHaveLength(3)
+
+    const mixed = await execute(ctx, {
+      kind: 'strategy',
+      strategy: 'independent-review',
+      objective: 'Reject mixed fields.',
+      prompt: 'Not allowed.',
+    })
+    expect(mixed.isError).toBe(true)
+    expect(rendered(mixed)).toContain('unknown field(s): prompt')
+    const widened = await execute(ctx, {
+      kind: 'strategy',
+      strategy: 'independent-review',
+      objective: 'Reject widening.',
+      limits: { maxAgents: 99 },
+    })
+    expect(widened.isError).toBe(true)
+    expect(rendered(widened)).toContain('STRATEGY_LIMIT_WIDENING')
+    expect(starts).toHaveLength(3)
+  })
+
+  it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {
+    const config = {
+      configVersion: 2 as const,
+      enableStrategies: true,
+      catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
+      profiles: {
+        deep: {
+          description: 'Deep.', subagentProvider: 'deep-provider', maxDepth: 2,
+          defaultRunInBackground: false, result: 'text' as const,
+        },
+        quick: {
+          description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2,
+          defaultRunInBackground: false, result: 'text' as const,
+        },
+        review: {
+          description: 'Review.', subagentProvider: 'review-provider', maxDepth: 2,
+          defaultRunInBackground: false, result: 'review-v1' as const,
+        },
+      },
+      defaultProfile: 'quick',
+    }
+    const ctx = await setup(config)
+    const properties = () => legionParameterProperties(ctx)
+    expect(properties()).not.toHaveProperty('strategy')
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
+      .not.toContain('Team Strategies')
+
+    const removeDeep = ctx.subagents.registerProvider(provider('deep-provider'))
+    expect(properties().strategy?.enum).toEqual(['research-panel'])
+    const removeReview = ctx.subagents.registerProvider(provider('review-provider'))
+    expect(properties().strategy?.enum).toEqual([
+      'independent-review', 'plan-execute-review', 'research-panel',
+    ])
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
+      .toContain('`plan-execute-review`')
+
+    removeReview()
+    expect(properties().strategy?.enum).toEqual(['research-panel'])
+    removeDeep()
+    expect(properties()).not.toHaveProperty('strategy')
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
+      .not.toContain('Team Strategies')
   })
 
   it('rejects unknown model tool arguments at the trust boundary', async () => {

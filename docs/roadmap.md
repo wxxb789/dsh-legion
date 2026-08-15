@@ -54,8 +54,9 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Blocking deterministic direct-vs-strategy protocol benchmark with versioned thresholds; it is not model-quality evidence.
 - [x] Frozen 12-case review/research development packs plus offline paired-bootstrap campaign and exposure scorers.
 - [ ] Complete two paired held-out real-model quality campaigns per Strategy with safety/cost/latency gates.
-- [ ] Model-enable default `independent-review` after real-model benchmarks. (IR and direct subagent adapter complete.)
-- [ ] Model-enable default `research-panel` after real-model benchmarks. (IR and fanout/synthesis adapter complete.)
+- [x] Default-off `enableStrategies` authority gate exposes active user/default Strategies through the single Legion tool only by explicit deployment opt-in.
+- [ ] Automatically model-enable default `independent-review` after real-model benchmarks. (Explicit opt-in remains available.)
+- [ ] Automatically model-enable default `research-panel` after real-model benchmarks. (Explicit opt-in remains available.)
 - [x] Execute default `plan-execute-review`: plan, execution evidence, structured review, and one bounded repair delegate.
 - [ ] Hard member/concurrency/deadline/output limits are compiled and execution enforces deadline/output; aggregate token/cost awaits a DSH budget seam.
 - [x] Direct/fanout cancellation, degraded outcomes, bounded disposal, and terminal first-wins normalization.
@@ -63,7 +64,7 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 - [x] Contract tests prove default entries can be recreated entirely through public user configuration.
 - [x] Seeded fanout ordering, terminal first-wins, every-waiter/no-lease checks, and catalog-generation commit fencing.
 
-Default Strategies ship only after benchmarks show measurable value over direct delegation.
+Default Strategies ship as ordinary off-by-default data; automatic model exposure requires benchmarks showing measurable value over direct delegation.
 
 ## Type-system gates
 

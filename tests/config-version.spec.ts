@@ -43,10 +43,13 @@ describe('versioned config migration and rollback', () => {
     const explicit = materializeConfig({ ...authored, configVersion: 1 })
 
     expect(migrated.configVersion).toBe(CURRENT_CONFIG_VERSION)
+    expect(migrated.enableStrategies).toBe(false)
     expect(migrated).toEqual(explicit)
     expect(materializeConfig(ConfigSchema({ ...authored, configVersion: 1 }))).toEqual(explicit)
     expect(compileCatalog(authored, runtime).policyDigest)
       .toBe(compileCatalog(explicit, runtime).policyDigest)
+    expect(compileCatalog({ ...authored, configVersion: 2, enableStrategies: true }, runtime).policyDigest)
+      .not.toBe(compileCatalog(explicit, runtime).policyDigest)
   })
 
   it('exports normalized current and rollback-compatible unversioned documents', () => {
@@ -72,6 +75,8 @@ describe('versioned config migration and rollback', () => {
   it('tolerates schema-normalized empty namespaces but requires v2 for non-empty data', () => {
     expect(() => materializeConfig({ ...authored, teams: {}, strategies: {}, catalogLayers: [] }))
       .not.toThrow()
+    expect(() => materializeConfig({ ...authored, enableStrategies: true }))
+      .toThrow(/configVersion 2 is required/)
     expect(() => materializeConfig({
       ...authored,
       teams: {
@@ -94,6 +99,11 @@ describe('versioned config migration and rollback', () => {
         },
       },
     }
+    expect(() => exportConfigDocument({
+      ...authored,
+      configVersion: 2,
+      enableStrategies: true,
+    }, 1)).toThrow(/cannot be rolled back/)
     expect(() => exportConfigDocument(v2, 1)).toThrow(/cannot be rolled back/)
     expect(() => exportConfigDocument(v2, 'legacy-unversioned')).toThrow(/cannot be rolled back/)
   })

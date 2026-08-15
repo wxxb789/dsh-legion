@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
+### Added
+
+- Default-off `enableStrategies` config v2 authority gate for explicit model-facing Strategy invocation through the existing single Legion tool.
+- Strict discriminated Strategy requests with Objective and invocation-only narrowing limits, detached terminal outcomes, and bounded rendering.
+- Atomic Profile/orchestration execution snapshots shared by schema, guidance, admission, and in-flight execution across provider lifecycle refreshes.
+
+### Changed
+
+- Legacy Profile tool requests remain accepted without a discriminator; Strategy and Profile fields cannot be mixed.
+- `enableStrategies: true` participates in PolicyDigest, requires config v2, and cannot be silently removed by v1 rollback.
+- The shipped preset and examples keep model Strategy exposure disabled.
+
 ## [0.5.0] - 2026-08-15
 
 ### Added
@@ -129,7 +143,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/wxxb789/dsh-legion/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...v0.3.0

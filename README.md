@@ -35,7 +35,7 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.5.0` introduces config v2, ordered Catalog Layers, public TeamSpec/StrategySpec contracts, typed artifact authoring, immutable Strategy plans, and the curated defaults-as-data catalog.
+`0.6.0` adds an explicit, default-off model Strategy authority gate over config v2 Teams, executable Strategy plans, atomic execution snapshots, and the curated defaults-as-data catalog.
 
 Supported:
 
@@ -62,8 +62,7 @@ Supported:
 
 Not yet supported:
 
-- executing compiled Team Strategies from the model tool; v0.5 exposes `executeStrategyPlan()` for all compiled plans, while model exposure remains benchmark-gated;
-- benchmark-backed enablement of the three default Strategy templates;
+- automatic benchmark-backed enablement of curated defaults; explicit deployment opt-in is available, but the shipped preset remains off;
 - post-failure model fallback/replay or automatic provider health scoring;
 - a Legion-owned team/DAG runtime—the adapter walks a frozen plan and delegates every child lifecycle to DSH subagents;
 - selecting a different **DSH agent preset** for each child. Current in-process subagents inherit the parent's standing preset composition; Legion profiles can still vary model, persona, tools, and backend. A true per-child preset requires a small upstream DSH subagent composition seam and is tracked as a roadmap item;
@@ -166,6 +165,7 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 | `profiles` | required | Map from semantic profile name to fixed child policy. |
 | `defaultProfile` | none | Profile used when a call omits `profile`; otherwise `profile` is required. |
 | `enableRunInBackground` | `true` | Expose and accept `run_in_background`. |
+| `enableStrategies` | `false` | Explicitly expose active Strategies to the model-facing tool; programmatic compilation/execution is unaffected. |
 | `guidance` | none | Additional coordinator guidance appended to the generated profile table. |
 | `resourceRoots` | `{}` | Deployment-owned aliases for relative directories containing Prompt Fragments. |
 | `maxResourceBytes` | `65536` | Maximum combined raw Prompt Fragment bytes loaded for one Profile; hard ceiling 4 MiB. |
@@ -263,9 +263,11 @@ catalogLayers:
 
 `compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
 
-The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They remain absent from the model-facing tool until benchmarked. Programmatic callers may execute every compiled plan through `executeStrategyPlan(ctx, createStrategyExecutionSnapshot(profileCatalog, orchestrationCatalog), plan, parent, signal)`. The Strategy vocabulary contains only executable one-shot subagent stages; DSH Goals remain a separate single-objective session lifecycle rather than a Strategy member primitive.
+The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. The shipped preset keeps them absent from the model-facing tool. A deployment may explicitly set `enableStrategies: true` to expose its active user/default catalog under its own authority; that opt-in is not a claim that curated defaults passed the real-model exposure gate. Programmatic callers may execute every compiled plan through `executeStrategyPlan(ctx, createStrategyExecutionSnapshot(profileCatalog, orchestrationCatalog), plan, parent, signal)`. The Strategy vocabulary contains only executable one-shot subagent stages; DSH Goals remain a separate single-objective session lifecycle rather than a Strategy member primitive.
 
 `pnpm run benchmark:protocol` is a blocking deterministic regression gate over scripted direct-vs-strategy fixtures. It proves artifact aggregation, defect/source preservation, bounded child counts, and completed outcomes; it explicitly does **not** claim general model-quality uplift. Curated model exposure requires separate paired real-model campaigns with frozen case packs, blind scoring, safety metrics, cost/latency evidence, and a positive confidence interval. See [`benchmarks/README.md`](benchmarks/README.md).
+
+When enabled, the same `legion` tool accepts a strict Strategy branch: `{ "kind": "strategy", "strategy": "independent-review", "objective": "...", "limits": { "deadlineMs": 60000 } }`. Profile calls retain the legacy `{ profile?, description, prompt, run_in_background? }` shape; fields cannot be mixed across branches.
 
 `createStrategyExecutionSnapshot()` atomically binds the Profile policy and orchestration generation; a stale plan or mismatched catalog fails before child admission. The adapter walks only the already-validated static primitive list. It uses real one-shot `ctx.subagents` starts, applies the selected Profile policy and exact Route Plan, runs fanout members concurrently in canonical index order, validates structured artifacts, enforces deadline/output bounds, and disposes every run. Outcomes are a closed union: `completed | degraded | cancelled | failed`. This is not a persistent scheduler, retry owner, or Team runtime.
 
@@ -322,7 +324,7 @@ Exit codes:
 
 ### Config migration and rollback
 
-`configVersion: 2` is the current runtime-validated document contract. Existing unversioned and explicit v1 Profile documents migrate to v2 with empty Team/Strategy namespaces. Unknown future versions fail before plugin effects; v1 documents cannot smuggle v2 catalog fields.
+`configVersion: 2` is the current runtime-validated document contract. Existing unversioned and explicit v1 Profile documents migrate to v2 with empty Team/Strategy namespaces and `enableStrategies: false`. Unknown future versions fail before plugin effects; v1 documents cannot smuggle v2 catalog fields.
 
 Programmatic callers can use `exportConfigDocument(input)` for normalized v2 output. Export to `1` or `legacy-unversioned` is lossless only while no v2 Team/Strategy data is present; otherwise rollback fails loudly rather than discarding orchestration policy. All exports are detached and rematerialization-tested. File replacement, backup, and atomic rename remain the deployment owner's responsibility—Legion does not overwrite user presets.
 
@@ -357,6 +359,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0009: Reproducible provenance releases](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0009-reproducible-provenance-releases.md)
 - [ADR 0010: Declarative Team/Strategy IR](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0010-declarative-team-strategy-ir.md)
 - [ADR 0011: Two-tier Strategy benchmark gate](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0011-two-tier-strategy-benchmark-gate.md)
+- [ADR 0012: Explicit model Strategy authority](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

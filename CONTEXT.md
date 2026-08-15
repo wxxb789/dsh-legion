@@ -63,3 +63,7 @@ _Avoid_: Built-in special cases, Hardcoded team
 **Effective Catalog**:
 The validated, normalized view of user and default catalog entries that are available for orchestration.
 _Avoid_: Raw config, Registry dump
+
+**Model Strategy Exposure**:
+Deployment-owned authority allowing the model-facing Legion tool to invoke active Strategies; catalog presence or programmatic execution alone does not grant it.
+_Avoid_: Strategy registration, Benchmark result, Default enablement

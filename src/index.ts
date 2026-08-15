@@ -9,7 +9,6 @@ import {
   assertCatalogUsable,
   compileCatalog,
   compileDelegationPlan,
-  type CompiledCatalog,
   type DelegationPlan,
   type RuntimeSnapshot,
 } from './compiler.ts'
@@ -18,7 +17,15 @@ import { outputText, settleForeground } from './settlement.ts'
 import {
   assertOrchestrationCatalogUsable,
   compileOrchestrationCatalog,
+  compileStrategy,
+  renderOrchestrationGuidance,
 } from './orchestration.ts'
+import {
+  createStrategyExecutionSnapshot,
+  executeStrategyPlan,
+  type StrategyExecutionSnapshot,
+} from './execution.ts'
+import type { StrategyLimits } from './orchestration-contract.ts'
 import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
 
@@ -209,36 +216,90 @@ export const inject = ['tools', 'subagents', 'systemPrompt']
 
 const PROMPT_ORDER = 116.75
 
-interface ToolArgs {
-  profile?: string
-  description: string
-  prompt: string
-  run_in_background?: boolean
+interface ProfileToolArgs {
+  readonly kind: 'profile'
+  readonly profile?: string
+  readonly description: string
+  readonly prompt: string
+  readonly run_in_background?: boolean
 }
 
-function parseToolArgs(value: unknown): ToolArgs {
+interface StrategyToolArgs {
+  readonly kind: 'strategy'
+  readonly strategy: string
+  readonly objective: string
+  readonly limits?: Partial<StrategyLimits>
+}
+
+type ToolArgs = ProfileToolArgs | StrategyToolArgs
+
+function argumentRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('dsh-legion: tool arguments must be an object')
+    throw new Error('dsh-legion: REQUEST_INVALID: tool arguments must be a plain object')
   }
-  const input = value as Record<string, unknown>
-  const allowed = new Set(['profile', 'description', 'prompt', 'run_in_background'])
-  const unknown = Object.keys(input).filter(key => !allowed.has(key))
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error('dsh-legion: REQUEST_INVALID: tool arguments must be a plain object')
+  }
+  return value as Record<string, unknown>
+}
+
+function assertAllowedArguments(input: Record<string, unknown>, allowed: readonly string[]): void {
+  const known = new Set(allowed)
+  const unknown = Object.keys(input).filter(key => !known.has(key))
   if (unknown.length > 0) {
-    throw new Error(`dsh-legion: tool arguments contain unknown field(s): ${unknown.sort().join(', ')}`)
+    throw new Error(
+      `dsh-legion: REQUEST_INVALID: tool arguments contain unknown field(s): ${unknown.sort().join(', ')}`,
+    )
   }
-  if (typeof input.description !== 'string' || input.description.length === 0) {
-    throw new Error('dsh-legion: description must be a non-empty string')
+}
+
+function parseToolArgs(value: unknown, enableStrategies: boolean): ToolArgs {
+  const input = argumentRecord(value)
+  const strategySignal = input.kind === 'strategy'
+    || Object.hasOwn(input, 'strategy')
+    || Object.hasOwn(input, 'objective')
+    || Object.hasOwn(input, 'limits')
+  if (strategySignal) {
+    if (!enableStrategies) throw new Error('dsh-legion: STRATEGIES_DISABLED: model Strategy calls are disabled')
+    assertAllowedArguments(input, ['kind', 'strategy', 'objective', 'limits'])
+    if (input.kind !== 'strategy') {
+      throw new Error('dsh-legion: REQUEST_INVALID: Strategy calls require kind "strategy"')
+    }
+    if (typeof input.strategy !== 'string' || input.strategy.trim().length === 0) {
+      throw new Error('dsh-legion: REQUEST_INVALID: strategy must be a non-empty string')
+    }
+    if (typeof input.objective !== 'string' || input.objective.trim().length === 0) {
+      throw new Error('dsh-legion: REQUEST_INVALID: objective must be a non-empty string')
+    }
+    if (input.limits !== undefined) argumentRecord(input.limits)
+    return {
+      kind: 'strategy',
+      strategy: input.strategy,
+      objective: input.objective,
+      ...input.limits === undefined ? {} : { limits: input.limits as Partial<StrategyLimits> },
+    }
   }
-  if (typeof input.prompt !== 'string' || input.prompt.length === 0) {
-    throw new Error('dsh-legion: prompt must be a non-empty string')
+  assertAllowedArguments(input, enableStrategies
+    ? ['kind', 'profile', 'description', 'prompt', 'run_in_background']
+    : ['profile', 'description', 'prompt', 'run_in_background'])
+  if (input.kind !== undefined && input.kind !== 'profile') {
+    throw new Error('dsh-legion: REQUEST_INVALID: kind must be "profile" or "strategy"')
+  }
+  if (typeof input.description !== 'string' || input.description.trim().length === 0) {
+    throw new Error('dsh-legion: REQUEST_INVALID: description must be a non-empty string')
+  }
+  if (typeof input.prompt !== 'string' || input.prompt.trim().length === 0) {
+    throw new Error('dsh-legion: REQUEST_INVALID: prompt must be a non-empty string')
   }
   if (input.profile !== undefined && typeof input.profile !== 'string') {
-    throw new Error('dsh-legion: profile must be a string')
+    throw new Error('dsh-legion: REQUEST_INVALID: profile must be a string')
   }
   if (input.run_in_background !== undefined && typeof input.run_in_background !== 'boolean') {
-    throw new Error('dsh-legion: run_in_background must be a boolean')
+    throw new Error('dsh-legion: REQUEST_INVALID: run_in_background must be a boolean')
   }
   return {
+    kind: 'profile',
     description: input.description,
     prompt: input.prompt,
     ...input.profile === undefined ? {} : { profile: input.profile },
@@ -331,6 +392,27 @@ function requestFor(
   }
 }
 
+function renderStrategyOutcome(value: JsonValue): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return 'invalid Strategy outcome'
+  const kind = typeof value.kind === 'string' ? value.kind : 'unknown'
+  let detail: unknown
+  if (kind === 'completed' || kind === 'degraded') {
+    const final = typeof value.final === 'object' && value.final !== null && !Array.isArray(value.final)
+      ? value.final
+      : undefined
+    detail = final?.value
+  } else if (kind === 'failed') {
+    detail = value.failure
+  } else {
+    detail = value.reason
+  }
+  const rendered = typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2)
+  const bounded = rendered === undefined
+    ? ''
+    : rendered.length <= 16_000 ? rendered : `${rendered.slice(0, 15_997)}...`
+  return `Strategy outcome: ${kind}${bounded.length === 0 ? '' : `\n${bounded}`}`
+}
+
 function selectedRouteId(value: JsonValue | undefined): string | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const selected = value.selected
@@ -338,21 +420,37 @@ function selectedRouteId(value: JsonValue | undefined): string | undefined {
   return typeof selected.id === 'string' ? selected.id : undefined
 }
 
-function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
+function registerTool(ctx: Context, snapshot: StrategyExecutionSnapshot): () => void {
+  const { profiles: catalog, orchestration } = snapshot
   const profileNames = Object.keys(catalog.activeProfiles)
-  const profileRequired = catalog.defaultProfile === undefined
+  const strategyNames = catalog.enableStrategies
+    ? Object.values(orchestration.strategies)
+        .filter(strategy => strategy.active)
+        .map(strategy => String(strategy.name))
+        .sort()
+    : []
+  const hasStrategySurface = strategyNames.length > 0
+  const profileRequired = catalog.defaultProfile === undefined && !hasStrategySurface
   const profileDescription = catalog.defaultProfile === undefined
     ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
     : `Configured semantic profile. Defaults to ${catalog.defaultProfile}.`
 
   return ctx.tools.register(defineTool({
     name: catalog.toolName,
-    description:
-      'Delegate focused work through a configured Legion profile. Each profile fixes the child backend, model route, persona, tools, and depth policy. '
+    description: (hasStrategySurface
+      ? 'Delegate through a configured Legion Profile or execute an explicitly enabled bounded Team Strategy. '
+      : 'Delegate focused work through a configured Legion profile. Each profile fixes child policy. ')
       + (catalog.enableRunInBackground
         ? 'Background execution returns a durable child id immediately; foreground execution waits for the final result.'
         : 'This instance only allows foreground execution.'),
     parameters: {
+      ...hasStrategySurface ? {
+        kind: {
+          type: 'string' as const,
+          enum: ['profile', 'strategy'],
+          description: 'Request discriminator. Strategy calls must set strategy; legacy Profile calls may omit it.',
+        },
+      } : {},
       profile: {
         type: 'string',
         ...profileRequired ? { required: true as const } : {},
@@ -361,14 +459,29 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
       },
       description: {
         type: 'string',
-        required: true,
+        ...hasStrategySurface ? {} : { required: true as const },
         description: 'A short 3-5 word label for the delegated task.',
       },
       prompt: {
         type: 'string',
-        required: true,
+        ...hasStrategySurface ? {} : { required: true as const },
         description: 'A complete standalone task for a fresh profile, or focused follow-up context for an inheriting backend.',
       },
+      ...hasStrategySurface ? {
+        strategy: {
+          type: 'string' as const,
+          enum: strategyNames,
+          description: 'Explicit configured Strategy name. Requires kind strategy.',
+        },
+        objective: {
+          type: 'string' as const,
+          description: 'Complete bounded objective for the Team Strategy.',
+        },
+        limits: {
+          type: 'json' as const,
+          description: 'Optional positive-integer narrowing limits: maxAgents, maxConcurrent, deadlineMs, maxOutputBytes.',
+        },
+      } : {},
       ...catalog.enableRunInBackground ? {
         run_in_background: {
           type: 'boolean' as const,
@@ -408,26 +521,59 @@ function registerTool(ctx: Context, catalog: CompiledCatalog): () => void {
               structured: { type: 'json' },
             },
           },
+          ...hasStrategySurface ? [{
+            type: 'object' as const,
+            additionalProperties: false,
+            properties: {
+              kind: { type: 'string' as const, required: true as const, const: 'strategy' },
+              strategy: { type: 'string' as const, required: true as const },
+              planDigest: { type: 'string' as const, required: true as const },
+              outcome: { type: 'json' as const, required: true as const },
+            },
+          }] : [],
         ],
       },
       render: (_args, value) => [{
         type: 'text',
-        text: value.kind === 'continuable'
-          ? `started Legion profile ${value.profile}`
-            + `${selectedRouteId(value.routePlan) === undefined ? '' : ` via route ${selectedRouteId(value.routePlan)}`}`
-            + ` as subagent ${value.subagentId}`
-          : `${selectedRouteId(value.routePlan) === undefined ? '' : `selected Legion route ${selectedRouteId(value.routePlan)}\n`}`
-            + (value.structured === undefined
-              ? outputText(value.output)
-              : JSON.stringify(value.structured, null, 2)),
+        text: 'strategy' in value
+          ? `Legion Strategy ${value.strategy}\n${renderStrategyOutcome(value.outcome)}`
+          : 'subagentId' in value
+            ? `started Legion profile ${value.profile}`
+              + `${selectedRouteId(value.routePlan) === undefined ? '' : ` via route ${selectedRouteId(value.routePlan)}`}`
+              + ` as subagent ${value.subagentId}`
+            : `${selectedRouteId(value.routePlan) === undefined ? '' : `selected Legion route ${selectedRouteId(value.routePlan)}\n`}`
+              + (value.structured === undefined
+                ? outputText(value.output)
+                : JSON.stringify(value.structured, null, 2)),
       }],
     },
     isConcurrencySafe: () => true,
     async execute(rawArgs, exec) {
-      const args = parseToolArgs(rawArgs)
+      const args = parseToolArgs(rawArgs, catalog.enableStrategies)
       const parent = exec.agent
       if (parent === undefined) {
         throw new Error('dsh-legion: tool requires a calling agent')
+      }
+      if (args.kind === 'strategy') {
+        if (!strategyNames.includes(args.strategy)) {
+          throw new Error('dsh-legion: STRATEGY_UNAVAILABLE: unknown or inactive Strategy')
+        }
+        const compiled = compileStrategy(orchestration, {
+          strategy: args.strategy,
+          objective: args.objective,
+          ...args.limits === undefined ? {} : { limits: args.limits },
+        })
+        if (!compiled.ok) {
+          const details = compiled.diagnostics.map(item => `${item.code}: ${item.message}`).join('; ')
+          throw new Error(`dsh-legion: STRATEGY_COMPILE_FAILED: ${details}`)
+        }
+        const outcome = await executeStrategyPlan(ctx, snapshot, compiled.plan, parent, exec.signal)
+        return {
+          kind: 'strategy' as const,
+          strategy: args.strategy,
+          planDigest: compiled.plan.planDigest,
+          outcome: outcome as unknown as JsonValue,
+        }
       }
 
       let plan = compileDelegationPlan(catalog, {
@@ -501,7 +647,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     ? EMPTY_RESOURCE_SNAPSHOT
     : await loadProfileResources(resolvedConfig, { baseDirectory: resourceBase })
   ctx.fiber.assertActive()
-  let activeCatalog: CompiledCatalog | undefined
+  let activeSnapshot: StrategyExecutionSnapshot | undefined
   let disposeTool: (() => void) | undefined
   let refreshing = false
   let registrationFailed = false
@@ -511,21 +657,33 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     refreshing = true
     registrationFailed = false
     try {
-      const next = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
-      assertCatalogUsable(next)
-      assertOrchestrationCatalogUsable(compileOrchestrationCatalog(next))
+      const nextProfiles = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
+      assertCatalogUsable(nextProfiles)
+      const nextOrchestration = compileOrchestrationCatalog(nextProfiles)
+      assertOrchestrationCatalogUsable(nextOrchestration)
+      const nextSnapshot = createStrategyExecutionSnapshot(nextProfiles, nextOrchestration)
+      const previousSnapshot = activeSnapshot
       disposeTool?.()
       disposeTool = undefined
-      activeCatalog = undefined
-      if (Object.keys(next.activeProfiles).length > 0) {
-        try {
-          disposeTool = registerTool(ctx, next)
-        } catch (error: unknown) {
-          registrationFailed = true
-          throw error
+      try {
+        if (Object.keys(nextProfiles.activeProfiles).length > 0) {
+          disposeTool = registerTool(ctx, nextSnapshot)
         }
+        activeSnapshot = nextSnapshot
+      } catch (error: unknown) {
+        registrationFailed = true
+        activeSnapshot = undefined
+        if (previousSnapshot !== undefined
+          && Object.keys(previousSnapshot.profiles.activeProfiles).length > 0) {
+          try {
+            disposeTool = registerTool(ctx, previousSnapshot)
+            activeSnapshot = previousSnapshot
+          } catch {
+            disposeTool = undefined
+          }
+        }
+        throw error
       }
-      activeCatalog = next
     } finally {
       refreshing = false
     }
@@ -544,21 +702,28 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   ctx.effect(() => () => {
     disposeTool?.()
     disposeTool = undefined
-    activeCatalog = undefined
+    activeSnapshot = undefined
   }, 'dsh-legion.activeTool()')
 
   ctx.systemPrompt.section({
     name: `tool:${resolvedConfig.toolName}`,
     order: PROMPT_ORDER,
-    text: () => activeCatalog === undefined || Object.keys(activeCatalog.activeProfiles).length === 0
-      ? ''
-      : renderCoordinatorGuidance({
-          toolName: activeCatalog.toolName,
-          enableRunInBackground: activeCatalog.enableRunInBackground,
-          profiles: activeCatalog.activeProfiles,
-          ...activeCatalog.defaultProfile === undefined ? {} : { defaultProfile: activeCatalog.defaultProfile },
-          ...activeCatalog.guidance === undefined ? {} : { guidance: activeCatalog.guidance },
-        }),
+    text: () => {
+      if (activeSnapshot === undefined
+        || Object.keys(activeSnapshot.profiles.activeProfiles).length === 0) return ''
+      const catalog = activeSnapshot.profiles
+      const profileGuidance = renderCoordinatorGuidance({
+        toolName: catalog.toolName,
+        enableRunInBackground: catalog.enableRunInBackground,
+        profiles: catalog.activeProfiles,
+        ...catalog.defaultProfile === undefined ? {} : { defaultProfile: catalog.defaultProfile },
+        ...catalog.guidance === undefined ? {} : { guidance: catalog.guidance },
+      })
+      const strategyGuidance = catalog.enableStrategies
+        ? renderOrchestrationGuidance(activeSnapshot.orchestration)
+        : ''
+      return [profileGuidance, strategyGuidance].filter(Boolean).join('\n\n')
+    },
   })
   refresh()
 }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-legion",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Configurable multi-agent teams and orchestration policy for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",

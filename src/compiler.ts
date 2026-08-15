@@ -136,6 +136,7 @@ export class DelegationPlanError extends Error {
 export interface CompiledCatalog {
   readonly toolName: string
   readonly enableRunInBackground: boolean
+  readonly enableStrategies: boolean
   readonly configuredDefaultProfile?: ProfileName
   readonly defaultProfile?: ProfileName
   readonly guidance?: string
@@ -392,6 +393,7 @@ export function compileCatalog(
     configVersion: config.configVersion,
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
+    enableStrategies: config.enableStrategies,
     ...config.defaultProfile === undefined ? {} : { defaultProfile: config.defaultProfile },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
     resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
@@ -420,6 +422,7 @@ export function compileCatalog(
   return Object.freeze({
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
+    enableStrategies: config.enableStrategies,
     ...config.defaultProfile === undefined
       ? {}
       : { configuredDefaultProfile: profileName(config.defaultProfile) },
