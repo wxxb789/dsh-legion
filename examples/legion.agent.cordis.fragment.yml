@@ -3,7 +3,7 @@
 - id: tool-legion
   name: dsh-legion
   config:
-    configVersion: 1
+    configVersion: 2
     toolName: legion
     defaultProfile: quick
     enableRunInBackground: true

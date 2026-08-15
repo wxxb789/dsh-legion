@@ -15,6 +15,10 @@ import {
 } from './compiler.ts'
 import { renderCoordinatorGuidance } from './prompt.ts'
 import { outputText, settleForeground } from './settlement.ts'
+import {
+  assertOrchestrationCatalogUsable,
+  compileOrchestrationCatalog,
+} from './orchestration.ts'
 import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
 
@@ -112,6 +116,11 @@ export {
   ProfileName,
   ResourceDigest,
   RoutePlanDigest,
+  ArtifactName,
+  MemberSlotName,
+  StrategyName,
+  StrategyPlanDigest,
+  TeamName,
 } from './identity.ts'
 export {
   EXPLAIN_VIEW_V1_SCHEMA,
@@ -130,6 +139,64 @@ export type {
   ProviderSnapshotSource,
   RenderExplainOptions,
 } from './explain.ts'
+export { resolveCatalogLayers } from './catalog-layer.ts'
+export type {
+  CatalogEntryProvenance,
+  CatalogNamespace,
+  ResolvedCatalogLayers,
+} from './catalog-layer.ts'
+export {
+  ARTIFACT_CONTRACTS,
+  ORCHESTRATION_NAME,
+  StrategySpecSchema,
+  TeamSpecSchema,
+  defineStrategy,
+  defineStrategyFor,
+  defineTeam,
+} from './orchestration-contract.ts'
+export type {
+  ArtifactContract,
+  ArtifactInputRef,
+  ArtifactOutputSpec,
+  CatalogDisableSpec,
+  CatalogLayer,
+  DefinedTeam,
+  DelegateStageSpec,
+  FanoutStageSpec,
+  GoalStageSpec,
+  MemberSlotSpec,
+  StrategyLimits,
+  StrategySpec,
+  StrategyStageSpec,
+  SynthesizeStageSpec,
+  TeamLimits,
+  TeamSpec,
+} from './orchestration-contract.ts'
+export {
+  OrchestrationCompileError,
+  assertOrchestrationCatalogUsable,
+  compileOrchestrationCatalog,
+  compileStrategy,
+} from './orchestration.ts'
+export type {
+  ArtifactAvailability,
+  CompiledArtifact,
+  CompiledMemberSlot,
+  CompiledOrchestrationCatalog,
+  CompiledStrategyPlan,
+  CompiledStrategyTemplate,
+  CompiledTeam,
+  DelegatePrimitive,
+  DshPrimitive,
+  FanoutPrimitive,
+  GoalPrimitive,
+  OrchestrationDiagnostic,
+  OrchestrationDiagnosticCode,
+  StrategyCompileRequest,
+  StrategyCompileResult,
+  StrategyExecutionClass,
+} from './orchestration.ts'
+export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -440,6 +507,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     try {
       const next = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
       assertCatalogUsable(next)
+      assertOrchestrationCatalogUsable(compileOrchestrationCatalog(next))
       disposeTool?.()
       disposeTool = undefined
       activeCatalog = undefined

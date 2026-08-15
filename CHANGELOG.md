@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-15
+
+### Added
+
+- Config v2 ordered Catalog Layers spanning Profiles, Teams, and Strategies with replacement, extension-by-new-name, disable tombstones, revival, and provenance.
+- Public bounded TeamSpec Member Slots, strict StrategySpec stages, artifact contracts/cardinality/availability, and hard plan limits.
+- TypeScript `defineTeam`, `defineStrategy`, and `defineStrategyFor` authoring helpers with compile-time member and prior-artifact wiring checks.
+- Immutable lowering to `dsh-delegate`, `dsh-workflow-fanout`, and `dsh-goal` primitive IR plus deterministic StrategyPlanDigest.
+- Ordinary defaults-as-data templates for `independent-review`, `research-panel`, and `plan-execute-review`, mirrored by the shipped preset.
+
+### Changed
+
+- Config v1 and legacy unversioned Profile documents migrate to v2 with empty orchestration namespaces; lossy Team/Strategy rollback is rejected.
+- The plugin now validates Team/Strategy policy on every provider/adapter catalog refresh without treating transient Profile inactivity as permanent config failure.
+
 ## [0.4.0] - 2026-08-15
 
 ### Added
@@ -111,7 +126,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/wxxb789/dsh-legion/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/wxxb789/dsh-legion/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/wxxb789/dsh-legion/compare/v0.2.1...v0.2.2

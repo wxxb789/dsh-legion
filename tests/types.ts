@@ -1,5 +1,13 @@
 import {
+  ArtifactName,
+  MemberSlotName,
   ProfileName,
+  StrategyName,
+  TeamName,
+  defineStrategy,
+  defineStrategyFor,
+  defineTeam,
+  type ArtifactName as ArtifactNameType,
   type CatalogDigest,
   type CompiledCatalog,
   type DelegationInvocation,
@@ -14,6 +22,8 @@ import {
   type ResourceDigest,
   type RoutePlan,
   type RoutePlanDigest,
+  type StrategyName as StrategyNameType,
+  type TeamName as TeamNameType,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
 
@@ -66,11 +76,19 @@ const invocation: DelegationInvocation = {
 }
 
 const profile: ProfileNameType = ProfileName('quick')
+const team: TeamNameType = TeamName('coding')
+const strategy: StrategyNameType = StrategyName('independent-review')
+const artifact: ArtifactNameType = ArtifactName('evidence')
+const member = MemberSlotName('executor')
 const profileAsString: string = profile
 void config
 void routedConfig
 void invocation
 void profileAsString
+void team
+void strategy
+void artifact
+void member
 
 declare const policy: PolicyDigest
 declare const catalog: CatalogDigest
@@ -90,10 +108,16 @@ const wrongCatalog: CatalogDigest = resource
 const uncheckedPolicy: PolicyDigest = 'sha256:deadbeef'
 // @ts-expect-error Plain strings have not crossed the checked profile constructor.
 const uncheckedProfile: ProfileNameType = 'quick'
+// @ts-expect-error Team and Strategy identities are not interchangeable.
+const wrongTeam: TeamNameType = strategy
+// @ts-expect-error Artifact and Team identities are not interchangeable.
+const wrongArtifact: ArtifactNameType = team
 void wrongPolicy
 void wrongCatalog
 void uncheckedPolicy
 void uncheckedProfile
+void wrongTeam
+void wrongArtifact
 
 // @ts-expect-error Error diagnostic codes cannot carry warning severity.
 const invalidDiagnostic: Diagnostic = {
@@ -122,6 +146,94 @@ const invalidReasoningConfig: LegionConfig = {
   },
 }
 void invalidReasoningConfig
+
+const typedStrategy = defineStrategy({
+  description: 'Typed pipeline.',
+  team: 'coding',
+  stages: [
+    {
+      kind: 'delegate',
+      id: 'execute',
+      member: 'executor',
+      inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+      output: { artifact: 'evidence', contract: 'text' },
+      prompt: 'Execute.',
+    },
+    {
+      kind: 'delegate',
+      id: 'review',
+      member: 'reviewer',
+      inputs: [{ artifact: 'evidence', contract: 'text' }],
+      output: { artifact: 'review', contract: 'review-v1' },
+      prompt: 'Review.',
+    },
+  ],
+  completion: { artifact: 'review', contract: 'review-v1' },
+  limits: {
+    maxAgents: 2,
+    maxConcurrent: 1,
+    maxRounds: 1,
+    deadlineMs: 60_000,
+    maxOutputBytes: 64_000,
+  },
+  memberFailure: 'fail',
+})
+void typedStrategy
+const codingTeam = defineTeam('coding', {
+  description: 'Coding.',
+  members: {
+    executor: { profile: 'deep' },
+    reviewer: { profile: 'review' },
+  },
+})
+defineStrategyFor(codingTeam, typedStrategy)
+
+// @ts-expect-error A Strategy member must name a slot in its typed Team.
+defineStrategyFor(codingTeam, {
+  ...typedStrategy,
+  stages: [{ ...typedStrategy.stages[0], member: 'missing' }],
+})
+
+// @ts-expect-error A stage cannot consume an artifact produced by a later stage.
+defineStrategy({
+  description: 'Invalid forward reference.',
+  team: 'coding',
+  stages: [{
+    kind: 'delegate',
+    id: 'first',
+    member: 'executor',
+    inputs: [{ artifact: 'future', contract: 'text' }],
+    output: { artifact: 'result', contract: 'text' },
+    prompt: 'Invalid.',
+  }],
+  completion: { artifact: 'result', contract: 'text' },
+  limits: {
+    maxAgents: 1,
+    maxConcurrent: 1,
+    maxRounds: 1,
+    deadlineMs: 60_000,
+    maxOutputBytes: 64_000,
+  },
+  memberFailure: 'fail',
+})
+
+// @ts-expect-error Artifact contracts must match the previously produced artifact.
+defineStrategy({
+  ...typedStrategy,
+  stages: [
+    typedStrategy.stages[0],
+    {
+      ...typedStrategy.stages[1],
+      inputs: [{ artifact: 'evidence', contract: 'review-v1' }],
+    },
+  ],
+})
+
+// @ts-expect-error Completion must reference an existing single artifact with the same contract.
+defineStrategy({
+  ...typedStrategy,
+  completion: { artifact: 'review', contract: 'text' },
+})
 
 // @ts-expect-error Active profiles must expose at least one allowed mode.
 const invalidActiveProfile: ProfileExplainView = {

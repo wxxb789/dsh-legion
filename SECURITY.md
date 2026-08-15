@@ -26,4 +26,6 @@ Prompt Fragment references are confined below explicit relative Resource Roots a
 
 Route preflight observes only DSH adapter registration and adapter-owned exact-model metadata. It does not contact a provider to prove credentials, authorization, quota, network reachability, service health, latency, or billing state. Route Plans mark those facts unknown, and a later child/provider failure never authorizes Legion to replay work on another route.
 
+Catalog Layers can replace deployment policy but cannot widen Host authority: DSH remains the final owner of providers, routes, tools, depth, sandbox, approval, workflow, goal, and cancellation. Strategy invocation limits may only narrow compiled limits. Team/Strategy IR contains no live Agent, Session, Service, or runtime handle.
+
 Release dependencies are frozen by the committed lockfile. Tag builds publish the tested tarball with npm provenance, a GitHub build attestation, an SPDX SBOM, and SHA-256 checksums. Verify the package's registry provenance and release checksum before installing it in a privileged DSH profile.

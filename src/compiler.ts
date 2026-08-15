@@ -5,6 +5,7 @@ import type { LegionProfile, ResultContract, RouteCandidate } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import type { SelectedRoutePlan } from './route.ts'
+import type { StrategySpec, TeamSpec } from './orchestration-contract.ts'
 import {
   EMPTY_RESOURCE_SNAPSHOT,
   assertResourceSnapshot,
@@ -140,6 +141,8 @@ export interface CompiledCatalog {
   readonly guidance?: string
   readonly profiles: Readonly<Record<string, EffectiveProfile>>
   readonly activeProfiles: Readonly<Record<string, EffectiveProfile>>
+  readonly teams: Readonly<Record<string, TeamSpec>>
+  readonly strategies: Readonly<Record<string, StrategySpec>>
   readonly diagnostics: readonly Diagnostic[]
   /** Digest of authored policy after schema defaults, independent of live provider state. */
   readonly policyDigest: PolicyDigest
@@ -394,6 +397,8 @@ export function compileCatalog(
     resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
     maxResourceBytes: config.maxResourceBytes,
     profiles: Object.fromEntries(Object.keys(config.profiles).sort().map(name => [name, config.profiles[name]])),
+    teams: Object.fromEntries(Object.keys(config.teams).sort().map(name => [name, config.teams[name]])),
+    strategies: Object.fromEntries(Object.keys(config.strategies).sort().map(name => [name, config.strategies[name]])),
   }
   const runtime = {
     providers: Object.fromEntries(Object.keys(snapshot.providers).sort().map(name => [name, snapshot.providers[name]])),
@@ -422,6 +427,8 @@ export function compileCatalog(
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
     profiles: frozenProfiles,
     activeProfiles: frozenActiveProfiles,
+    teams: deepFreeze({ ...config.teams }),
+    strategies: deepFreeze({ ...config.strategies }),
     diagnostics: frozenDiagnostics,
     policyDigest: policyDigest(sha256({ version: 1, kind: 'legion-policy', policy })),
     catalogDigest: catalogDigest(sha256({ version: 1, kind: 'legion-catalog', policy, runtime })),

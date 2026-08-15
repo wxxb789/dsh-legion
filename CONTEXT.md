@@ -40,6 +40,14 @@ _Avoid_: Agent, Process, Session
 A bounded policy that turns an Objective and Team into orchestration decisions, artifact handoffs, completion rules, and limits.
 _Avoid_: Workflow runtime, Scheduler, Prompt
 
+**Artifact**:
+A named, versioned Strategy value with an explicit contract, cardinality, and availability; it is never a live Agent, Session, or transcript.
+_Avoid_: Tool result object, Shared mutable state, Runtime handle
+
+**Compiled Strategy Plan**:
+An immutable objective-bound graph of DSH primitive IR, artifacts, completion, and narrowed hard limits.
+_Avoid_: Team Run, WorkflowRun, Scheduler state
+
 **Team Run**:
 One execution of a Strategy against an Objective and Team, identified by the native DSH runs and artifacts it invokes.
 _Avoid_: Team, Mission database

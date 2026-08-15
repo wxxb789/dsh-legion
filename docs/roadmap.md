@@ -47,30 +47,30 @@ Cross-route recovery is not part of v0.3. It requires a unified DSH recovery sea
 
 Users can build their own Teams and orchestration Strategies. Legion ships a useful Default Catalog, but defaults are ordinary versioned data under the same public contracts.
 
-- [ ] Public `TeamSpec`: named Member Slots reference Profiles and declare bounded participation constraints.
-- [ ] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal operations.
-- [ ] Strategy registration and validation shared by Legion defaults and third-party packages.
-- [ ] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
-- [ ] Default `independent-review`: one executor result, one bounded reviewer, evidence contract.
-- [ ] Default `research-panel`: bounded independent findings and deterministic synthesis.
-- [ ] Default `plan-execute-review`: plan digest, execution evidence, bounded repair round.
-- [ ] Hard member/round/deadline/output/token/cost limits.
-- [ ] Cancellation and partial/degraded result semantics.
-- [ ] Authority monotonicity: catalog customization can narrow directly; widening remains subject to DSH policy and approval.
-- [ ] Contract tests prove default entries can be recreated entirely through public user configuration.
+- [x] Public `TeamSpec`: named Member Slots reference Profiles and declare bounded participation constraints.
+- [x] Public Strategy contract that compiles an Objective and Team to bounded DSH workflow/subagent/goal primitive IR.
+- [x] Strategy registration and validation shared by Legion defaults and third-party Catalog Layers.
+- [x] Catalog layering: extend, replace, or disable default Profiles, Teams, and Strategies without hardcoded names.
+- [ ] Execute default `independent-review`: one executor result, one bounded reviewer, evidence contract. (IR template complete.)
+- [ ] Execute default `research-panel`: bounded independent findings and deterministic synthesis. (IR template complete.)
+- [ ] Execute default `plan-execute-review`: plan digest, execution evidence, bounded repair round. (IR template complete.)
+- [ ] Hard member/round/deadline/output limits are compiled; aggregate token/cost enforcement awaits a DSH budget seam.
+- [ ] Cancellation and partial/degraded result semantics in the thin execution adapter.
+- [x] Authority monotonicity: invocation customization only narrows limits; final widening remains subject to DSH policy and approval.
+- [x] Contract tests prove default entries can be recreated entirely through public user configuration.
 - [ ] Seeded interleaving tests: terminal first-wins, no lease leaks, stale generation cannot commit, every waiter settles.
 
 Default Strategies ship only after benchmarks show measurable value over direct delegation.
 
 ## Type-system gates
 
-- [ ] Distinct `Authored*`, `Validated*`, `Effective*`, and `Compiled*` types at catalog boundaries.
-- [ ] Branded Profile, Role, Team, Strategy, Decision, Attempt, and Artifact identities.
-- [ ] Discriminated unions for Strategy kinds, execution modes, diagnostics, lifecycle observations, and terminal outcomes.
-- [ ] Generic Strategy artifact input/output contracts that reject invalid stage wiring at compile time.
-- [ ] Default Catalog declared with `as const satisfies` the public user catalog contract.
-- [ ] Type-level tests for valid inference and expected compile failures.
-- [ ] Runtime schema parity tests for every external versioned contract.
+- [x] Distinct authored Config/Spec, materialized catalog, Effective Profile/Team, and Compiled Plan types at catalog boundaries.
+- [ ] Branded Profile, Team, Strategy, Member Slot, and Artifact identities are complete; Role/Decision/Attempt arrive with execution.
+- [ ] Discriminated Strategy stages and compile results are complete; lifecycle observations and terminal outcomes await execution.
+- [x] Generic Strategy artifact input/output contracts reject forward, duplicate, contract, and cardinality wiring at compile time.
+- [x] Default Catalog declared with `as const satisfies` the public user catalog contract.
+- [x] Type-level tests for valid inference and expected compile failures.
+- [x] Runtime schema parity tests for external Team/Strategy config contracts.
 
 ## Upstream DSH proposals
 

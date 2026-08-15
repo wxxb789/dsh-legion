@@ -1,7 +1,17 @@
 import z from '@deepseek-ai/schemastery'
+import {
+  StrategySpecSchema,
+  TeamSpecSchema,
+  assertKnownOrchestrationKeys,
+  type CatalogLayer,
+  type StrategySpec,
+  type TeamSpec,
+} from './orchestration-contract.ts'
+import { resolveCatalogLayers } from './catalog-layer.ts'
+
 export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
-export const CURRENT_CONFIG_VERSION = 1 as const
-export type ConfigVersion = typeof CURRENT_CONFIG_VERSION
+export const CURRENT_CONFIG_VERSION = 2 as const
+export type ConfigVersion = 1 | typeof CURRENT_CONFIG_VERSION
 export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = ['text', 'findings-v1', 'review-v1'] as const
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
@@ -75,6 +85,12 @@ export interface Config {
   resourceRoots?: Record<string, string>
   /** Maximum combined prompt-fragment bytes loaded for one profile. */
   maxResourceBytes?: number
+  /** Ordered installed/project catalog layers; the root maps form the final deployment layer. */
+  catalogLayers?: CatalogLayer<LegionProfile>[]
+  /** Named declarative Teams in the final deployment layer. */
+  teams?: Record<string, TeamSpec>
+  /** Named declarative Strategies in the final deployment layer. */
+  strategies?: Record<string, StrategySpec>
 }
 
 const PromptFileReferenceSchema: z<PromptFileReference> = z.object({
@@ -123,14 +139,31 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
   promptFiles: z.array(PromptFileReferenceSchema).default(undefined as unknown as PromptFileReference[]),
 })
 
+const CatalogDisableSchema = z.object({
+  profiles: z.array(z.string().pattern(PROFILE_NAME)),
+  teams: z.array(z.string().pattern(PROFILE_NAME)),
+  strategies: z.array(z.string().pattern(PROFILE_NAME)),
+})
+
+const CatalogLayerSchema = z.object({
+  id: z.string().pattern(PROFILE_NAME).required(),
+  profiles: z.dict(LegionProfileSchema),
+  teams: z.dict(TeamSpecSchema),
+  strategies: z.dict(StrategySpecSchema),
+  disable: CatalogDisableSchema,
+}) as unknown as z<CatalogLayer<LegionProfile>>
+
 export interface MaterializedConfig extends Config {
-  configVersion: ConfigVersion
+  configVersion: typeof CURRENT_CONFIG_VERSION
   resourceRoots: Record<string, string>
   maxResourceBytes: number
+  catalogLayers: []
+  teams: Record<string, TeamSpec>
+  strategies: Record<string, StrategySpec>
 }
 
 export const Config: z<Config> = z.object({
-  configVersion: z.const(CURRENT_CONFIG_VERSION).default(CURRENT_CONFIG_VERSION),
+  configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]).default(CURRENT_CONFIG_VERSION),
   toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
@@ -138,17 +171,33 @@ export const Config: z<Config> = z.object({
   guidance: z.string(),
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
+  catalogLayers: z.array(CatalogLayerSchema).max(31).default([]),
+  teams: z.dict(TeamSpecSchema).default({}),
+  strategies: z.dict(StrategySpecSchema).default({}),
 })
 
+function cloneAuthoredValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneAuthoredValue)
+  if (typeof value !== 'object' || value === null) return value
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, cloneAuthoredValue(child)]),
+  )
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
     ? value as Record<string, unknown>
     : undefined
 }
 
 function assertKnownKeys(value: unknown, allowed: readonly string[], at: string): void {
+  if (value === undefined || value === null) return
   const source = record(value)
-  if (source === undefined) return
+  if (source === undefined) throw new Error(`dsh-legion: ${at} must be a plain object`)
   const known = new Set(allowed)
   const unknown = Object.keys(source).filter(key => !known.has(key))
   if (unknown.length > 0) {
@@ -173,8 +222,15 @@ function assertKnownConfigKeys(input: unknown): void {
   if (source !== undefined
     && Object.hasOwn(source, 'configVersion')
     && source.configVersion !== undefined
+    && source.configVersion !== 1
     && source.configVersion !== CURRENT_CONFIG_VERSION) {
     throw new Error(`dsh-legion: unsupported configVersion ${String(source.configVersion)}`)
+  }
+  const authoredVersion = source?.configVersion ?? 1
+  if (authoredVersion === 1
+    && source !== undefined
+    && ['catalogLayers', 'teams', 'strategies'].some(key => Object.hasOwn(source, key))) {
+    throw new Error('dsh-legion: configVersion 2 is required for catalogLayers, teams, or strategies')
   }
   assertKnownKeys(
     input,
@@ -187,12 +243,17 @@ function assertKnownConfigKeys(input: unknown): void {
       'guidance',
       'resourceRoots',
       'maxResourceBytes',
+      'catalogLayers',
+      'teams',
+      'strategies',
     ],
     'config',
   )
-  const profiles = record(record(input)?.profiles)
-  if (profiles === undefined) return
-  for (const [name, profile] of Object.entries(profiles)) {
+  const profiles = record(source?.profiles)
+  if (source?.profiles !== undefined && profiles === undefined) {
+    throw new Error('dsh-legion: profiles must be a plain object')
+  }
+  if (profiles !== undefined) for (const [name, profile] of Object.entries(profiles)) {
     assertKnownKeys(
       profile,
       [
@@ -232,23 +293,67 @@ function assertKnownConfigKeys(input: unknown): void {
       })
     }
   }
+  assertKnownOrchestrationKeys(source?.teams, source?.strategies)
+  if (Array.isArray(source?.catalogLayers)) {
+    source.catalogLayers.forEach((layer, index) => {
+      const layerRecord = record(layer)
+      assertKnownKeys(
+        layer,
+        ['id', 'profiles', 'teams', 'strategies', 'disable'],
+        `catalogLayers[${String(index)}]`,
+      )
+      assertKnownKeys(
+        layerRecord?.disable,
+        ['profiles', 'teams', 'strategies'],
+        `catalogLayers[${String(index)}].disable`,
+      )
+      assertKnownConfigKeys({
+        configVersion: 2,
+        profiles: layerRecord?.profiles ?? {},
+        teams: layerRecord?.teams ?? {},
+        strategies: layerRecord?.strategies ?? {},
+      })
+    })
+  }
 }
 
 /** Validate, materialize defaults, and detach one untrusted Legion config. */
 export function materializeConfig(input: unknown): MaterializedConfig {
   assertKnownConfigKeys(input)
-  const parsed = Config(input as Config | null | undefined)
-  validateConfig(parsed)
+  const parsed = Config(cloneAuthoredValue(input) as Config | null | undefined)
+  const layerIds = new Set((parsed.catalogLayers ?? []).map(layer => layer.id))
+  let deploymentLayerId = 'deployment'
+  for (let suffix = 2; layerIds.has(deploymentLayerId); suffix += 1) {
+    deploymentLayerId = `deployment-${String(suffix)}`
+  }
+  const resolved = resolveCatalogLayers([
+    ...(parsed.catalogLayers ?? []),
+    {
+      id: deploymentLayerId,
+      profiles: parsed.profiles,
+      teams: parsed.teams ?? {},
+      strategies: parsed.strategies ?? {},
+    },
+  ])
+  const effective: Config = {
+    ...parsed,
+    configVersion: CURRENT_CONFIG_VERSION,
+    profiles: { ...resolved.profiles },
+    teams: { ...resolved.teams },
+    strategies: { ...resolved.strategies },
+    catalogLayers: [],
+  }
+  validateConfig(effective)
   return {
     configVersion: CURRENT_CONFIG_VERSION,
-    toolName: parsed.toolName,
-    enableRunInBackground: parsed.enableRunInBackground,
-    resourceRoots: { ...parsed.resourceRoots },
-    maxResourceBytes: parsed.maxResourceBytes ?? 64 * 1024,
-    ...parsed.defaultProfile === undefined ? {} : { defaultProfile: parsed.defaultProfile },
-    ...parsed.guidance === undefined ? {} : { guidance: parsed.guidance },
-    profiles: Object.fromEntries(Object.keys(parsed.profiles).sort().map((name) => {
-      const profile = parsed.profiles[name]!
+    toolName: effective.toolName,
+    enableRunInBackground: effective.enableRunInBackground,
+    resourceRoots: { ...effective.resourceRoots },
+    maxResourceBytes: effective.maxResourceBytes ?? 64 * 1024,
+    ...effective.defaultProfile === undefined ? {} : { defaultProfile: effective.defaultProfile },
+    ...effective.guidance === undefined ? {} : { guidance: effective.guidance },
+    profiles: Object.fromEntries(Object.keys(effective.profiles).sort().map((name) => {
+      const profile = effective.profiles[name]!
       return [name, {
         description: profile.description,
         subagentProvider: profile.subagentProvider,
@@ -296,6 +401,9 @@ export function materializeConfig(input: unknown): MaterializedConfig {
           : { promptFiles: profile.promptFiles.map(reference => ({ ...reference })) },
       } satisfies LegionProfile]
     })),
+    catalogLayers: [],
+    teams: { ...resolved.teams },
+    strategies: { ...resolved.strategies },
   }
 }
 
@@ -305,9 +413,19 @@ export function exportConfigDocument(
   target: ConfigExportTarget = CURRENT_CONFIG_VERSION,
 ): Config {
   const current = materializeConfig(input)
-  if (target === CURRENT_CONFIG_VERSION) return current
-  const { configVersion: _configVersion, ...legacy } = current
-  return legacy
+  const document = current
+  if (target === CURRENT_CONFIG_VERSION) return document
+  if (Object.keys(current.teams).length > 0 || Object.keys(current.strategies).length > 0) {
+    throw new Error('dsh-legion: config v2 Teams/Strategies cannot be rolled back to config v1')
+  }
+  const {
+    configVersion: _configVersion,
+    catalogLayers: _catalogLayers,
+    teams: _teams,
+    strategies: _strategies,
+    ...v1
+  } = document
+  return target === 1 ? { ...v1, configVersion: 1 } : v1
 }
 
 /** Validate cross-field facts Schemastery cannot express. */

@@ -1,18 +1,19 @@
 # dsh-legion
 
-Configurable multi-model subagent profiles for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+Configurable multi-agent Teams, orchestration Strategies, and model-routed Profiles for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Legion turns raw model and backend choices into semantic profiles such as `deep`, `quick`, `explore`, `translation`, and `review`. The main DSH agent chooses a profile by task fit; the plugin resolves that profile to a fixed subagent backend, child model route, persona, tool policy, depth limit, result contract, and background policy.
+Legion turns raw model and backend choices into semantic Profiles such as `deep`, `quick`, and `review`. Profiles compose into declarative Teams and bounded Strategies; the compiler validates member cardinality, artifact wiring, limits, completion, and DSH primitive lowering without creating a second runtime.
 
-Legion is customization-first: users can define their own Profiles and, on the v1.0 path, compose them into custom Teams with custom bounded orchestration Strategies. Legion will ship a polished Default Catalog, but every default uses the same replaceable public contracts and receives no hidden runtime privilege. Version 0.2 implements the Profile layer; Team and Strategy contracts are tracked in the [roadmap](docs/roadmap.md).
+Legion is customization-first. Users and third-party packages use ordinary ordered Catalog Layers to add, replace, or disable Profiles, Teams, and Strategies. The curated Default Catalog uses exactly the same public contracts and receives no hidden runtime privilege.
 
 ```text
-SOTA coordinator
-  └─ legion(profile, prompt)
-       ├─ deep        -> SOTA reasoning model
-       ├─ quick       -> lightweight model
-       ├─ explore     -> fast search model + read-only tools
-       └─ review      -> independent critic model
+Catalog Layers
+  ├─ Profiles   -> backend, exact routes, persona, tools, result contract
+  ├─ Teams      -> bounded Member Slots referencing Profiles
+  └─ Strategies -> typed artifact graph + hard limits
+                         │
+                         ▼
+                frozen DSH primitive IR
 ```
 
 ## Why a DSH plugin?
@@ -34,10 +35,16 @@ The deployment owner—not the prompt—controls what each profile can use.
 
 ## Status
 
-`0.4.0` hardens config migration, frozen dependency installs, Windows/peer compatibility, packed real delegation, and provenance-bearing releases.
+`0.5.0` introduces config v2, ordered Catalog Layers, public TeamSpec/StrategySpec contracts, typed artifact authoring, immutable Strategy plans, and the curated defaults-as-data catalog.
 
 Supported:
 
+- config v2 ordered Catalog Layers with add/replace/disable semantics and deterministic provenance;
+- public bounded TeamSpec Member Slots referencing existing Profiles;
+- public declarative StrategySpec stages with type-level and runtime artifact wiring;
+- immutable lowering to `dsh-delegate`, `dsh-workflow-fanout`, and `dsh-goal` primitive IR;
+- invocation-only limit narrowing and deterministic StrategyPlanDigest;
+- ordinary defaults-as-data templates for independent review, research panel, and plan/execute/review;
 - multiple named profiles in one Legion-enabled DSH agent preset;
 - independent subagent backend per profile (`spawn`, `fork`, `codex`, `claude-code`, or another registered provider);
 - legacy fixed child LLM `provider`, `model`, and `maxTokens`, or up to eight ordered exact Route Candidates per Profile;
@@ -54,6 +61,8 @@ Supported:
 
 Not yet supported:
 
+- executing compiled Team Strategies from the model tool; v0.5 ships the validated IR and defaults, while the thin DSH execution adapter remains v1 work;
+- benchmark-backed enablement of the three default Strategy templates;
 - post-failure model fallback/replay or automatic provider health scoring;
 - a Legion-owned team/DAG runtime—the coordinator uses DSH's existing subagent and workflow capabilities;
 - selecting a different **DSH agent preset** for each child. Current in-process subagents inherit the parent's standing preset composition; Legion profiles can still vary model, persona, tools, and backend. A true per-child preset requires a small upstream DSH subagent composition seam and is tracked as a roadmap item;
@@ -151,7 +160,7 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 
 | Field | Default | Meaning |
 |---|---:|---|
-| `configVersion` | `1` | Versioned document contract. Omission migrates the legacy unversioned v1 shape. |
+| `configVersion` | `2` | Versioned document contract. Omission is legacy v1 and migrates to v2. |
 | `toolName` | `legion` | Model-facing tool name. |
 | `profiles` | required | Map from semantic profile name to fixed child policy. |
 | `defaultProfile` | none | Profile used when a call omits `profile`; otherwise `profile` is required. |
@@ -159,6 +168,9 @@ You may remove or disable the generic `subagent` row in your copied preset if yo
 | `guidance` | none | Additional coordinator guidance appended to the generated profile table. |
 | `resourceRoots` | `{}` | Deployment-owned aliases for relative directories containing Prompt Fragments. |
 | `maxResourceBytes` | `65536` | Maximum combined raw Prompt Fragment bytes loaded for one Profile; hard ceiling 4 MiB. |
+| `catalogLayers` | `[]` | Ordered third-party/project policy layers; later definitions replace and tombstones disable. |
+| `teams` | `{}` | Final deployment-layer TeamSpec map. |
+| `strategies` | `{}` | Final deployment-layer StrategySpec map. |
 
 Profile names must match `^[a-z][a-z0-9-]*$`. Legion follows the DSH provider lifecycle: profiles whose `subagentProvider` is absent are omitted from the live tool schema, and the tool plus prompt guidance disappear when no configured provider is available. They return automatically when the provider is registered again. When a provider is present, the profile's default execution mode is capability-checked immediately; an invalid default fails activation instead of waiting for the first tool call.
 
@@ -207,6 +219,51 @@ Immediately before starting a child, Legion snapshots whether each exact provide
 Known missing adapters, exact-model rejection, insufficient context, or an insufficient effective request output budget reject a candidate. `minEffectiveOutputTokens` compares an explicit candidate `maxTokens` or the adapter default that Legion freezes into the selected start projection; it is not a claim about the model's hard output ceiling. Selectable reasoning efforts are included as evidence only: DSH does not yet expose a per-child reasoning-effort override, and absent reasoning metadata does not prove that a model cannot reason. Registration and metadata resolution never prove auth, quota, reachability, latency, or health.
 
 The frozen Route Plan records every selected, rejected, and lower-priority skipped candidate, includes a stable digest, and reports live availability as unknown. Its effective `maxTokens` applies to the initial child activation; DSH continuable cold resume intentionally restores provider/model/persona/tools but not a previous activation's token budget. The tool returns this bounded explain snapshot. Legion starts exactly one child: if that child later fails, no other Route Candidate is tried. Route-specific `instructions` are additive system/persona policy, not a replacement task and not a user-message fallback.
+
+### Catalog Layers, Teams, and Strategies
+
+Config v2 adds three ordinary catalog namespaces. Layers are processed in order; a new name extends the catalog, the same name replaces it, and `disable` creates a tombstone that a later definition may revive. The root `profiles`, `teams`, and `strategies` maps form the final deployment layer.
+
+```yaml
+configVersion: 2
+catalogLayers:
+  - id: package-policy
+    teams:
+      coding:
+        description: One executor and reviewer.
+        members:
+          executor: { profile: deep }
+          reviewer: { profile: review }
+    strategies:
+      reviewed:
+        description: Execute and review.
+        team: coding
+        stages:
+          - kind: delegate
+            id: execute
+            member: executor
+            inputs: [{ artifact: objective, contract: objective-v1 }]
+            output: { artifact: execution, contract: text }
+            prompt: Execute and return evidence.
+          - kind: delegate
+            id: review
+            member: reviewer
+            inputs: [{ artifact: execution, contract: text }]
+            output: { artifact: review, contract: review-v1 }
+            prompt: Review the evidence independently.
+        completion: { artifact: review, contract: review-v1 }
+        limits:
+          maxAgents: 2
+          maxConcurrent: 1
+          maxRounds: 1
+          deadlineMs: 900000
+          maxOutputBytes: 524288
+        memberFailure: fail
+```
+
+`compileOrchestrationCatalog()` resolves Teams against the current compiled Profile catalog and lowers valid stages to detached, deep-frozen DSH primitive IR. `compileStrategy()` binds a bounded objective and permits only narrower invocation limits. External YAML/JSON receives strict runtime validation; TypeScript authors can use `defineTeam()`, `defineStrategy()`, and `defineStrategyFor()` for compile-time member and artifact wiring checks.
+
+The exported `DEFAULT_CATALOG_LAYER` and shipped preset define `independent-review`, `research-panel`, and `plan-execute-review` through this exact interface. They are currently compiler templates, not hidden executable branches; benchmark-backed execution waits for the v1 DSH adapter.
 
 ### Prompt Fragments
 
@@ -261,9 +318,9 @@ Exit codes:
 
 ### Config migration and rollback
 
-`configVersion: 1` is the current runtime-validated document contract. Existing unversioned v0.3-and-earlier documents are interpreted as the same v1 shape and materialized with an explicit version. Unknown future versions fail before plugin effects.
+`configVersion: 2` is the current runtime-validated document contract. Existing unversioned and explicit v1 Profile documents migrate to v2 with empty Team/Strategy namespaces. Unknown future versions fail before plugin effects; v1 documents cannot smuggle v2 catalog fields.
 
-Programmatic callers can use `exportConfigDocument(input)` for normalized v1 output, or `exportConfigDocument(input, 'legacy-unversioned')` to remove only the version marker for rollback to a compatible pre-v0.4 Legion package. Both exports are detached; rollback is tested by rematerializing to the same effective config. File replacement, backup, and atomic rename remain the deployment owner's responsibility—Legion does not overwrite user presets.
+Programmatic callers can use `exportConfigDocument(input)` for normalized v2 output. Export to `1` or `legacy-unversioned` is lossless only while no v2 Team/Strategy data is present; otherwise rollback fails loudly rather than discarding orchestration policy. All exports are detached and rematerialization-tested. File replacement, backup, and atomic rename remain the deployment owner's responsibility—Legion does not overwrite user presets.
 
 ## Compatibility and releases
 
@@ -294,6 +351,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 - [ADR 0007: Pre-start exact Route Plans](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0007-pre-start-exact-route-plans.md)
 - [ADR 0008: Versioned config and rollback](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0008-versioned-config-and-rollback.md)
 - [ADR 0009: Reproducible provenance releases](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0009-reproducible-provenance-releases.md)
+- [ADR 0010: Declarative Team/Strategy IR](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0010-declarative-team-strategy-ir.md)
 - [OMO + Senpi inspirations and pitfalls](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/omo-senpi-inspirations-and-pitfalls.md)
 - [Feature leakage audit vs oh-my-openagent](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/feature-leakage-audit.md)
 - [oh-my-openagent research](https://github.com/wxxb789/dsh-legion/blob/main/docs/research/oh-my-openagent.md)

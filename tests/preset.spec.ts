@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 
 const PRESET = fileURLToPath(new URL('../presets/legion/agent.cordis.yml', import.meta.url))
 
@@ -17,7 +18,7 @@ describe('shipped Legion preset template', () => {
     const legion = named.find(row => row.id === 'tool-legion')
     expect(legion).toMatchObject({ name: 'dsh-legion' })
     expect(legion?.config).toMatchObject({
-      configVersion: 1,
+      configVersion: 2,
       defaultProfile: 'quick',
       resourceRoots: { bundled: 'resources' },
       profiles: {
@@ -46,6 +47,10 @@ describe('shipped Legion preset template', () => {
           promptFiles: [{ root: 'bundled', path: 'review.md' }],
         },
       },
+    })
+    expect(legion?.config).toMatchObject({
+      teams: DEFAULT_CATALOG_LAYER.teams,
+      strategies: DEFAULT_CATALOG_LAYER.strategies,
     })
     expect(named.some(row => row.name === '@deepseek-ai/dsh-subagent')).toBe(false)
   })

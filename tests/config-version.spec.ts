@@ -37,7 +37,7 @@ const runtime = {
 }
 
 describe('versioned config migration and rollback', () => {
-  it('migrates the legacy unversioned document to current v1 without semantic drift', () => {
+  it('migrates legacy unversioned and explicit v1 documents to current v2 without semantic drift', () => {
     const migrated = materializeConfig(authored)
     const explicit = materializeConfig({ ...authored, configVersion: 1 })
 
@@ -51,7 +51,8 @@ describe('versioned config migration and rollback', () => {
     const current = exportConfigDocument(authored)
     const rollback = exportConfigDocument(current, 'legacy-unversioned')
 
-    expect(current.configVersion).toBe(1)
+    expect(current.configVersion).toBe(2)
+    expect(exportConfigDocument(current, 1).configVersion).toBe(1)
     expect(rollback.configVersion).toBeUndefined()
     expect(materializeConfig(rollback)).toEqual(materializeConfig(current))
     expect(rollback.profiles.deep?.routes?.[0]).toMatchObject({
@@ -62,8 +63,41 @@ describe('versioned config migration and rollback', () => {
   it('rejects null and unknown future versions instead of guessing or partially migrating', () => {
     expect(() => materializeConfig({ ...authored, configVersion: null }))
       .toThrow(/unsupported configVersion null/)
-    expect(() => materializeConfig({ ...authored, configVersion: 2 }))
-      .toThrow(/unsupported configVersion 2/)
+    expect(() => materializeConfig({ ...authored, configVersion: 3 }))
+      .toThrow(/unsupported configVersion 3/)
+  })
+
+  it('requires explicit v2 before any v2-only field is authored, even when empty', () => {
+    expect(() => materializeConfig({ ...authored, teams: {} }))
+      .toThrow(/configVersion 2 is required/)
+    expect(() => materializeConfig({ ...authored, strategies: {} }))
+      .toThrow(/configVersion 2 is required/)
+    expect(() => materializeConfig({ ...authored, catalogLayers: [] }))
+      .toThrow(/configVersion 2 is required/)
+    expect(() => materializeConfig({
+      ...authored,
+      teams: {
+        coding: {
+          description: 'Coding.',
+          members: { executor: { profile: 'deep' } },
+        },
+      },
+    })).toThrow(/configVersion 2 is required/)
+  })
+
+  it('refuses lossy rollback when v2 Team or Strategy data is present', () => {
+    const v2 = {
+      ...authored,
+      configVersion: 2 as const,
+      teams: {
+        coding: {
+          description: 'Coding.',
+          members: { executor: { profile: 'deep' } },
+        },
+      },
+    }
+    expect(() => exportConfigDocument(v2, 1)).toThrow(/cannot be rolled back/)
+    expect(() => exportConfigDocument(v2, 'legacy-unversioned')).toThrow(/cannot be rolled back/)
   })
 
   it('returns detached exports that cannot mutate authored input', () => {

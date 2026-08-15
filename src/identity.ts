@@ -10,6 +10,11 @@ export type PolicyDigest = Brand<`sha256:${string}`, 'PolicyDigest'>
 export type CatalogDigest = Brand<`sha256:${string}`, 'CatalogDigest'>
 export type ResourceDigest = Brand<`sha256:${string}`, 'ResourceDigest'>
 export type RoutePlanDigest = Brand<`sha256:${string}`, 'RoutePlanDigest'>
+export type TeamName = Brand<string, 'TeamName'>
+export type StrategyName = Brand<string, 'StrategyName'>
+export type MemberSlotName = Brand<string, 'MemberSlotName'>
+export type ArtifactName = Brand<string, 'ArtifactName'>
+export type StrategyPlanDigest = Brand<`sha256:${string}`, 'StrategyPlanDigest'>
 
 /** Validate and brand one public profile identity. */
 export function ProfileName(value: string): ProfileName {
@@ -41,4 +46,32 @@ export function ResourceDigest(value: string): ResourceDigest {
 export function RoutePlanDigest(value: string): RoutePlanDigest {
   if (!SHA256_DIGEST.test(value)) throw new Error('dsh-legion: invalid route-plan digest')
   return value as RoutePlanDigest
+}
+
+function namedIdentity<Name extends string>(value: string, kind: Name): Brand<string, Name> {
+  if (!PROFILE_NAME.test(value)) {
+    throw new Error(`dsh-legion: invalid ${kind} "${value}"`)
+  }
+  return value as Brand<string, Name>
+}
+
+export function TeamName(value: string): TeamName {
+  return namedIdentity(value, 'TeamName')
+}
+
+export function StrategyName(value: string): StrategyName {
+  return namedIdentity(value, 'StrategyName')
+}
+
+export function MemberSlotName(value: string): MemberSlotName {
+  return namedIdentity(value, 'MemberSlotName')
+}
+
+export function ArtifactName(value: string): ArtifactName {
+  return namedIdentity(value, 'ArtifactName')
+}
+
+export function StrategyPlanDigest(value: string): StrategyPlanDigest {
+  if (!SHA256_DIGEST.test(value)) throw new Error('dsh-legion: invalid strategy-plan digest')
+  return value as StrategyPlanDigest
 }

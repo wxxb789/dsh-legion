@@ -1,12 +1,12 @@
 {
   "name": "dsh-legion",
-  "version": "0.4.0",
-  "description": "Configurable multi-model subagent profiles for DeepSeek Harness",
+  "version": "0.5.0",
+  "description": "Configurable multi-agent teams and orchestration policy for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "bin": {
-    "dsh-legion": "./lib/bin.js"
+    "dsh-legion": "lib/bin.js"
   },
   "exports": {
     ".": {
@@ -103,5 +103,11 @@
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "lib": "lib",
+    "test": "tests"
   }
 }
