@@ -79,8 +79,6 @@ export {
   materializeStructuredResult,
   outputSchemaFor,
 } from './result-contract.ts'
-export { renderCoordinatorGuidance } from './prompt.ts'
-export type { CoordinatorCatalog, CoordinatorProfile } from './prompt.ts'
 export {
   EMPTY_RESOURCE_SNAPSHOT,
   ProfileResourceError,

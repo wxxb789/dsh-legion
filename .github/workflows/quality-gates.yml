@@ -23,7 +23,7 @@ jobs:
         include:
           - os: windows-latest
             node: 22.19.0
-            packedProfile: false
+            packedProfile: true
           - os: ubuntu-24.04
             node: 24.19.0
             packedProfile: true
@@ -42,12 +42,15 @@ jobs:
         run: pnpm run test:profile-install
 
   compatibility:
-    name: packed E2E (${{ matrix.dsh.channel }}, Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: packed E2E (${{ matrix.platform.id }}, ${{ matrix.dsh.channel }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
+        platform:
+          - { id: linux, os: ubuntu-24.04 }
+          - { id: win32, os: windows-latest }
         node: [22.19.0, 24.19.0]
         dsh:
           - channel: minimum
@@ -74,17 +77,14 @@ jobs:
         run: pnpm run test:packed-delegation
         env:
           DSH_VERSION: ${{ matrix.dsh.version }}
-          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
       - if: inputs.tarball-artifact != ''
-        run: |
-          mapfile -t tarballs < <(find package-tarball -name '*.tgz' -type f)
-          test "${#tarballs[@]}" -eq 1
-          DSH_LEGION_TARBALL="${tarballs[0]}" pnpm run test:packed-delegation
+        run: pnpm run test:packed-delegation-supplied -- package-tarball
         env:
           DSH_VERSION: ${{ matrix.dsh.version }}
-          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}
-          path: compatibility-${{ matrix.dsh.channel }}-${{ matrix.node }}.*
+          name: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}
+          path: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.*
           if-no-files-found: error

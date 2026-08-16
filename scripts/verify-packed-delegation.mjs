@@ -170,6 +170,7 @@ try {
       schemaVersion: publicContract.compatibilityReceiptVersion,
       requestedDshVersion: dshVersionSpec,
       resolvedDshVersion: dshVersion,
+      platform: process.platform,
       nodeVersion: process.version,
       packageVersion: installedManifest.version,
       tarballSha256: `sha256:${tarballSha256}`,

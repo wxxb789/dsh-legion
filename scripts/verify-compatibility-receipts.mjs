@@ -17,14 +17,14 @@ const tarballs = names.filter(name => name.endsWith('.tgz'))
 if (tarballs.length !== 1) throw new Error(`release requires exactly one tarball, found ${String(tarballs.length)}`)
 const tarballBytes = await readFile(resolve(directory, tarballs[0]))
 const tarballSha256 = `sha256:${createHash('sha256').update(tarballBytes).digest('hex')}`
-const receiptNames = names.filter(name => /^compatibility-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.test(name)).sort()
-if (receiptNames.length !== 4) throw new Error(`release requires four compatibility receipts, found ${String(receiptNames.length)}`)
+const receiptNames = names.filter(name => /^compatibility-(linux|win32)-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.test(name)).sort()
+if (receiptNames.length !== 8) throw new Error(`release requires eight compatibility receipts, found ${String(receiptNames.length)}`)
 const expectedFields = [...contract.compatibilityReceiptFields].sort()
 const expectedDshPackages = [...compatibilityPolicy.dshPackageClosure].sort()
 for (const name of receiptNames) {
-  const slot = /^compatibility-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.exec(name)
+  const slot = /^compatibility-(linux|win32)-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.exec(name)
   if (slot === null) throw new Error(`invalid compatibility receipt filename ${name}`)
-  const [, channel, node] = slot
+  const [, platform, channel, node] = slot
   const receipt = JSON.parse(await readFile(resolve(directory, name), 'utf8'))
   const expectedLockfile = name.replace(/\.json$/, '.lock.yaml')
   const lockfileBytes = await readFile(resolve(directory, expectedLockfile))
@@ -62,6 +62,7 @@ for (const name of receiptNames) {
   if (JSON.stringify(fields) !== JSON.stringify(expectedFields)
     || receipt.schemaVersion !== contract.compatibilityReceiptVersion
     || receipt.requestedDshVersion !== expectedRequest
+    || receipt.platform !== platform
     || !nodeMatches
     || (channel === 'minimum'
       && receipt.resolvedDshVersion !== compatibilityPolicy.minimumDshVersion)

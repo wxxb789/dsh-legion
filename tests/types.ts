@@ -8,7 +8,6 @@ import {
   defineStrategy,
   defineStrategyFor,
   defineTeam,
-  renderCoordinatorGuidance,
   type ArtifactName as ArtifactNameType,
   type CatalogDigest,
   type CompiledCatalog,
@@ -86,8 +85,6 @@ const artifact: ArtifactNameType = ArtifactName('evidence')
 const member = MemberSlotName('executor')
 const teamRun: TeamRunIdType = TeamRunId('team-run-123e4567-e89b-42d3-a456-426614174000')
 const profileAsString: string = profile
-// @ts-expect-error Guidance must consume a compiler-owned CoordinatorCatalog, not raw Config.
-renderCoordinatorGuidance(config)
 void config
 void routedConfig
 void invocation

@@ -25,12 +25,13 @@ function fixture(root: string): void {
   const tarball = Buffer.from('exact release tarball')
   writeFileSync(join(root, `dsh-legion-${manifest.version}.tgz`), tarball)
   const tarballSha256 = `sha256:${createHash('sha256').update(tarball).digest('hex')}`
-  for (const channel of ['minimum', 'latest-tested']) {
-    for (const node of ['22.19.0', '24.19.0']) {
+  for (const platform of ['linux', 'win32']) {
+    for (const channel of ['minimum', 'latest-tested']) {
+      for (const node of ['22.19.0', '24.19.0']) {
       const resolved = channel === 'minimum'
         ? compatibilityPolicy.minimumDshVersion
         : compatibilityPolicy.latestTestedDshVersion
-      const lockfileName = `compatibility-${channel}-${node}.lock.yaml`
+      const lockfileName = `compatibility-${platform}-${channel}-${node}.lock.yaml`
       const lockfile = [
         "lockfileVersion: '9.0'",
         'packages:',
@@ -38,10 +39,11 @@ function fixture(root: string): void {
         '',
       ].join('\n')
       writeFileSync(join(root, lockfileName), lockfile)
-      writeFileSync(join(root, `compatibility-${channel}-${node}.json`), JSON.stringify({
+      writeFileSync(join(root, `compatibility-${platform}-${channel}-${node}.json`), JSON.stringify({
         schemaVersion: contract.compatibilityReceiptVersion,
         requestedDshVersion: resolved,
         resolvedDshVersion: resolved,
+        platform,
         nodeVersion: `v${node}`,
         packageVersion: manifest.version,
         tarballSha256,
@@ -50,6 +52,7 @@ function fixture(root: string): void {
         dshDependencies: DSH_PACKAGES.map(name => ({ name, version: resolved })),
         status: 'passed',
       }))
+      }
     }
   }
 }
@@ -62,7 +65,7 @@ function verify(root: string) {
 }
 
 describe('release compatibility receipt verifier', () => {
-  it('binds four exact compatibility runs to one release tarball', () => {
+  it('binds eight exact compatibility runs to one release tarball', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-compatibility-'))
     try {
       fixture(root)
@@ -78,8 +81,8 @@ describe('release compatibility receipt verifier', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-compatibility-copied-'))
     try {
       fixture(root)
-      const copied = readFileSync(join(root, 'compatibility-minimum-22.19.0.json'))
-      writeFileSync(join(root, 'compatibility-latest-tested-24.19.0.json'), copied)
+      const copied = readFileSync(join(root, 'compatibility-linux-minimum-22.19.0.json'))
+      writeFileSync(join(root, 'compatibility-win32-latest-tested-24.19.0.json'), copied)
       expect(verify(root).status).not.toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -90,7 +93,7 @@ describe('release compatibility receipt verifier', () => {
     const root = mkdtempSync(join(tmpdir(), 'legion-compatibility-closure-'))
     try {
       fixture(root)
-      const path = join(root, 'compatibility-minimum-22.19.0.json')
+      const path = join(root, 'compatibility-linux-minimum-22.19.0.json')
       const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
         resolvedDshVersion: string
         consumerLockfileFile: string
@@ -117,7 +120,7 @@ describe('release compatibility receipt verifier', () => {
       writeFileSync(join(root, 'other.tgz'), 'other')
       expect(verify(root).status).not.toBe(0)
       rmSync(join(root, 'other.tgz'), { force: true })
-      const receipt = join(root, 'compatibility-minimum-22.19.0.json')
+      const receipt = join(root, 'compatibility-linux-minimum-22.19.0.json')
       const value = JSON.parse(readFileSync(receipt, 'utf8')) as { tarballSha256: string }
       value.tarballSha256 = `sha256:${'b'.repeat(64)}`
       writeFileSync(receipt, JSON.stringify(value))

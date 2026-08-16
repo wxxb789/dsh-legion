@@ -60,7 +60,7 @@ const checks = [
   ['qualityAdjudicationPayloadFields', contract.qualityAdjudicationPayloadFields, ['campaignId', 'strategy', 'startedAt', 'endedAt', 'catalogDigest', 'executionCommit', 'deploymentHardBudget', 'casePackSha256', 'rubricSha256', 'thresholdsSha256', 'scoredRunsSha256']],
   ['executionReceiptFields', contract.executionReceiptFields, ['schemaVersion', 'signerId', 'payload', 'signature']],
   ['executionReceiptPayloadFields', contract.executionReceiptPayloadFields, ['campaignId', 'executionCommit', 'casePackSha256', 'packCommitmentId', 'startedAt', 'endedAt', 'executionId', 'caseId', 'repeat', 'pairId', 'arm', 'order', 'exposure', 'status', 'artifact', 'provenance', 'usage', 'timing', 'infraReceipt']],
-  ['compatibilityReceiptFields', contract.compatibilityReceiptFields, ['schemaVersion', 'requestedDshVersion', 'resolvedDshVersion', 'nodeVersion', 'packageVersion', 'tarballSha256', 'consumerLockfileFile', 'consumerLockfileSha256', 'dshDependencies', 'status']],
+  ['compatibilityReceiptFields', contract.compatibilityReceiptFields, ['schemaVersion', 'requestedDshVersion', 'resolvedDshVersion', 'platform', 'nodeVersion', 'packageVersion', 'tarballSha256', 'consumerLockfileFile', 'consumerLockfileSha256', 'dshDependencies', 'status']],
   ['heldOutPackTrustFields', contract.heldOutPackTrustFields, ['packId', 'packSha256', 'issuer', 'commitmentId', 'committedAt', 'unsealedAt', 'signature']],
   ['authorityOwners', contract.authorityOwners, {
     modelStrategyExposure: 'deployment',
