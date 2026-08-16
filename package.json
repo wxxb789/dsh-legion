@@ -1,7 +1,7 @@
 {
   "name": "dsh-legion",
   "version": "1.0.0",
-  "description": "Configurable multi-agent teams and orchestration policy for DeepSeek Harness",
+  "description": "Multi-agent teams, model routing, and declarative orchestration for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -34,6 +34,7 @@
     "scripts/trusted-temp-root.mjs",
     "scripts/trusted-temp-root.d.mts",
     "README.md",
+    "README.zh-cn.md",
     "CHANGELOG.md",
     "SECURITY.md",
     "LICENSE"
@@ -61,11 +62,17 @@
   },
   "keywords": [
     "deepseek-harness",
+    "deepseek",
     "dsh",
     "cordis",
+    "ai-agents",
     "multi-agent",
+    "multi-agent-system",
     "multi-model",
-    "orchestration"
+    "agent-orchestration",
+    "llm-routing",
+    "orchestration",
+    "typescript"
   ],
   "author": "wxxb789",
   "license": "MIT",
