@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "dsh-legion-journal-contract-v1",
+  "packageMajor": 1,
+  "eventSchemaVersion": 1,
+  "eventFamilies": [
+    {
+      "family": "run",
+      "type": "legion/run-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "record"
+      ]
+    },
+    {
+      "family": "plan",
+      "type": "legion/plan-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "record"
+      ]
+    },
+    {
+      "family": "task",
+      "type": "legion/task-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "taskId",
+        "generation",
+        "record"
+      ]
+    },
+    {
+      "family": "attempt",
+      "type": "legion/attempt-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "taskId",
+        "attemptId",
+        "generation",
+        "fence",
+        "record"
+      ]
+    },
+    {
+      "family": "mail",
+      "type": "legion/mail-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "mailId",
+        "taskId",
+        "recipientGeneration",
+        "record"
+      ]
+    },
+    {
+      "family": "milestone",
+      "type": "legion/milestone",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "record"
+      ]
+    },
+    {
+      "family": "decision",
+      "type": "legion/decision",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "record"
+      ]
+    },
+    {
+      "family": "continuation",
+      "type": "legion/continuation-state",
+      "requiredDataFields": [
+        "schemaVersion",
+        "runId",
+        "planVersion",
+        "correlationId",
+        "continuationId",
+        "record"
+      ]
+    }
+  ],
+  "commonOptionalDataFields": [
+    "causationSeq",
+    "phase"
+  ],
+  "projection": {
+    "key": "legion-run",
+    "stateVersion": 5,
+    "unknownSessionEvents": "identity",
+    "checkpointMismatch": "refold-full-history"
+  },
+  "receipts": {
+    "milestone": "MilestoneReceipt",
+    "attemptResult": "ResultEnvelope",
+    "compatibility": "dsh-legion-compatibility-receipt-v2"
+  },
+  "replayCli": "dsh-legion replay --input <session.jsonl> --run <run-id> [--json]",
+  "validation": {
+    "unknownEventDataFields": "reject",
+    "unknownRecordFields": "reject",
+    "nonContiguousExportedSequence": "reject",
+    "malformedJson": "reject"
+  },
+  "durability": {
+    "journalOwner": "dsh-session",
+    "projectionOwner": "dsh-host",
+    "mutationRequires": [
+      "sessions.flush",
+      "sessionProjections.register",
+      "legionRunCoordination.acquire/renew/assert/release"
+    ],
+    "missingMandatoryCapability": "fail-closed-before-mutation",
+    "taskDelivery": "at-least-once",
+    "acceptedCommit": "exactly-once-by-fence-generation",
+    "externalEffects": "not-exactly-once",
+    "mail": "reserve-incorporate-flush-ack; expired reservations reclaimable"
+  },
+  "publishedHostServices": false,
+  "hostServicesDisclaimer": "The package publishes structural ports and pure projection/replay logic; it does not ship DSH persistence, projection, coordination, admission, or child-receipt Host services."
+}

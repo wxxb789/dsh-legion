@@ -37,7 +37,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
-      - run: pnpm run check
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      - run: pnpm run verify:contract
+      - run: pnpm run verify:journal-contract
+      - run: pnpm run test:unit
+      - run: pnpm run verify:reproducible-pack
+      - run: pnpm run verify:pack
       - if: matrix.packedProfile
         run: pnpm run test:profile-install
 
@@ -73,6 +79,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
       - run: pnpm run build
+      - run: pnpm run verify:contract
+      - run: pnpm run verify:journal-contract
+      - run: pnpm run test:recovery
       - if: inputs.tarball-artifact == ''
         run: pnpm run test:packed-delegation
         env:

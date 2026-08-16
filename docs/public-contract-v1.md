@@ -22,7 +22,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 
 - Execution receipts are `legion-execution-receipt-v1` with exact envelope fields `schemaVersion, signerId, payload, signature`; their payload binds campaign identity, execution commit, pack digest/commitment, absolute execution window, execution identity, pair/arm/order/exposure/status, artifact, provenance, usage, monotonic timing, and optional infra receipt.
 - Blind adjudication receipts are `legion-adjudication-receipt-v2` with exact envelope fields `schemaVersion, batchId, blinded, signerId, payload, signature`; their payload binds campaign identity/Strategy/window, catalog and execution commit, hard-budget assertion, pack/rubric/threshold digests, and the complete scored run set.
-- Compatibility receipts are `dsh-legion-compatibility-receipt-v1`; they bind one exact tarball digest to requested/resolved DSH generation, platform, Node version, consumer lockfile, installed DSH packages, package version, and passed status.
+- Compatibility receipts are `dsh-legion-compatibility-receipt-v2`; they bind one exact tarball digest to requested/resolved DSH generation, platform, Node version, consumer lockfile, installed DSH packages, package version, capability mode, durable-mutation availability, deterministic capability diagnostics, and passed status.
 - Held-out exposure requires externally registered, issuer-signed pre-execution pack commitments with embargo through the complete two-campaign window, distinct trusted executor, adjudicator, and pack-issuer Ed25519 principals/keys across campaigns, canonical disjoint execution identities, non-overlapping windows, and the current catalog generation.
 
 ## Authority and non-contracts
@@ -36,3 +36,12 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 - Open benchmark packs and explicit opt-in do not constitute signed held-out evidence for automatic curated exposure.
 
 Removing or reinterpreting these contracts after 1.0 requires a new major version. Additive optional fields and new versioned result contracts remain possible when old documents and invocations preserve their meaning.
+## Additive v1.1 durable contract
+
+- Durable execution is optional in config version 2 and defaults off.
+- The journal vocabulary has eight schemaVersion 1 event families; the primary projection is `legion-run` state version 5. Unknown fields are rejected, unrelated DSH events are projection no-ops, and old checkpoints refold from the full journal.
+- Run control actions are `inspect | resume | cancel | steer`; mutation actions require Host capabilities and fail closed before mutation when unavailable.
+- Task execution and delivery are at least once, accepted commits require the active fence and generation, external effects are not exactly once, and mailbox acknowledgement follows durable incorporation.
+- The npm package exports structural ports and pure replay/projection logic but no DSH Host persistence, projection, coordination, admission, or child-receipt service.
+
+See [Journal Contract v1](journal-contract-v1.md) and `contracts/journal-v1.json`.

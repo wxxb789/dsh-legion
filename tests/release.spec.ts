@@ -35,6 +35,8 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('22.19.0')
     expect(workflow).toContain('24.19.0')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
+    expect(workflow).toContain('pnpm run verify:journal-contract')
+    expect(workflow).toContain('pnpm run test:recovery')
     expect(workflow).toContain('channel: minimum')
     expect(workflow).toContain('channel: latest-tested')
     expect(workflow).not.toContain('>=0.1.0-rc.6 <0.2.0')

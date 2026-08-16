@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-16
+
+### Added
+
+- Opt-in journal-native durable Strategy contracts with eight typed Session event families, projection state version 5, bounded replay/inspection, crash recovery, mailbox delivery, continuations, PlanDelta, and stair-step policies.
+- Machine-readable journal contract and deterministic verifier covering strict unknown-field rejection, checkpoint refold, unrelated-event identity, delivery semantics, and Host capability requirements.
+- Public structural Host ports for projection, atomic coordination, global admission, and child receipts without shipping or fabricating those Host services.
+
+### Changed
+
+- Durable mutation remains disabled by default and fails closed before mutation unless Session flush, projection registration, and atomic run coordination are all available.
+- Documentation, examples, presets, packed verification, and release gates now distinguish structural compatibility on DSH 0.1.0-rc.6 from unavailable production durable activation.
+
+### Security
+
+- Accepted task commits are fenced by generation and owner lease; task delivery is at least once, mailbox acknowledgement follows durable incorporation, and ambiguous non-idempotent effects suspend instead of replaying automatically.
+
 ## [1.0.0] - 2026-08-15
 
 ### Added
@@ -167,7 +184,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installable empty DSH bundle layer for resolving the agent-plane plugin from user presets.
 - Ready-to-copy Legion preset plus a fragment for existing user-owned presets.
 
-[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/wxxb789/dsh-legion/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/wxxb789/dsh-legion/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/wxxb789/dsh-legion/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/wxxb789/dsh-legion/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wxxb789/dsh-legion/compare/v0.4.0...v0.5.0

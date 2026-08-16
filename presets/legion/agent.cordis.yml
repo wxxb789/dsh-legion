@@ -72,6 +72,11 @@
   name: dsh-legion
   config:
     configVersion: 2
+    # This preset ships no DSH Host services; durable mutation remains off.
+    enableDurableRuns: false
+    durableRunPolicy:
+      maxStartsPerActivation: 8
+      maxConcurrentTasks: 2
     toolName: legion
     defaultProfile: quick
     enableRunInBackground: true

@@ -1,0 +1,69 @@
+# Advanced durable Strategy example using only dsh-legion public config contracts.
+# DSH 0.1.0-rc.6 does not publish the Host projection and atomic coordination
+# services required for mutation; enabling this config there fails closed.
+configVersion: 2
+enableStrategies: true
+enableDurableRuns: true
+durableRunPolicy:
+  maxStartsPerActivation: 8
+  maxConcurrentTasks: 2
+profiles:
+  implementer:
+    description: Implement one bounded visible increment.
+    subagentProvider: spawn
+    maxDepth: 2
+    defaultRunInBackground: false
+  verifier:
+    description: Independently verify one bounded increment.
+    subagentProvider: spawn
+    toolFilter: { deny: [write, edit] }
+    maxDepth: 1
+    defaultRunInBackground: false
+    result: review-v1
+teams:
+  durable-stair-step:
+    description: Implement and verify visible increments.
+    members:
+      planner: { profile: implementer }
+      implementer: { profile: implementer }
+      verifier: { profile: verifier }
+    limits: { maxMembers: 3, maxConcurrentMembers: 2 }
+strategies:
+  durable-incremental-implementation:
+    description: Deliver one verified risk-retiring increment at a time.
+    team: durable-stair-step
+    stages:
+      - kind: delegate
+        id: plan
+        member: planner
+        inputs: [{ artifact: objective, contract: objective-v1 }]
+        output: { artifact: plan, contract: text }
+        prompt: Plan the smallest visible risk-retiring increment.
+      - kind: delegate
+        id: implement
+        member: implementer
+        after: [plan]
+        inputs:
+          - { artifact: objective, contract: objective-v1 }
+          - { artifact: plan, contract: text }
+        output: { artifact: implementation, contract: text }
+        prompt: Implement the planned increment and return bounded evidence.
+      - kind: delegate
+        id: verify
+        member: verifier
+        after: [implement]
+        inputs: [{ artifact: implementation, contract: text }]
+        output: { artifact: review, contract: review-v1 }
+        prompt: Verify the increment independently.
+    advancement:
+      kind: stair-step
+      plannerMember: planner
+      verifierMember: verifier
+      advancement: checkpoint
+      maxMilestones: 12
+      maxNoProgressMilestones: 2
+      requireVisibleArtifact: true
+      pauseOn: [authority-expansion, irreversible-effect, high-cost-ambiguity, verification-failure, no-progress]
+    completion: { artifact: review, contract: review-v1 }
+    limits: { maxAgents: 3, maxConcurrent: 2, deadlineMs: 900000, maxOutputBytes: 524288 }
+    memberFailure: fail

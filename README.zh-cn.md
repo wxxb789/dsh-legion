@@ -395,7 +395,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 状态与限制
 
-当前源码声明版本为 `1.0.0`，配置契约为 v2。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
+当前源码声明版本为 `1.1.0`，配置契约为 v2。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
 
 已知限制：
 
@@ -440,6 +440,9 @@ pnpm run check
 
 - [实现 Roadmap](docs/roadmap.md)
 - [公开契约 v1](docs/public-contract-v1.md)
+- [Durable Strategy Runs](docs/durable-runs.md)
+- [Journal Contract v1](docs/journal-contract-v1.md)
+- [Run Replay](docs/run-replay.md)
 - [版本化配置与回滚](docs/adr/0008-versioned-config-and-rollback.md)
 - [声明式 Team 与 Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [显式 Strategy 暴露权限](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
@@ -451,3 +454,9 @@ pnpm run check
 ## 许可证
 
 [MIT](LICENSE)
+
+## Durable Strategy Run（v1.1，显式启用）
+
+Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 5。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
+
+本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。已发布 DSH 0.1.0-rc.6 尚无 production durable mutation 所需的 projection/coordination service；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。

@@ -41,6 +41,7 @@ describe('published package contract', () => {
     expect(manifest.exports).toMatchObject({
       './contracts/v1.json': './contracts/v1.json',
       './contracts/compatibility.json': './contracts/compatibility.json',
+      './contracts/journal-v1.json': './contracts/journal-v1.json',
     })
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
@@ -61,6 +62,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/evaluate-quality-campaign.mjs')),
       access(resolve(ROOT, 'scripts/evaluate-exposure-evidence.mjs')),
       access(resolve(ROOT, 'scripts/verify-public-contract.mjs')),
+      access(resolve(ROOT, 'scripts/verify-journal-contract.mjs')),
       access(resolve(ROOT, 'scripts/verify-compatibility-receipts.mjs')),
       access(resolve(ROOT, 'scripts/verify-reproducible-pack.mjs')),
       access(resolve(ROOT, 'scripts/verify-supplied-packed-delegation.mjs')),
@@ -68,6 +70,8 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/trusted-temp-root.d.mts')),
       access(resolve(ROOT, 'contracts/v1.json')),
       access(resolve(ROOT, 'contracts/compatibility.json')),
+      access(resolve(ROOT, 'contracts/journal-v1.json')),
+      access(resolve(ROOT, 'examples/durable-stair-step.config.yml')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))
       .toMatch(/^#!\/usr\/bin\/env node/)

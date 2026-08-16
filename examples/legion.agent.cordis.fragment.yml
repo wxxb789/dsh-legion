@@ -4,6 +4,8 @@
   name: dsh-legion
   config:
     configVersion: 2
+# Durable mutation is opt-in and requires Host projection + atomic coordination.
+enableDurableRuns: false
     toolName: legion
     defaultProfile: quick
     enableRunInBackground: true

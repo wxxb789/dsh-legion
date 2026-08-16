@@ -62,9 +62,9 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 
 Default Strategies ship as ordinary off-by-default data; automatic model exposure requires benchmarks showing measurable value over direct delegation.
 
-## v1.1 — Journal-native evolving workflows (Milestone 7: environment-aware multi-model orchestration implemented)
+## v1.1 — Journal-native evolving workflows (Milestone 8: release hardening implemented)
 
-V1.1 adds an opt-in, Session-anchored durable Strategy controller while preserving DSH ownership of physical execution and durability. The existing v1.0 ephemeral path remains unchanged and is the default. Milestones 1–6 provide the typed journal vocabulary, pure projection and replay, deterministic static Plan Graph compilation, a bounded activation interpreter, public Host coordination/fencing/recovery contracts, journal-native mailbox transitions, and ordered cache-stable Context Manifests. The current DSH rc.6 composition does not supply atomic coordination, so unsafe journal mutation remains deliberately unavailable while read-only inspection and ephemeral execution remain usable.
+V1.1 adds an opt-in, Session-anchored durable Strategy controller while preserving DSH ownership of physical execution and durability. The existing v1.0 ephemeral path remains unchanged and is the default. Milestones 1–8 provide the typed journal vocabulary, pure projection and replay, deterministic static Plan Graph compilation, a bounded activation interpreter, public Host coordination/fencing/recovery contracts, journal-native mailbox transitions, and ordered cache-stable Context Manifests. The current DSH rc.6 composition does not supply atomic coordination, so unsafe journal mutation remains deliberately unavailable while read-only inspection and ephemeral execution remain usable.
 
 - [x] Accept ADRs 0015–0020 and update repository ownership and domain vocabulary.
 - [x] Authorize only a bounded interpreter for typed Legion DAG IR over plugin-owned events in the invoking DSH Session journal.
@@ -78,7 +78,7 @@ V1.1 adds an opt-in, Session-anchored durable Strategy controller while preservi
 - [x] Implement validated Plan Deltas and one-shot Continuations.
 - [x] Implement the public Stair-step policy.
 - [x] Implement sanitized environment snapshots, immutable per-attempt Profile/Route/context bindings, cache-prefix dispatch grouping, optional Host admission with honest per-run fallback, bounded hierarchical reducers, and derived parallelism metrics. Cross-route recovery remains disabled without a unified Host seam.
-- [ ] Complete deterministic protocol, compatibility, packaging, and release gates; defer large live-model scale certification.
+- [x] Implement deterministic protocol, compatibility, packaging, and release gates; defer large live-model scale certification. Tag publication still requires the evidence listed in `docs/TODO.md`.
 
 V1.1 non-goals remain a second journal/WAL/database/task or mailbox store, a generic scheduler/workflow runtime, a process-global run registry or daemon, exactly-once external side effects, arbitrary model-written code, captured stacks, and silent authority expansion.
 

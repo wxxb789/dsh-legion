@@ -32,6 +32,24 @@ if (releaseDate === undefined
   || parsedDate.toISOString().slice(0, 10) !== releaseDate) {
   throw new Error(`CHANGELOG.md has no valid dated [${version}] release heading`)
 }
+const contractsDirectory = join(root, 'contracts')
+try {
+  const publicContract = JSON.parse(await readFile(join(contractsDirectory, 'v1.json'), 'utf8'))
+  const journalContract = JSON.parse(await readFile(join(contractsDirectory, 'journal-v1.json'), 'utf8'))
+  const compatibility = JSON.parse(await readFile(join(contractsDirectory, 'compatibility.json'), 'utf8'))
+  if (publicContract.packageVersion !== version
+    || compatibility.packageVersion !== version
+    || compatibility.compatibilityReceiptVersion !== publicContract.compatibilityReceiptVersion) {
+    throw new Error('release package, public contract, and compatibility policy versions disagree')
+  }
+  if (journalContract.schemaVersion !== 'dsh-legion-journal-contract-v1'
+    || journalContract.projection?.key !== 'legion-run'
+    || journalContract.projection?.stateVersion !== 5) {
+    throw new Error('journal release metadata is inconsistent')
+  }
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
+}
 if (manifest.private === true) throw new Error('release package must not be private')
 if (manifest.publishConfig?.access !== 'public') {
   throw new Error('release package must declare publishConfig.access=public')

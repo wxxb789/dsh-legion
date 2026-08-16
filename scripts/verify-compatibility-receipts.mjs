@@ -21,6 +21,13 @@ const receiptNames = names.filter(name => /^compatibility-(linux|win32)-(minimum
 if (receiptNames.length !== 8) throw new Error(`release requires eight compatibility receipts, found ${String(receiptNames.length)}`)
 const expectedFields = [...contract.compatibilityReceiptFields].sort()
 const expectedDshPackages = [...compatibilityPolicy.dshPackageClosure].sort()
+const expectedDurableDiagnostics = [
+  'LEGION_DURABLE_FLUSH_UNAVAILABLE',
+  'LEGION_SESSION_PROJECTION_UNAVAILABLE',
+  'LEGION_DURABLE_COORDINATION_UNAVAILABLE',
+  'LEGION_GLOBAL_ADMISSION_UNAVAILABLE',
+  'LEGION_DURABLE_CHILD_RECEIPT_UNAVAILABLE',
+]
 for (const name of receiptNames) {
   const slot = /^compatibility-(linux|win32)-(minimum|latest-tested)-(22\.19\.0|24\.19\.0)\.json$/.exec(name)
   if (slot === null) throw new Error(`invalid compatibility receipt filename ${name}`)
@@ -72,6 +79,9 @@ for (const name of receiptNames) {
     || receipt.tarballSha256 !== tarballSha256
     || receipt.consumerLockfileFile !== expectedLockfile
     || receipt.consumerLockfileSha256 !== lockfileSha256
+    || receipt.capabilityMode !== 'rc6-replay-only-fail-closed'
+    || receipt.durableMutation !== false
+    || JSON.stringify(receipt.durableDiagnostics) !== JSON.stringify(expectedDurableDiagnostics)
     || receipt.status !== 'passed'
     || !Array.isArray(receipt.dshDependencies)
     || new Set(dependencyNames).size !== dependencyNames.length

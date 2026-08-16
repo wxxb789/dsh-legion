@@ -50,6 +50,15 @@ function fixture(root: string): void {
         consumerLockfileFile: lockfileName,
         consumerLockfileSha256: sha256(lockfile),
         dshDependencies: DSH_PACKAGES.map(name => ({ name, version: resolved })),
+        capabilityMode: 'rc6-replay-only-fail-closed',
+        durableMutation: false,
+        durableDiagnostics: [
+          'LEGION_DURABLE_FLUSH_UNAVAILABLE',
+          'LEGION_SESSION_PROJECTION_UNAVAILABLE',
+          'LEGION_DURABLE_COORDINATION_UNAVAILABLE',
+          'LEGION_GLOBAL_ADMISSION_UNAVAILABLE',
+          'LEGION_DURABLE_CHILD_RECEIPT_UNAVAILABLE',
+        ],
         status: 'passed',
       }))
       }
@@ -106,6 +115,22 @@ describe('release compatibility receipt verifier', () => {
       writeFileSync(lockfilePath, lockfile)
       receipt.consumerLockfileSha256 = sha256(lockfile)
       receipt.dshDependencies.push({ name: 'dsh-evil-extra', version: receipt.resolvedDshVersion })
+      writeFileSync(path, JSON.stringify(receipt))
+      expect(verify(root).status).not.toBe(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects receipts that overclaim durable mutation capability', () => {
+    const root = mkdtempSync(join(tmpdir(), 'legion-compatibility-capability-'))
+    try {
+      fixture(root)
+      const path = join(root, 'compatibility-linux-minimum-22.19.0.json')
+      const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
+        durableMutation: boolean
+      }
+      receipt.durableMutation = true
       writeFileSync(path, JSON.stringify(receipt))
       expect(verify(root).status).not.toBe(0)
     } finally {

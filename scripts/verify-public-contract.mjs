@@ -9,6 +9,7 @@ const compatibilityPolicy = JSON.parse(await readFile(
   resolve(root, 'contracts/compatibility.json'),
   'utf8',
 ))
+const journalContract = JSON.parse(await readFile(resolve(root, 'contracts/journal-v1.json'), 'utf8'))
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const declarationBytes = await readFile(resolve(root, 'lib/index.d.ts'))
 const declarationSource = declarationBytes.toString('utf8').replace(/\r\n/g, '\n')
@@ -30,7 +31,17 @@ const checks = [
     .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
   ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.0-rc.6'],
   ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.0-rc.6'],
+  ['compatibilityPolicy.compatibilityReceiptVersion', compatibilityPolicy.compatibilityReceiptVersion, contract.compatibilityReceiptVersion],
   ['compatibilityPolicy.dshPackageClosure', compatibilityPolicy.dshPackageClosure, [...new Set(compatibilityPolicy.dshPackageClosure)].sort()],
+  ['packageVersion', contract.packageVersion, manifest.version],
+  ['journalContract.schemaVersion', contract.journalContract.schemaVersion, journalContract.schemaVersion],
+  ['journalContract.eventFamilies', contract.journalContract.eventFamilies, journalContract.eventFamilies.length],
+  ['journalContract.projectionKey', contract.journalContract.projectionKey, legion.LEGION_RUN_PROJECTION_KEY],
+  ['journalContract.projectionStateVersion', contract.journalContract.projectionStateVersion, legion.LEGION_RUN_PROJECTION_STATE_VERSION],
+  ['journalEventKindsFromManifest', journalContract.eventFamilies.map(item => item.type), legion.LEGION_EVENT_TYPES],
+  ['runControlActions', contract.runControlActions, ['inspect', 'resume', 'cancel', 'steer']],
+  ['hostServicesShipped', contract.hostServicesShipped, []],
+  ['durableMutationAvailability', contract.durableMutationAvailability, 'capability-gated-fail-closed'],
   ['packageMajor', contract.packageMajor, Number.parseInt(manifest.version.split('.')[0], 10)],
   ['declarationExports', contract.declarationExports, [...declarationExports].sort()],
   ['runtimeExports', contract.runtimeExports, Object.keys(legion).sort()],
@@ -122,12 +133,17 @@ const checks = [
   ]],
   ['qualityAdjudicationReceiptVersion', contract.qualityAdjudicationReceiptVersion, 'legion-adjudication-receipt-v2'],
   ['executionReceiptVersion', contract.executionReceiptVersion, 'legion-execution-receipt-v1'],
-  ['compatibilityReceiptVersion', contract.compatibilityReceiptVersion, 'dsh-legion-compatibility-receipt-v1'],
+  ['compatibilityReceiptVersion', contract.compatibilityReceiptVersion, 'dsh-legion-compatibility-receipt-v2'],
   ['qualityAdjudicationReceiptFields', contract.qualityAdjudicationReceiptFields, ['schemaVersion', 'batchId', 'blinded', 'signerId', 'payload', 'signature']],
   ['qualityAdjudicationPayloadFields', contract.qualityAdjudicationPayloadFields, ['campaignId', 'strategy', 'startedAt', 'endedAt', 'catalogDigest', 'executionCommit', 'deploymentHardBudget', 'casePackSha256', 'rubricSha256', 'thresholdsSha256', 'scoredRunsSha256']],
   ['executionReceiptFields', contract.executionReceiptFields, ['schemaVersion', 'signerId', 'payload', 'signature']],
   ['executionReceiptPayloadFields', contract.executionReceiptPayloadFields, ['campaignId', 'executionCommit', 'casePackSha256', 'packCommitmentId', 'startedAt', 'endedAt', 'executionId', 'caseId', 'repeat', 'pairId', 'arm', 'order', 'exposure', 'status', 'artifact', 'provenance', 'usage', 'timing', 'infraReceipt']],
-  ['compatibilityReceiptFields', contract.compatibilityReceiptFields, ['schemaVersion', 'requestedDshVersion', 'resolvedDshVersion', 'platform', 'nodeVersion', 'packageVersion', 'tarballSha256', 'consumerLockfileFile', 'consumerLockfileSha256', 'dshDependencies', 'status']],
+  ['compatibilityReceiptFields', contract.compatibilityReceiptFields, [
+    'schemaVersion', 'requestedDshVersion', 'resolvedDshVersion', 'platform',
+    'nodeVersion', 'packageVersion', 'tarballSha256', 'consumerLockfileFile',
+    'consumerLockfileSha256', 'dshDependencies', 'capabilityMode',
+    'durableMutation', 'durableDiagnostics', 'status',
+  ]],
   ['heldOutPackTrustFields', contract.heldOutPackTrustFields, ['packId', 'packSha256', 'issuer', 'commitmentId', 'committedAt', 'unsealedAt', 'signature']],
   ['authorityOwners', contract.authorityOwners, {
     modelStrategyExposure: 'deployment',

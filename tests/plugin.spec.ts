@@ -1146,6 +1146,28 @@ describe('dsh-legion', () => {
     })).rejects.toThrow('defaultProfile "unknown" does not exist')
   })
 
+  it('fails closed durable mutation while preserving the ephemeral path on rc.6', async () => {
+    let starts = 0
+    const ctx = await setup({
+      ...baseConfig,
+      configVersion: 2,
+      enableDurableRuns: true,
+    }, [provider('spawn', { onStart() { starts += 1 } })])
+    try {
+      const result = await execute(ctx, {
+        profile: 'quick',
+        description: 'Ephemeral fallback.',
+        prompt: 'Run through the existing ephemeral path.',
+      })
+      if (result.isError) throw new Error(rendered(result))
+      expect(result.isError).toBe(false)
+      expect(starts).toBe(1)
+      expect(legion.detectDurableCapabilities(ctx as never).durableMutation).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('requires a calling Agent', async () => {
     const ctx = await setup(baseConfig)
     const result = await execute(ctx, {

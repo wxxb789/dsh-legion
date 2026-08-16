@@ -23,6 +23,99 @@ if (JSON.stringify(Object.keys(legion).sort()) !== JSON.stringify(publicContract
   throw new Error('packed runtime exports drifted from the public contract')
 }
 
+const journalContract = require('dsh-legion/contracts/journal-v1.json')
+if (journalContract.projection.key !== legion.LEGION_RUN_PROJECTION_KEY
+  || journalContract.projection.stateVersion !== legion.LEGION_RUN_PROJECTION_STATE_VERSION) {
+  throw new Error('packed journal contract drifted from runtime projection metadata')
+}
+const capabilities = legion.detectDurableCapabilities({ get: () => undefined })
+if (capabilities.durableMutation !== false
+  || capabilities.diagnostics.length !== 5) {
+  throw new Error('packed rc.6 capability detection did not fail closed')
+}
+const packedDigest = (character) => `sha256:${character.repeat(64)}`
+const runId = legion.RunId('packed-durable-run')
+const packedRunEvent = {
+  type: 'legion/run-state',
+  seq: 0,
+  time: 1,
+  data: {
+    schemaVersion: 1,
+    runId,
+    planVersion: 1,
+    correlationId: 'packed-replay',
+    record: {
+      schemaVersion: 1,
+      runId,
+      anchorSessionId: 'packed-parent',
+      strategyName: 'packed-strategy',
+      strategyPlanDigest: packedDigest('1'),
+      catalogDigest: packedDigest('2'),
+      goalVersion: 1,
+      goal: {
+        version: 1,
+        statement: 'Verify packed durable replay.',
+        acceptance: ['Replay succeeds.'],
+        constraints: [],
+        nonGoals: [],
+        authorityDigest: packedDigest('3'),
+      },
+      currentPlanVersion: 1,
+      status: 'created',
+      environmentDigest: packedDigest('4'),
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  },
+}
+const packedJsonl = JSON.stringify(packedRunEvent)
+if (legion.replayExportedSessionEvents(packedJsonl, runId).found !== true) {
+  throw new Error('packed fresh-process JSONL replay did not find the run')
+}
+try {
+  legion.parseExportedSessionEvents(JSON.stringify({
+    ...packedRunEvent,
+    data: { ...packedRunEvent.data, unknownField: true },
+  }))
+  throw new Error('packed replay accepted an unknown Legion field')
+} catch (error) {
+  if (!String(error).includes('unknown field')) throw error
+}
+const owner = {
+  hostInstanceId: 'packed-host',
+  processBootId: 'packed-boot',
+  pluginGeneration: 'packed-plugin',
+  anchorSessionId: 'packed-parent',
+  activationId: 'packed-activation',
+}
+const recoveryInput = {
+  tasks: [
+    {
+      taskId: legion.TaskId('packed-read'),
+      generation: 1,
+      terminal: false,
+      effectClass: 'read',
+    },
+    {
+      taskId: legion.TaskId('packed-write'),
+      generation: 1,
+      terminal: false,
+      effectClass: 'non-idempotent-write',
+    },
+  ],
+  receipts: {},
+  baseJournalSeq: 1,
+  fence: legion.Fence(1),
+  owner,
+}
+const firstRecovery = legion.planRecovery(recoveryInput)
+const secondRecovery = legion.planRecovery(recoveryInput)
+if (JSON.stringify(firstRecovery) !== JSON.stringify(secondRecovery)
+  || !firstRecovery.actions.some(action => action.kind === 'retry')
+  || !firstRecovery.actions.some(action => action.kind === 'needs-attention')) {
+  throw new Error('packed deterministic recovery contract failed')
+}
+
 class PackedAdapter extends LlmAdapter {
   calls = []
 

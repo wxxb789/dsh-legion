@@ -25,5 +25,19 @@
     "dsh-tools",
     "dsh-typert-protocol",
     "dsh-user-approval"
-  ]
+  ],
+  "packageVersion": "1.1.0",
+  "rc6Capabilities": {
+    "ephemeralProfileAndStrategy": "supported",
+    "journalContractAndPureReplay": "supported",
+    "durableMutation": "unavailable-fail-closed",
+    "reason": "Published DSH 0.1.0-rc.6 does not provide the required projection and atomic run coordination Host services."
+  },
+  "previousMinorCompatibility": [
+    "config-v2-with-durable-fields-omitted",
+    "ephemeral-catalog-compilation",
+    "profile-and-strategy-request-contracts",
+    "event-free-session-empty-projection"
+  ],
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2"
 }

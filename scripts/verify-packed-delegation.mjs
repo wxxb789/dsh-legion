@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile,
+} from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -137,15 +139,45 @@ try {
     '@deepseek-ai/dsh-system-prompt',
     '@deepseek-ai/dsh-tools',
   ].map(name => `${name}@${dshVersion}`)
-  run('pnpm', [
-    'add',
-    '--save-exact',
-    '--registry=https://registry.npmjs.org',
-    tarball,
-    '@deepseek-ai/cordis@4.0.1',
-    ...dshPackages,
-  ], consumerDir)
-  const dshDependencies = await verifyDshGeneration(consumerDir, dshVersion)
+  let dshDependencies
+  if (process.env.DSH_LEGION_OFFLINE === '1') {
+    const nodeModules = join(consumerDir, 'node_modules')
+    await mkdir(join(nodeModules, '@deepseek-ai'), { recursive: true })
+    const packages = [
+      '@deepseek-ai/cordis',
+      ...dshPackages.map(specifier => specifier.slice(0, specifier.lastIndexOf('@'))),
+      '@deepseek-ai/schemastery',
+      'js-yaml',
+    ]
+    for (const packageName of packages) {
+      const source = await realpath(join(projectRoot, 'node_modules', packageName))
+      const target = join(nodeModules, packageName)
+      await mkdir(dirname(target), { recursive: true })
+      await symlink(source, target, 'junction')
+    }
+    const legionTarget = join(nodeModules, 'dsh-legion')
+    await mkdir(legionTarget, { recursive: true })
+    run('tar', ['-xzf', tarball, '-C', legionTarget, '--strip-components=1'], consumerDir)
+    dshDependencies = await Promise.all(dshPackages.map(async (specifier) => {
+      const name = specifier.slice('@deepseek-ai/'.length, specifier.lastIndexOf('@'))
+      const packageManifest = JSON.parse(await readFile(
+        join(nodeModules, '@deepseek-ai', name, 'package.json'),
+        'utf8',
+      ))
+      return { name, version: packageManifest.version }
+    }))
+    process.stdout.write('installed packed consumer from workspace-linked offline dependencies\n')
+  } else {
+    run('pnpm', [
+      'add',
+      '--save-exact',
+      '--registry=https://registry.npmjs.org',
+      tarball,
+      '@deepseek-ai/cordis@4.0.1',
+      ...dshPackages,
+    ], consumerDir)
+    dshDependencies = await verifyDshGeneration(consumerDir, dshVersion)
+  }
   runNode([
     join('node_modules', 'dsh-legion', 'scripts', 'verify-public-contract.mjs'),
   ], consumerDir)
@@ -177,6 +209,15 @@ try {
       consumerLockfileFile: basename(lockfilePath),
       consumerLockfileSha256: `sha256:${consumerLockfileSha256}`,
       dshDependencies,
+      capabilityMode: 'rc6-replay-only-fail-closed',
+      durableMutation: false,
+      durableDiagnostics: [
+        'LEGION_DURABLE_FLUSH_UNAVAILABLE',
+        'LEGION_SESSION_PROJECTION_UNAVAILABLE',
+        'LEGION_DURABLE_COORDINATION_UNAVAILABLE',
+        'LEGION_GLOBAL_ADMISSION_UNAVAILABLE',
+        'LEGION_DURABLE_CHILD_RECEIPT_UNAVAILABLE',
+      ],
       status: 'passed',
     }, null, 2) + '\n')
   }

@@ -5,7 +5,7 @@
   "modelStrategyExposureDefault": false,
   "qualityAdjudicationReceiptVersion": "legion-adjudication-receipt-v2",
   "executionReceiptVersion": "legion-execution-receipt-v1",
-  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v1",
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2",
   "qualityAdjudicationReceiptFields": [
     "schemaVersion",
     "batchId",
@@ -65,6 +65,9 @@
     "consumerLockfileFile",
     "consumerLockfileSha256",
     "dshDependencies",
+    "capabilityMode",
+    "durableMutation",
+    "durableDiagnostics",
     "status"
   ],
   "heldOutPackTrustFields": [
@@ -89,6 +92,7 @@
       },
       "./contracts/v1.json": "./contracts/v1.json",
       "./contracts/compatibility.json": "./contracts/compatibility.json",
+      "./contracts/journal-v1.json": "./contracts/journal-v1.json",
       "./package.json": "./package.json"
     }
   },
@@ -881,5 +885,21 @@
   "parallelismScopes": [
     "host-global-admitted",
     "per-run-observed"
-  ]
+  ],
+  "packageVersion": "1.1.0",
+  "journalContract": {
+    "schemaVersion": "dsh-legion-journal-contract-v1",
+    "path": "contracts/journal-v1.json",
+    "eventFamilies": 8,
+    "projectionKey": "legion-run",
+    "projectionStateVersion": 5
+  },
+  "runControlActions": [
+    "inspect",
+    "resume",
+    "cancel",
+    "steer"
+  ],
+  "hostServicesShipped": [],
+  "durableMutationAvailability": "capability-gated-fail-closed"
 }

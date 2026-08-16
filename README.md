@@ -395,7 +395,7 @@ Exit codes: `0` for no error diagnostic, `1` for capability errors, and `2` for 
 
 ## Status and limitations
 
-The source tree declares version `1.0.0` and config contract v2. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
+The source tree declares version `1.1.0` and config contract v2. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
 
 Known limitations:
 
@@ -440,6 +440,9 @@ Useful references:
 
 - [Implementation roadmap](docs/roadmap.md)
 - [Public contract v1](docs/public-contract-v1.md)
+- [Durable Strategy Runs](docs/durable-runs.md)
+- [Journal contract v1](docs/journal-contract-v1.md)
+- [Run replay](docs/run-replay.md)
 - [Versioned configuration and rollback](docs/adr/0008-versioned-config-and-rollback.md)
 - [Declarative Team and Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [Explicit Strategy exposure authority](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
@@ -451,3 +454,9 @@ Issues and contributions are welcome through the [GitHub issue tracker](https://
 ## License
 
 [MIT](LICENSE)
+
+## Durable Strategy Runs (v1.1, opt-in)
+
+Durable runs are disabled by default and preserve v1.0 ephemeral behavior. They use eight typed events in the invoking DSH Session journal and projection key `legion-run` at state version 5. Run control supports bounded read-only `inspect`, one-activation `resume`, flushed `cancel`, and validated proposal-only `steer`. Task delivery is at least once; matching fence and generation permit exactly one accepted commit, not exactly-once external effects. Mail is reserved, incorporated, durably flushed when required, then acknowledged; expired reservations are reclaimable.
+
+This package does not ship DSH persistence, projection, atomic coordination, global admission, or child-receipt Host services. Published DSH 0.1.0-rc.6 lacks the projection and coordination services required for production durable mutation. Enabling durable runs there produces stable capability diagnostics and fails closed before mutation; pure contracts, validation, replay, and inspection remain usable. See [Durable Strategy Runs](docs/durable-runs.md) and [Journal Contract v1](docs/journal-contract-v1.md).
