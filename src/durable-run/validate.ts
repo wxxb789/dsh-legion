@@ -12,6 +12,7 @@ import {
   ContinuationId,
   MailId,
   OwnerId,
+  PlanDigest,
   PlanVersion,
   RoutePlanDigest,
   StrategyPlanDigest,
@@ -23,6 +24,7 @@ import {
   TaskId,
   trustedRecord,
 } from './contract.ts'
+import { materializePlanGraph } from './graph.ts'
 import {
   isLegionEventType,
   type LegionEvent,
@@ -119,8 +121,8 @@ function parseRunRecord(value: unknown): SessionEventMap['legion/run-state']['re
     runId: RunId(source.runId),
     anchorSessionId: SessionId(text(source.anchorSessionId, 'anchorSessionId')),
     strategyName: StrategyName(text(source.strategyName, 'strategyName')),
-    strategyPlanDigest: StrategyPlanDigest(source.strategyPlanDigest),
-    catalogDigest: CatalogDigest(source.catalogDigest),
+    strategyPlanDigest: StrategyPlanDigest(text(source.strategyPlanDigest, 'strategyPlanDigest')),
+    catalogDigest: CatalogDigest(text(source.catalogDigest, 'catalogDigest')),
     goalVersion: GoalVersion(source.goalVersion),
     goal: parseGoal(source.goal),
     currentPlanVersion: PlanVersion(source.currentPlanVersion),
@@ -138,16 +140,38 @@ function parseRunRecord(value: unknown): SessionEventMap['legion/run-state']['re
 
 function parsePlanRecord(value: unknown): SessionEventMap['legion/plan-state']['record'] {
   const source = record(value, 'plan record')
-  assertKeys(source, ['schemaVersion', 'runId', 'version', 'goalVersion', 'digest', 'nodeCount', 'environmentDigest'], 'plan record')
-  if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid plan record schemaVersion')
+  assertKeys(
+    source,
+    [
+      'schemaVersion', 'runId', 'version', 'goalVersion', 'digest',
+      'nodeCount', 'environmentDigest', 'graph',
+    ],
+    'plan record',
+  )
+  if (source.schemaVersion !== 1) {
+    throw new Error('dsh-legion: invalid plan record schemaVersion')
+  }
+  const version = PlanVersion(source.version)
+  const goalVersion = GoalVersion(source.goalVersion)
+  const digest = PlanDigest(source.digest)
+  const nodeCount = natural(source.nodeCount, 'nodeCount')
+  const graph = source.graph === undefined ? undefined : materializePlanGraph(source.graph)
+  if (graph !== undefined
+    && (graph.planVersion !== version
+      || graph.goalVersion !== goalVersion
+      || graph.digest !== digest
+      || Object.keys(graph.nodes).length !== nodeCount)) {
+    throw new Error('dsh-legion: plan record does not match its full graph')
+  }
   return {
     schemaVersion: 1,
     runId: RunId(source.runId),
-    version: PlanVersion(source.version),
-    goalVersion: GoalVersion(source.goalVersion),
-    digest: ArtifactDigest(source.digest),
-    nodeCount: natural(source.nodeCount, 'nodeCount'),
+    version,
+    goalVersion,
+    digest,
+    nodeCount,
     environmentDigest: EnvironmentDigest(source.environmentDigest),
+    ...(graph === undefined ? {} : { graph }),
   }
 }
 
@@ -185,7 +209,7 @@ function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-sta
     fence: Fence(source.fence),
     ownerId: OwnerId(source.ownerId),
     profile: ProfileName(text(source.profile, 'profile')),
-    routePlanDigest: RoutePlanDigest(source.routePlanDigest),
+    routePlanDigest: RoutePlanDigest(text(source.routePlanDigest, 'routePlanDigest')),
     status: choice(source.status, ATTEMPT_STATUSES, 'attempt status'),
     environmentDigest: EnvironmentDigest(source.environmentDigest),
     ...(source.contextDigest === undefined ? {} : { contextDigest: ContextDigest(source.contextDigest) }),

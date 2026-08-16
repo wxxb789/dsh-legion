@@ -44,6 +44,7 @@ export type {
   Config as LegionConfig,
   ConfigExportTarget,
   ConfigVersion,
+  DurableRunPolicySpec,
   LegionProfile,
   MaterializedConfig,
   PromptFileReference,
@@ -217,6 +218,8 @@ export * from './durable-run/events.ts'
 export * from './durable-run/invariant.ts'
 export * from './durable-run/projection.ts'
 export * from './durable-run/replay.ts'
+export * from './durable-run/graph.ts'
+export * from './durable-run/controller.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']

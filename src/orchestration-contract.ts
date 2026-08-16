@@ -50,6 +50,8 @@ interface StageBase {
   readonly inputs: readonly ArtifactInputRef[]
   readonly output: ArtifactOutputSpec
   readonly prompt: string
+  /** Additional control-only stage dependencies. */
+  readonly after?: readonly string[]
 }
 
 export interface DelegateStageSpec extends StageBase {
@@ -142,6 +144,7 @@ const StageBaseSchema = {
   inputs: z.array(ArtifactInputSchema).min(1).required(),
   output: ArtifactOutputSchema.required(),
   prompt: z.string().min(1).required(),
+  after: z.array(z.string().pattern(ORCHESTRATION_NAME)).max(32),
 }
 
 const DelegateStageSchema = z.object({
@@ -265,7 +268,7 @@ export function assertKnownOrchestrationKeys(
       if (Array.isArray(source?.stages)) {
         source.stages.forEach((stage, index) => {
           const stageRecord = record(stage)
-          const baseKeys = ['kind', 'id', 'member', 'inputs', 'output', 'prompt']
+          const baseKeys = ['kind', 'id', 'member', 'inputs', 'output', 'prompt', 'after']
           const variantKeys = stageRecord?.kind === 'delegate'
             ? ['mode']
             : stageRecord?.kind === 'fanout'

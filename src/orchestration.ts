@@ -32,6 +32,10 @@ export type OrchestrationDiagnosticCode =
   | 'TEAM_CONCURRENCY_LIMIT_EXCEEDED'
   | 'STRATEGY_TEAM_UNKNOWN'
   | 'STRATEGY_STAGE_DUPLICATE'
+  | 'STRATEGY_STAGE_DEPENDENCY_DUPLICATE'
+  | 'STRATEGY_STAGE_DEPENDENCY_UNKNOWN'
+  | 'STRATEGY_STAGE_DEPENDENCY_SELF'
+  | 'STRATEGY_STAGE_DEPENDENCY_CYCLE'
   | 'STRATEGY_MEMBER_UNKNOWN'
   | 'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED'
   | 'STRATEGY_ARTIFACT_UNKNOWN'
@@ -97,6 +101,7 @@ interface PrimitiveBase {
   readonly inputs: readonly ArtifactNameType[]
   readonly output: CompiledArtifact
   readonly prompt: string
+  readonly after: readonly string[]
 }
 
 export interface DelegatePrimitive extends PrimitiveBase {
@@ -306,6 +311,44 @@ function expectedAgentCount(stage: StrategyStageSpec): number {
   return stage.kind === 'fanout' ? stage.count : 1
 }
 
+
+function hasStrategyDependencyCycle(spec: StrategySpec): boolean {
+  const ids = spec.stages.map(stage => stage.id)
+  const known = new Set(ids)
+  const outgoing = new Map(ids.map(id => [id, new Set<string>()]))
+  const indegree = new Map(ids.map(id => [id, 0]))
+  const producerByArtifact = new Map(
+    spec.stages.map(stage => [stage.output.artifact, stage.id]),
+  )
+  const addEdge = (from: string, to: string): void => {
+    if (!known.has(from) || !known.has(to) || outgoing.get(from)?.has(to)) return
+    outgoing.get(from)?.add(to)
+    indegree.set(to, (indegree.get(to) ?? 0) + 1)
+  }
+  for (const stage of spec.stages) {
+    for (const dependency of stage.after ?? []) addEdge(dependency, stage.id)
+    for (const input of stage.inputs) {
+      const producer = producerByArtifact.get(input.artifact)
+      if (producer !== undefined) addEdge(producer, stage.id)
+    }
+  }
+  const ready = ids.filter(id => indegree.get(id) === 0).sort()
+  let visited = 0
+  while (ready.length > 0) {
+    const id = ready.shift()!
+    visited += 1
+    for (const successor of outgoing.get(id) ?? []) {
+      const remaining = (indegree.get(successor) ?? 0) - 1
+      indegree.set(successor, remaining)
+      if (remaining === 0) {
+        ready.push(successor)
+        ready.sort()
+      }
+    }
+  }
+  return visited !== ids.length
+}
+
 function compileStrategyTemplate(
   name: string,
   spec: StrategySpec,
@@ -324,6 +367,15 @@ function compileStrategyTemplate(
     )
     return undefined
   }
+  if (hasStrategyDependencyCycle(spec)) {
+    push(
+      diagnostics,
+      'STRATEGY_STAGE_DEPENDENCY_CYCLE',
+      'error',
+      `strategy "${name}" contains a dependency cycle`,
+      { strategy: name },
+    )
+  }
   const effectiveLimits: StrategyLimits = {
     ...spec.limits,
     maxConcurrent: Math.min(
@@ -333,6 +385,7 @@ function compileStrategyTemplate(
     ),
   }
   const allOutputs = new Map(spec.stages.map((stage, index) => [stage.output.artifact, index]))
+  const allStageIds = new Set(spec.stages.map(stage => stage.id))
   const artifacts: Record<string, CompiledArtifact> = {
     objective: deepFreeze({
       name: ArtifactName('objective'),
@@ -355,6 +408,17 @@ function compileStrategyTemplate(
       continue
     }
     stageIds.add(stage.id)
+    const after = [...(stage.after ?? [])].sort()
+    if (new Set(after).size !== after.length) {
+      push(diagnostics, 'STRATEGY_STAGE_DEPENDENCY_DUPLICATE', 'error', `strategy "${name}" stage "${stage.id}" repeats an after dependency`, location)
+    }
+    for (const dependency of after) {
+      if (dependency === stage.id) {
+        push(diagnostics, 'STRATEGY_STAGE_DEPENDENCY_SELF', 'error', `strategy "${name}" stage "${stage.id}" cannot depend on itself`, location)
+      } else if (!allStageIds.has(dependency)) {
+        push(diagnostics, 'STRATEGY_STAGE_DEPENDENCY_UNKNOWN', 'error', `strategy "${name}" stage "${stage.id}" references unknown stage "${dependency}"`, location)
+      }
+    }
     const member = team.members[stage.member]
     if (member === undefined) {
       push(
@@ -489,6 +553,7 @@ function compileStrategyTemplate(
         count: stage.count,
         minSuccess: stage.minSuccess,
         allowDegraded: stage.allowDegraded,
+        after,
       }))
     } else {
       primitives.push(deepFreeze({
@@ -500,6 +565,7 @@ function compileStrategyTemplate(
         output,
         prompt: stage.prompt,
         mode: stage.kind === 'delegate' ? stage.mode ?? 'foreground' : 'foreground',
+        after,
       }))
     }
   }

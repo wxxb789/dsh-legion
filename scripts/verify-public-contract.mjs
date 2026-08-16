@@ -41,6 +41,14 @@ const checks = [
     exports: manifest.exports,
   }],
   ['configVersion', contract.configVersion, legion.CURRENT_CONFIG_VERSION],
+  ['durableRunPolicyFields', contract.durableRunPolicyFields, ['maxStartsPerActivation', 'maxConcurrentTasks']],
+  ['strategyStageOptionalFields', contract.strategyStageOptionalFields, ['after']],
+  ['journalEventSchemaVersion', contract.journalEventSchemaVersion, 1],
+  ['journalEventKinds', contract.journalEventKinds, legion.LEGION_EVENT_TYPES],
+  ['sessionProjection', contract.sessionProjection, {
+    key: legion.LEGION_RUN_PROJECTION_KEY,
+    stateVersion: legion.LEGION_RUN_PROJECTION_STATE_VERSION,
+  }],
   ['resultContracts', contract.resultContracts, legion.RESULT_CONTRACTS],
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],
@@ -89,5 +97,8 @@ const migrated = legion.materializeConfig({
 })
 if (migrated.enableStrategies !== contract.modelStrategyExposureDefault) {
   throw new Error('public contract model Strategy exposure default drifted')
+}
+if (migrated.enableDurableRuns !== contract.durableRunsDefault) {
+  throw new Error('public contract durable run default drifted')
 }
 process.stdout.write('dsh-legion public contract v1 verified\n')

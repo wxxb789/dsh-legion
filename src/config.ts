@@ -17,6 +17,13 @@ export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
+export interface DurableRunPolicySpec {
+  /** Maximum task starts in one single-caller activation. */
+  readonly maxStartsPerActivation?: number
+  /** Maximum concurrently executing DAG nodes in one activation. */
+  readonly maxConcurrentTasks?: number
+}
+
 export interface PromptFileReference {
   /** Name of one top-level configured resource root. */
   readonly root: string
@@ -82,6 +89,10 @@ export interface Config {
   readonly enableRunInBackground: boolean
   /** Explicit opt-in for model-callable Strategies; defaults to false. */
   readonly enableStrategies?: boolean
+  /** Enables programmatic durable contracts; model-facing journal execution remains unavailable before M3. */
+  readonly enableDurableRuns?: boolean
+  /** Bounded policy for one single-caller static DAG activation. */
+  readonly durableRunPolicy?: DurableRunPolicySpec
   /** Additional coordinator guidance appended after the generated routing table. */
   readonly guidance?: string
   /** Deployment-owned aliases to directories containing prompt fragments. */
@@ -161,10 +172,17 @@ export interface MaterializedConfig extends Config {
   readonly resourceRoots: Record<string, string>
   readonly maxResourceBytes: number
   readonly enableStrategies: boolean
+  readonly enableDurableRuns: boolean
+  readonly durableRunPolicy: Required<DurableRunPolicySpec>
   readonly catalogLayers: []
   readonly teams: Record<string, TeamSpec>
   readonly strategies: Record<string, StrategySpec>
 }
+
+const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
+  maxStartsPerActivation: z.number().step(1).min(1).max(32),
+  maxConcurrentTasks: z.number().step(1).min(1).max(16),
+})
 
 export const Config: z<Config> = z.object({
   configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
@@ -173,6 +191,8 @@ export const Config: z<Config> = z.object({
   defaultProfile: z.string().pattern(PROFILE_NAME),
   enableRunInBackground: z.boolean().default(true),
   enableStrategies: z.boolean(),
+  enableDurableRuns: z.boolean(),
+  durableRunPolicy: DurableRunPolicySchema,
   guidance: z.string(),
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
@@ -264,13 +284,21 @@ function assertKnownConfigKeys(input: unknown): void {
     throw new Error(`dsh-legion: unsupported configVersion ${String(source.configVersion)}`)
   }
   const authoredVersion = source?.configVersion ?? 1
+  const durablePolicy = record(source?.durableRunPolicy)
+  const hasNonDefaultDurablePolicy = durablePolicy !== undefined
+    && (durablePolicy.maxStartsPerActivation !== undefined
+      && durablePolicy.maxStartsPerActivation !== 16
+      || durablePolicy.maxConcurrentTasks !== undefined
+      && durablePolicy.maxConcurrentTasks !== 4)
   if (authoredVersion === 1
     && (Array.isArray(source?.catalogLayers) && source.catalogLayers.length > 0
       || Object.keys(record(source?.teams) ?? {}).length > 0
       || Object.keys(record(source?.strategies) ?? {}).length > 0
-      || source?.enableStrategies === true)) {
+      || source?.enableStrategies === true
+      || source?.enableDurableRuns === true
+      || hasNonDefaultDurablePolicy)) {
     throw new Error(
-      'dsh-legion: configVersion 2 is required for catalogLayers, teams, strategies, or enableStrategies',
+      'dsh-legion: configVersion 2 is required for catalogLayers, teams, strategies, enableStrategies, or durable runs',
     )
   }
   assertKnownKeys(
@@ -282,6 +310,8 @@ function assertKnownConfigKeys(input: unknown): void {
       'defaultProfile',
       'enableRunInBackground',
       'enableStrategies',
+      'enableDurableRuns',
+      'durableRunPolicy',
       'guidance',
       'resourceRoots',
       'maxResourceBytes',
@@ -291,6 +321,7 @@ function assertKnownConfigKeys(input: unknown): void {
     ],
     'config',
   )
+  assertKnownKeys(source?.durableRunPolicy, ['maxStartsPerActivation', 'maxConcurrentTasks'], 'durableRunPolicy')
   const profiles = record(source?.profiles)
   if (source?.profiles !== undefined && profiles === undefined) {
     throw new Error('dsh-legion: profiles must be a plain object')
@@ -383,6 +414,8 @@ export function materializeConfig(input: unknown): MaterializedConfig {
     ...parsed,
     configVersion: CURRENT_CONFIG_VERSION,
     enableStrategies: parsed.enableStrategies ?? false,
+    enableDurableRuns: parsed.enableDurableRuns ?? false,
+    durableRunPolicy: parsed.durableRunPolicy ?? {},
     profiles: { ...resolved.profiles },
     teams: { ...resolved.teams },
     strategies: { ...resolved.strategies },
@@ -394,6 +427,11 @@ export function materializeConfig(input: unknown): MaterializedConfig {
     toolName: effective.toolName,
     enableRunInBackground: effective.enableRunInBackground,
     enableStrategies: effective.enableStrategies ?? false,
+    enableDurableRuns: effective.enableDurableRuns ?? false,
+    durableRunPolicy: {
+      maxStartsPerActivation: effective.durableRunPolicy?.maxStartsPerActivation ?? 16,
+      maxConcurrentTasks: effective.durableRunPolicy?.maxConcurrentTasks ?? 4,
+    },
     resourceRoots: { ...effective.resourceRoots },
     maxResourceBytes: effective.maxResourceBytes ?? 64 * 1024,
     ...effective.defaultProfile === undefined ? {} : { defaultProfile: effective.defaultProfile },
@@ -465,6 +503,9 @@ export function exportConfigDocument(
   const document = deepCopy(current)
   if (target === CURRENT_CONFIG_VERSION) return document
   if (current.enableStrategies
+    || current.enableDurableRuns
+    || current.durableRunPolicy.maxStartsPerActivation !== 16
+    || current.durableRunPolicy.maxConcurrentTasks !== 4
     || Object.keys(current.teams).length > 0
     || Object.keys(current.strategies).length > 0) {
     throw new Error(
@@ -475,6 +516,8 @@ export function exportConfigDocument(
     configVersion: _configVersion,
     catalogLayers: _catalogLayers,
     enableStrategies: _enableStrategies,
+    enableDurableRuns: _enableDurableRuns,
+    durableRunPolicy: _durableRunPolicy,
     teams: _teams,
     strategies: _strategies,
     ...v1
@@ -484,6 +527,13 @@ export function exportConfigDocument(
 
 /** Validate cross-field facts Schemastery cannot express. */
 export function validateConfig(config: Config): void {
+  if (config.durableRunPolicy?.maxConcurrentTasks !== undefined
+    && config.durableRunPolicy.maxStartsPerActivation !== undefined
+    && config.durableRunPolicy.maxConcurrentTasks > config.durableRunPolicy.maxStartsPerActivation) {
+    throw new Error(
+      'dsh-legion: durableRunPolicy.maxConcurrentTasks cannot exceed maxStartsPerActivation',
+    )
+  }
   if (config.toolName.trim().length === 0) {
     throw new Error('dsh-legion: toolName must not be blank')
   }

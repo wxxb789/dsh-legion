@@ -44,6 +44,8 @@ describe('versioned config migration and rollback', () => {
 
     expect(migrated.configVersion).toBe(CURRENT_CONFIG_VERSION)
     expect(migrated.enableStrategies).toBe(false)
+    expect(migrated.enableDurableRuns).toBe(false)
+    expect(migrated.durableRunPolicy).toEqual({ maxStartsPerActivation: 16, maxConcurrentTasks: 4 })
     expect(Object.isFrozen(migrated)).toBe(true)
     expect(Object.isFrozen(migrated.profiles.deep?.routes)).toBe(true)
     expect(migrated).toEqual(explicit)
@@ -52,6 +54,34 @@ describe('versioned config migration and rollback', () => {
       .toBe(compileCatalog(explicit, runtime).policyDigest)
     expect(compileCatalog({ ...authored, configVersion: 2, enableStrategies: true }, runtime).policyDigest)
       .not.toBe(compileCatalog(explicit, runtime).policyDigest)
+    expect(compileCatalog({
+      ...authored,
+      configVersion: 2,
+      enableDurableRuns: true,
+      durableRunPolicy: { maxStartsPerActivation: 3 },
+    }, runtime).policyDigest).not.toBe(compileCatalog(explicit, runtime).policyDigest)
+  })
+
+  it('validates bounded opt-in durable activation policy without exposing execution', () => {
+    expect(materializeConfig({
+      ...authored,
+      configVersion: 2,
+      enableDurableRuns: true,
+      durableRunPolicy: { maxStartsPerActivation: 3, maxConcurrentTasks: 2 },
+    })).toMatchObject({
+      enableDurableRuns: true,
+      durableRunPolicy: { maxStartsPerActivation: 3, maxConcurrentTasks: 2 },
+    })
+    expect(() => materializeConfig({
+      ...authored,
+      configVersion: 2,
+      durableRunPolicy: { maxStartsPerActivation: 33 },
+    })).toThrow()
+    expect(() => materializeConfig({
+      ...authored,
+      configVersion: 2,
+      durableRunPolicy: { maxStartsPerActivation: 1, maxConcurrentTasks: 2 },
+    })).toThrow(/cannot exceed/)
   })
 
   it('exports normalized current and rollback-compatible unversioned documents', () => {

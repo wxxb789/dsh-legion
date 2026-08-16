@@ -1,6 +1,15 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { deepCopy, deepFreeze } from '../internal/value.ts'
-import type { ProfileName, StrategyName } from '../identity.ts'
+import type {
+  CatalogDigest as CatalogDigestType,
+  ProfileName,
+  RoutePlanDigest as RoutePlanDigestType,
+  StrategyName,
+  StrategyPlanDigest as StrategyPlanDigestType,
+} from '../identity.ts'
+import type { PlanGraph } from './graph.ts'
+
+export { CatalogDigest, RoutePlanDigest, StrategyPlanDigest } from '../identity.ts'
 
 declare const durableBrand: unique symbol
 
@@ -17,9 +26,7 @@ export type MailId = Brand<string, 'LegionMailId'>
 export type ContinuationId = Brand<string, 'LegionContinuationId'>
 export type OwnerId = Brand<string, 'LegionOwnerId'>
 export type Fence = Brand<number, 'LegionFence'>
-export type StrategyPlanDigest = Brand<`sha256:${string}`, 'StrategyPlanDigest'>
-export type CatalogDigest = Brand<`sha256:${string}`, 'CatalogDigest'>
-export type RoutePlanDigest = Brand<`sha256:${string}`, 'RoutePlanDigest'>
+export type PlanDigest = Brand<`sha256:${string}`, 'LegionPlanDigest'>
 export type ArtifactDigest = Brand<`sha256:${string}`, 'ArtifactDigest'>
 export type EnvironmentDigest = Brand<`sha256:${string}`, 'EnvironmentDigest'>
 export type ContextDigest = Brand<`sha256:${string}`, 'ContextDigest'>
@@ -96,16 +103,8 @@ export function Fence(value: unknown): Fence {
   return value as Fence
 }
 
-export function StrategyPlanDigest(value: unknown): StrategyPlanDigest {
-  return digestIdentity(value, 'StrategyPlanDigest')
-}
-
-export function CatalogDigest(value: unknown): CatalogDigest {
-  return digestIdentity(value, 'CatalogDigest')
-}
-
-export function RoutePlanDigest(value: unknown): RoutePlanDigest {
-  return digestIdentity(value, 'RoutePlanDigest')
+export function PlanDigest(value: unknown): PlanDigest {
+  return digestIdentity(value, 'LegionPlanDigest')
 }
 
 export function ArtifactDigest(value: unknown): ArtifactDigest {
@@ -147,8 +146,8 @@ export interface RunRecord {
   readonly runId: RunId
   readonly anchorSessionId: SessionId
   readonly strategyName: StrategyName
-  readonly strategyPlanDigest: StrategyPlanDigest
-  readonly catalogDigest: CatalogDigest
+  readonly strategyPlanDigest: StrategyPlanDigestType
+  readonly catalogDigest: CatalogDigestType
   readonly goalVersion: GoalVersion
   readonly goal: GoalSpec
   readonly currentPlanVersion: PlanVersion
@@ -168,9 +167,11 @@ export interface PlanRecord {
   readonly runId: RunId
   readonly version: PlanVersion
   readonly goalVersion: GoalVersion
-  readonly digest: ArtifactDigest
+  readonly digest: PlanDigest
   readonly nodeCount: number
   readonly environmentDigest: EnvironmentDigest
+  /** Full reconstructible static graph for M2 plans; omission keeps M1 records inspect-only. */
+  readonly graph?: PlanGraph
 }
 
 export interface ArtifactRef {
@@ -244,7 +245,7 @@ export interface AttemptRecord {
   readonly fence: Fence
   readonly ownerId: OwnerId
   readonly profile: ProfileName
-  readonly routePlanDigest: RoutePlanDigest
+  readonly routePlanDigest: RoutePlanDigestType
   readonly status: AttemptStatus
   readonly environmentDigest: EnvironmentDigest
   readonly contextDigest?: ContextDigest

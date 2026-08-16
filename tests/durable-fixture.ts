@@ -7,6 +7,7 @@ import {
   Fence,
   GoalVersion,
   OwnerId,
+  PlanDigest,
   PlanVersion,
   RoutePlanDigest,
   StrategyPlanDigest,
@@ -55,7 +56,7 @@ export const planRecord: PlanRecord = {
   runId,
   version: planVersion,
   goalVersion: GoalVersion(1),
-  digest: artifactDigest,
+  digest: PlanDigest(artifactDigest),
   nodeCount: 1,
   environmentDigest,
 }

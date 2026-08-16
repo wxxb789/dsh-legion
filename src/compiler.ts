@@ -1,6 +1,6 @@
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { LegionProfile, ResultContract, RouteCandidate } from './config.ts'
+import type { DurableRunPolicySpec, LegionProfile, ResultContract, RouteCandidate } from './config.ts'
 import { materializeConfig } from './config.ts'
 import { deepFreeze, sha256Digest } from './internal/value.ts'
 import { outputSchemaFor } from './result-contract.ts'
@@ -137,6 +137,8 @@ export interface CompiledCatalog {
   readonly toolName: string
   readonly enableRunInBackground: boolean
   readonly enableStrategies: boolean
+  readonly enableDurableRuns: boolean
+  readonly durableRunPolicy: Readonly<Required<DurableRunPolicySpec>>
   readonly configuredDefaultProfile?: ProfileName
   readonly defaultProfile?: ProfileName
   readonly guidance?: string
@@ -374,6 +376,8 @@ export function compileCatalog(
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
     enableStrategies: config.enableStrategies,
+    enableDurableRuns: config.enableDurableRuns,
+    durableRunPolicy: config.durableRunPolicy,
     ...config.defaultProfile === undefined ? {} : { defaultProfile: config.defaultProfile },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
     resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
@@ -403,6 +407,8 @@ export function compileCatalog(
     toolName: config.toolName,
     enableRunInBackground: config.enableRunInBackground,
     enableStrategies: config.enableStrategies,
+    enableDurableRuns: config.enableDurableRuns,
+    durableRunPolicy: deepFreeze({ ...config.durableRunPolicy }),
     ...config.defaultProfile === undefined
       ? {}
       : { configuredDefaultProfile: profileName(config.defaultProfile) },
