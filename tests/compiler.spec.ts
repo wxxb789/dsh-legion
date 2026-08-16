@@ -213,6 +213,24 @@ describe('compileCatalog', () => {
       description: 'Work.',
       prompt: 'x'.repeat(100_001),
     })).toThrow(/non-empty bounded strings/)
+    expect(() => compileDelegationPlan(catalog, {
+      description: 'Work.',
+      prompt: 'Run.',
+      runInBackground: 'yes',
+    } as never)).toThrow(/invocation fields are invalid/)
+    expect(() => compileDelegationPlan(catalog, {
+      description: 'Work.',
+      prompt: 'Run.',
+      hidden: true,
+    } as never)).toThrow(/invocation fields are invalid/)
+    let reads = 0
+    const accessor = { description: 'Work.', prompt: 'Run.' }
+    Object.defineProperty(accessor, 'profile', {
+      enumerable: true,
+      get() { reads += 1; return 'quick' },
+    })
+    expect(() => compileDelegationPlan(catalog, accessor as never)).toThrow(/plain data/)
+    expect(reads).toBe(0)
   })
 
   it('compiles one invocation to detached plan data and a structured schema', () => {

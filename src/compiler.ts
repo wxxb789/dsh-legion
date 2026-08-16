@@ -424,6 +424,27 @@ export function compileDelegationPlan(
   catalog: CompiledCatalog,
   invocation: DelegationInvocation,
 ): DelegationPlan {
+  if (typeof invocation !== 'object' || invocation === null || Array.isArray(invocation)) {
+    throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation must be a plain object')
+  }
+  const prototype = Object.getPrototypeOf(invocation)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation must be a plain object')
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(invocation)
+  if (Object.getOwnPropertySymbols(invocation).length > 0
+    || Object.values(descriptors).some(descriptor =>
+      descriptor.enumerable && ('get' in descriptor || 'set' in descriptor))) {
+    throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation must contain plain data')
+  }
+  const source = invocation as unknown as Record<string, unknown>
+  const allowed = new Set(['profile', 'description', 'prompt', 'runInBackground'])
+  const unknownFields = Object.keys(source).filter(key => !allowed.has(key))
+  if (unknownFields.length > 0
+    || (source.profile !== undefined && typeof source.profile !== 'string')
+    || (source.runInBackground !== undefined && typeof source.runInBackground !== 'boolean')) {
+    throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation fields are invalid')
+  }
   if (typeof invocation.description !== 'string'
     || invocation.description.trim().length === 0
     || invocation.description.length > 100_000
