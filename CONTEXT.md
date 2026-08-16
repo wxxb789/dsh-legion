@@ -67,3 +67,55 @@ _Avoid_: Raw config, Registry dump
 **Model Strategy Exposure**:
 Deployment-owned authority allowing the model-facing Legion tool to invoke active Strategies; catalog presence or programmatic execution alone does not grant it.
 _Avoid_: Strategy registration, Benchmark result, Default enablement
+
+**Durable Strategy Run**:
+An explicitly enabled execution of a Strategy whose durable orchestration history is anchored to one invoking DSH Session and reconstructed from typed Session events.
+_Avoid_: Workflow runtime, Global job, Independent persistence record
+
+**Durable Strategy Controller**:
+The bounded, Session-anchored interpreter that advances one Durable Strategy Run from its projected journal state while DSH owns persistence and child execution.
+_Avoid_: Scheduler service, Workflow engine, Process-global runtime
+
+**Plan Graph**:
+One immutable, versioned DAG describing the current typed tasks, dependencies, artifacts, and limits of a Durable Strategy Run.
+_Avoid_: Mutable task list, Scheduler state, JavaScript program
+
+**Plan Delta**:
+A structured, validated, version-CAS proposal that monotonically evolves pending work in a Plan Graph without rewriting committed history or widening authority.
+_Avoid_: Prompt instruction, Callback, In-place graph mutation
+
+**Run Lease**:
+A Host-issued, time-bounded claim carrying a monotonically increasing fence that authorizes one controller activation to advance a Durable Strategy Run.
+_Avoid_: Journal owner field, Process mutex, Session lock file
+
+**Fence**:
+A monotonically increasing Host coordination token used with task generations to reject stale reservations, continuations, and results.
+_Avoid_: Timestamp, Owner fingerprint, Retry count
+
+**Durable Mailbox**:
+A task-addressed delivery protocol whose queued, reserved, incorporated, acknowledged, reclaimed, and discarded facts exist only as typed events in the anchor Session journal.
+_Avoid_: Agent chat, Queue service, Mailbox directory
+
+**Context Manifest**:
+An immutable, ordered, digest-addressed selection of context pages for one task generation, with a cache-stable shared prefix and explicit trust, freshness, and lineage.
+_Avoid_: Transcript copy, Mutable prompt buffer, Context store
+
+**Milestone**:
+A visible, verified, risk-retiring increment recorded with its artifacts, evidence, and next decision.
+_Avoid_: Tool call count, Time slice, Unverified progress report
+
+**Stair-step**:
+A public replaceable advancement policy that repeatedly commits the smallest visible, verifiable increment that retires meaningful uncertainty or risk.
+_Avoid_: Privileged built-in strategy, Random small edits, Giant upfront plan
+
+**Continuation**:
+A bounded, immutable, one-shot datum that identifies a durable semantic resume boundary without capturing executable process state.
+_Avoid_: JavaScript closure, VM stack, Multi-shot call/cc
+
+**Host Coordination**:
+Host-owned atomic lease and fence authority that excludes concurrent Durable Strategy Run owners.
+_Avoid_: Legion lock service, Journal-only claim, Process-local mutex
+
+**Host Admission**:
+Host-owned global resource reservation and backpressure authority across Sessions and Strategy Runs.
+_Avoid_: Per-run concurrency limit, Provider health guess, Legion scheduler

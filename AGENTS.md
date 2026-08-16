@@ -16,7 +16,11 @@ Use force-push only when the human explicitly requests history rewriting. A succ
 
 Before changing routing policy, profile configuration, result contracts, or DSH lifecycle integration, read `docs/roadmap.md` and the applicable ADR under `docs/adr/`.
 
-DeepSeek Harness remains the sole owner of Agent, Session, subagent, workflow, goal, persistence, sandbox, approval, model adapter, and UI lifecycles. Legion contributes delegation policy and diagnostics through public DSH seams.
+DeepSeek Harness remains the sole owner of Agent, Session, subagent, workflow, Goal, persistence, sandbox, approval, model adapter, and UI lifecycles. Legion contributes delegation policy and diagnostics through public DSH seams.
+
+For v1.1, Legion may own only the Session-anchored durable Strategy controller defined by ADRs 0015–0020: a bounded interpreter for typed Legion DAG IR whose durable facts are plugin-owned events in the invoking DSH Session journal and whose state is derived through DSH Session projections. It delegates every child to DSH and uses Host-owned atomic coordination and admission capabilities. The v1.0 ephemeral Strategy path remains supported, unchanged, and the default; durable execution is explicit, opt-in, and capability-gated. Missing mandatory Host coordination fails closed.
+
+Keep this controller domain-specific and activation-bounded. Do not create an independent task/mailbox/state store, journal, WAL, database, lock service, generic scheduler or workflow runtime, process-global run registry, scanner, daemon, or autonomous resumption loop.
 
 Legion is customization-first. Profiles, Teams, Strategies, and the Default Catalog must use public replaceable contracts; do not hardcode default names or grant built-in strategies hidden privileges. Read `CONTEXT.md` when changing these domain concepts.
 
