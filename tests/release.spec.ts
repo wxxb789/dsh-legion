@@ -127,6 +127,14 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('npm publish "$RELEASE_TARBALL" --access public --provenance')
     expect(workflow).not.toContain('NPM_TOKEN')
     expect(workflow).toContain('gh release create')
+    expect(workflow).toContain('gh release upload "$GITHUB_REF_NAME" dist/* --clobber')
+    expect(workflow).toContain('--draft --verify-tag')
+    expect(workflow).toContain('npm view "dsh-legion@$VERSION" version')
+    expect(workflow).toContain('gh release edit "$GITHUB_REF_NAME" --draft=false')
+    expect(workflow.indexOf('Stage recoverable GitHub draft release'))
+      .toBeLessThan(workflow.indexOf('Publish with npm Trusted Publishing and provenance'))
+    expect(workflow.indexOf('Publish with npm Trusted Publishing and provenance'))
+      .toBeLessThan(workflow.indexOf('Publish GitHub release after npm succeeds'))
   })
 
   it('verifies release tag/version/changelog identity and rejects a mismatch', () => {

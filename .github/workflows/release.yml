@@ -83,9 +83,24 @@ jobs:
           name: release-${{ github.ref_name }}
           path: dist/*
           if-no-files-found: error
+      - name: Stage recoverable GitHub draft release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Publish with npm Trusted Publishing and provenance
-        run: npm publish "$RELEASE_TARBALL" --access public --provenance
-      - name: Create GitHub release
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "dsh-legion@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "dsh-legion@$VERSION is already published; continuing recovery"
+          else
+            npm publish "$RELEASE_TARBALL" --access public --provenance
+          fi
+      - name: Publish GitHub release after npm succeeds
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --title "$GITHUB_REF_NAME"
         env:
           GH_TOKEN: ${{ github.token }}
