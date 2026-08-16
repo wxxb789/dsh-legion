@@ -8,10 +8,11 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import { trustedTempRoot } from './trusted-temp-root.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
-const canonicalTempRoot = await realpath(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-profile-'))
 const canonicalSandboxRoot = await realpath(sandboxRoot)
 const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)

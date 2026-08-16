@@ -3,6 +3,7 @@ import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'n
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { trustedTempRoot } from './trusted-temp-root.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
@@ -14,7 +15,7 @@ if (!['git', 'workspace'].includes(sourceMode)) {
 }
 const outputArgument = arguments_.find(argument => !argument.startsWith('--source='))
 const outputDirectory = outputArgument === undefined ? undefined : resolve(outputArgument)
-const canonicalTempRoot = await realpath(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const canonicalTempRoot = trustedTempRoot()
 const sandbox = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-reproducible-pack-'))
 const canonicalSandboxRoot = await realpath(sandbox)
 const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)

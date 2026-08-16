@@ -51,7 +51,9 @@ class PackedAdapter extends LlmAdapter {
   }
 }
 
-const trustedTempRoot = realpathSync(process.platform === 'win32' ? 'C:\\Windows\\Temp' : '/tmp')
+const configuredTempRoot = process.env.DSH_LEGION_TEMP_ROOT
+if (configuredTempRoot === undefined) throw new Error('packed consumer requires DSH_LEGION_TEMP_ROOT')
+const trustedTempRoot = realpathSync(configuredTempRoot)
 const sessionRoot = mkdtempSync(join(trustedTempRoot, 'dsh-legion-packed-e2e-'))
 const resourceRoot = mkdtempSync(join(trustedTempRoot, 'dsh-legion-packed-resources-'))
 const resourceRootName = basename(resourceRoot)
