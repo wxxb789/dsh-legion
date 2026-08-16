@@ -149,8 +149,24 @@ export function assertLegionTransition<Type extends LegionEventType>(
       || existing.fence !== record.fence
       || existing.effectClass !== record.effectClass
       || existing.idempotencyKey !== record.idempotencyKey
+      || JSON.stringify(existing.binding) !== JSON.stringify(record.binding)
       || JSON.stringify(existing.owner) !== JSON.stringify(record.owner))) {
     throw new Error('dsh-legion: attempt safety identity cannot be rebound')
+  }
+  if (record.binding !== undefined
+    && (record.binding.attemptId !== record.attemptId
+      || record.binding.taskId !== record.taskId
+      || record.binding.planVersion !== record.planVersion
+      || record.binding.generation !== record.generation
+      || record.binding.fence !== record.fence
+      || record.binding.profile !== record.profile
+      || record.binding.routePlanDigest !== record.routePlanDigest
+      || record.binding.environmentDigest !== record.environmentDigest
+      || record.binding.contextManifestDigest !== record.contextDigest)) {
+    throw new Error('dsh-legion: attempt record disagrees with immutable binding')
+  }
+  if (record.childSessionIds.length > 1) {
+    throw new Error('dsh-legion: one child may start per attempt')
   }
   if (record.result !== undefined
     && (record.result.runId !== data.runId

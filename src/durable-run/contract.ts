@@ -8,6 +8,7 @@ import type {
   StrategyPlanDigest as StrategyPlanDigestType,
 } from '../identity.ts'
 import type { PlanGraph } from './graph.ts'
+import type { AttemptBinding } from './attempt-binding.ts'
 
 export { CatalogDigest, RoutePlanDigest, StrategyPlanDigest } from '../identity.ts'
 
@@ -295,6 +296,8 @@ export interface AttemptRecord {
   readonly effectClass: EffectClass
   readonly idempotencyKey?: string
   readonly profile: ProfileName
+  /** Immutable Profile/Route/environment/context identity prepared before start. */
+  readonly binding?: AttemptBinding
   readonly routePlanDigest: RoutePlanDigestType
   readonly status: AttemptStatus
   readonly environmentDigest: EnvironmentDigest

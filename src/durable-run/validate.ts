@@ -28,6 +28,7 @@ import {
 } from './contract.ts'
 import { materializePlanGraph } from './graph.ts'
 import { createAuthorityEnvelope } from './plan-delta.ts'
+import { materializeAttemptBinding } from './attempt-binding.ts'
 import {
   isLegionEventType,
   type LegionEvent,
@@ -257,7 +258,7 @@ function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-sta
   const source = record(value, 'attempt record')
   assertKeys(source, [
     'schemaVersion', 'attemptId', 'taskId', 'planVersion', 'generation', 'fence',
-    'owner', 'effectClass', 'idempotencyKey', 'profile', 'routePlanDigest', 'status',
+    'owner', 'effectClass', 'idempotencyKey', 'profile', 'binding', 'routePlanDigest', 'status',
     'environmentDigest', 'contextDigest', 'childSessionIds', 'result', 'failure',
     'updatedAt',
   ], 'attempt record')
@@ -280,6 +281,9 @@ function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-sta
       ? {}
       : { idempotencyKey: text(source.idempotencyKey, 'idempotencyKey') }),
     profile: ProfileName(text(source.profile, 'profile')),
+    ...(source.binding === undefined
+      ? {}
+      : { binding: materializeAttemptBinding(deepJson(source.binding)) }),
     routePlanDigest: RoutePlanDigest(text(source.routePlanDigest, 'routePlanDigest')),
     status: choice(source.status, ATTEMPT_STATUSES, 'attempt status'),
     environmentDigest: EnvironmentDigest(source.environmentDigest),

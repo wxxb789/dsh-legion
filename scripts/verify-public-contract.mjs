@@ -94,6 +94,20 @@ const checks = [
   ['milestoneNextDecisions', contract.milestoneNextDecisions, [
     'advance', 'revise', 'pause', 'complete',
   ]],
+  ['environmentSnapshotSchemaVersion', contract.environmentSnapshotSchemaVersion, 1],
+  ['environmentCapabilityKinds', contract.environmentCapabilityKinds, [
+    'known-supported', 'known-unsupported', 'unknown',
+  ]],
+  ['dispatchCompatibilityTuple', contract.dispatchCompatibilityTuple, [
+    'provider', 'model', 'toolsetDigest', 'profileDigest', 'sharedPrefixDigest',
+  ]],
+  ['admissionScopes', contract.admissionScopes, [
+    'host-global-admitted', 'per-run-conservative',
+  ]],
+  ['reducerEnvelopeSchemaVersion', contract.reducerEnvelopeSchemaVersion, 1],
+  ['parallelismScopes', contract.parallelismScopes, [
+    'host-global-admitted', 'per-run-observed',
+  ]],
   ['resultContracts', contract.resultContracts, legion.RESULT_CONTRACTS],
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],

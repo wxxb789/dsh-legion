@@ -14,7 +14,7 @@ import type {
 import { isLegionEvent } from './events.ts'
 
 export const LEGION_RUN_PROJECTION_KEY = 'legion-run'
-export const LEGION_RUN_PROJECTION_STATE_VERSION = 4
+export const LEGION_RUN_PROJECTION_STATE_VERSION = 5
 
 export interface ProjectedRun {
   readonly run?: RunRecord
