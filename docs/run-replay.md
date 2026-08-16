@@ -4,7 +4,7 @@ Build the package, then run dsh-legion replay --input session.jsonl --run <run-i
 
 ## Capability requirements
 
-Replay requires only the exported JSONL and the package. It starts no child, performs no mutation, and does not require Session persistence, projection registration, coordination, admission, credentials, or provider access. The projection key is legion-run and serialized state version is 5.
+Replay requires only the exported JSONL and the package. It starts no child, performs no mutation, and does not require Session persistence, projection registration, coordination, admission, credentials, or provider access. The projection key is legion-run and serialized state version is 6.
 
 ## Failure behavior
 

@@ -1151,7 +1151,34 @@ describe('dsh-legion', () => {
     const ctx = await setup({
       ...baseConfig,
       configVersion: 2,
+      enableStrategies: true,
       enableDurableRuns: true,
+      teams: {
+        fallback: {
+          description: 'Ephemeral fallback team.',
+          members: { worker: { profile: 'quick' } },
+        },
+      },
+      strategies: {
+        fallback: {
+          description: 'One-stage fallback.',
+          team: 'fallback',
+          stages: [{
+            kind: 'delegate',
+            id: 'execute',
+            member: 'worker',
+            inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+            output: { artifact: 'result', contract: 'text' },
+            prompt: 'Execute once.',
+          }],
+          completion: { artifact: 'result', contract: 'text' },
+          limits: {
+            maxAgents: 1, maxConcurrent: 1, deadlineMs: 60_000,
+            maxOutputBytes: 65_536,
+          },
+          memberFailure: 'fail',
+        },
+      },
     }, [provider('spawn', { onStart() { starts += 1 } })])
     try {
       const result = await execute(ctx, {
@@ -1161,6 +1188,15 @@ describe('dsh-legion', () => {
       })
       if (result.isError) throw new Error(rendered(result))
       expect(result.isError).toBe(false)
+      expect(starts).toBe(1)
+      const durable = await execute(ctx, {
+        kind: 'strategy',
+        strategy: 'fallback',
+        objective: 'Must not start without Host coordination.',
+        execution: { durability: 'journal', advancement: 'checkpoint' },
+      })
+      expect(durable.isError).toBe(true)
+      expect(rendered(durable)).toContain('LEGION_DURABLE_FLUSH_UNAVAILABLE')
       expect(starts).toBe(1)
       expect(legion.detectDurableCapabilities(ctx as never).durableMutation).toBe(false)
     } finally {

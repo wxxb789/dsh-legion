@@ -18,6 +18,7 @@ export interface ActivationCommit {
 export interface ExecuteTaskRequest {
   readonly task: TaskSpec
   readonly artifacts: Readonly<Record<string, FrontierArtifact>>
+  readonly outputByteBudget: number
   readonly signal: AbortSignal
 }
 
@@ -34,9 +35,14 @@ export interface ActivationCommitOptions {
 /**
  * Narrow M2 effect port. Its commit implementation owns Session append/flush
  * and its execute implementation delegates child lifecycle to DSH. The
- * interpreter provides no lease, fencing, recovery, or cross-process exclusion.
+ * interpreter provides no cross-process exclusion itself. Commit implementations
+ * must run under the active Host lease/fence.
  */
 export interface StaticDagEffectPort {
+  /**
+   * Prepared commits cross the durability barrier before dispatch. Settled commits
+   * must atomically revalidate current attempt/generation/fence and append+flush.
+   */
   commit(
     batch: readonly ActivationCommit[],
     options: ActivationCommitOptions,
@@ -48,6 +54,11 @@ export interface StaticDagActivationInput {
   readonly graph: PlanGraph
   readonly tasks: Readonly<Record<string, FrontierTaskState>>
   readonly artifacts: Readonly<Record<string, FrontierArtifact>>
+  /** Cumulative run usage restored from the authoritative projection. */
+  readonly usage: {
+    readonly startedAgents: number
+    readonly acceptedOutputBytes: number
+  }
   readonly bounds: {
     /** Logical DAG nodes that may start in this activation. */
     readonly maxStarts: number
@@ -112,7 +123,17 @@ export async function runStaticDagActivation(
   }
 
   const frontier = deriveReadyFrontier(input.graph, input.tasks, input.artifacts)
-  let remainingAgents = input.graph.limits.maxAgents
+  const startedAgents = input.usage.startedAgents
+  const acceptedOutputBytes = input.usage.acceptedOutputBytes
+  if (!Number.isSafeInteger(startedAgents) || startedAgents < 0
+    || !Number.isSafeInteger(acceptedOutputBytes) || acceptedOutputBytes < 0) {
+    throw new Error('dsh-legion: invalid cumulative activation usage')
+  }
+  let remainingAgents = Math.max(0, input.graph.limits.maxAgents - startedAgents)
+  const remainingOutputBytes = Math.max(
+    0,
+    input.graph.limits.maxOutputBytes - acceptedOutputBytes,
+  )
   let remainingConcurrent = Math.min(
     input.graph.limits.maxConcurrent,
     input.bounds.maxConcurrent,
@@ -126,7 +147,7 @@ export async function runStaticDagActivation(
     remainingAgents -= task.agentCount
     remainingConcurrent -= task.agentCount
   }
-  if (admitted.length === 0) {
+  if (admitted.length === 0 || remainingOutputBytes === 0) {
     return deepFreeze({ kind: 'idle', started: [], outcomes: [] })
   }
 
@@ -140,16 +161,23 @@ export async function runStaticDagActivation(
     return deepFreeze({ kind: 'cancelled', started: [], outcomes: [] })
   }
 
+  const outputByteBudget = Math.floor(remainingOutputBytes / admitted.length)
   const rawOutcomes = await Promise.all(admitted.map(task => port.execute({
     task,
     artifacts: input.artifacts,
+    outputByteBudget,
     signal: input.signal,
   })))
-  rawOutcomes.forEach((outcome, index) => validateOutcome(admitted[index]!, outcome))
+  rawOutcomes.forEach((outcome, index) => {
+    validateOutcome(admitted[index]!, outcome)
+    if (outcome.kind === 'succeeded' && outcome.artifact.bytes > outputByteBudget) {
+      throw new Error('dsh-legion: task outcome exceeded reserved output byte budget')
+    }
+  })
   const outcomes = canonicalOutcomes(rawOutcomes)
   const acceptedBytes = outcomes.reduce((total, outcome) =>
     total + (outcome.kind === 'succeeded' ? outcome.artifact.bytes : 0), 0)
-  if (acceptedBytes > input.graph.limits.maxOutputBytes) {
+  if (acceptedOutputBytes + acceptedBytes > input.graph.limits.maxOutputBytes) {
     throw new Error('dsh-legion: static DAG activation output limit exceeded')
   }
 

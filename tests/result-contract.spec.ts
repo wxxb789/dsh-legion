@@ -71,7 +71,11 @@ describe('versioned result contracts', () => {
     const proposal = {
       schemaVersion: 1, deltaId: 'delta-one', basePlanVersion: 1, reason: 'Add verification.',
       evidence: [{ source: 'artifact-one', detail: 'Needs verification.' }],
-      operations: [{ kind: 'supersede-pending', taskId: 'task-one' }],
+      operations: [{
+        kind: 'supersede-pending',
+        taskId: 'task-one',
+        replacement: 'replacement-task',
+      }],
     }
     expect(materializeStructuredResult('plan-delta-v1', proposal)).toEqual(proposal)
     expect(() => materializeStructuredResult('plan-delta-v1', {

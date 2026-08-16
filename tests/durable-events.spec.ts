@@ -1,8 +1,17 @@
 import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
+import { Fence } from '../src/durable-run/contract.ts'
 import { appendLegionEvent } from '../src/durable-run/events.ts'
 import { foldLegionProjection } from '../src/durable-run/projection.ts'
-import { pendingRun, runRecord } from './durable-fixture.ts'
+import {
+  attemptRecord,
+  pendingRun,
+  planVersion,
+  runRecord,
+  taskRecord,
+} from './durable-fixture.ts'
+import type { PendingLegionEvent } from '../src/durable-run/events.ts'
+
 
 function sessionFake(): Session {
   const events: unknown[] = []
@@ -27,6 +36,43 @@ describe('durable event append', () => {
     const session = sessionFake()
     const pending = pendingRun({ ...runRecord, runId: 'another-run' as never })
     expect(() => appendLegionEvent(session, { runs: {} }, pending)).toThrow(/header/)
+    expect(session.events).toHaveLength(0)
+  })
+
+  it('rejects an attempt from an old run fence before append', () => {
+    const session = sessionFake()
+    const staleAttempt: PendingLegionEvent = {
+      type: 'legion/attempt-state',
+      data: {
+        schemaVersion: 1,
+        runId: runRecord.runId,
+        planVersion,
+        correlationId: 'stale-attempt',
+        taskId: taskRecord.taskId,
+        attemptId: attemptRecord.attemptId,
+        generation: attemptRecord.generation,
+        fence: Fence(4),
+        record: { ...attemptRecord, fence: Fence(4) },
+      },
+    }
+    const state = {
+      runs: {
+        [runRecord.runId]: {
+          run: { ...runRecord, fence: Fence(5) },
+          plans: {},
+          tasks: {
+            [taskRecord.taskId]: {
+              ...taskRecord,
+              status: 'running' as const,
+              currentAttempt: attemptRecord.attemptId,
+            },
+          },
+          attempts: {},
+        },
+      },
+    }
+    expect(() => appendLegionEvent(session, state, staleAttempt))
+      .toThrow(/attempt fence is not current/)
     expect(session.events).toHaveLength(0)
   })
 

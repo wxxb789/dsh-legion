@@ -68,7 +68,7 @@ describe('durable run controls', () => {
     )
     expect(output).toBe('activation')
     expect(log).toEqual([
-      'capabilities', 'acquire', 'reread-1', 'plan', 'commit-recovery',
+      'capabilities', 'acquire', 'reread-1', 'plan', 'assert', 'commit-recovery',
       'flush', 'assert', 'reread-2', 'activate-state-2', 'release',
     ])
   })
@@ -80,7 +80,7 @@ describe('durable run controls', () => {
       port(log),
     )
     expect(log).toEqual([
-      'capabilities', 'acquire', 'reread-1', 'cancel-intent', 'flush',
+      'capabilities', 'acquire', 'reread-1', 'assert', 'cancel-intent', 'flush',
       'close-admission', 'cancel-live', 'assert', 'cancelled', 'flush', 'release',
     ])
   })
@@ -110,7 +110,7 @@ describe('durable run controls', () => {
     )
     expect(log).toEqual([
       'capabilities', 'acquire', 'reread-1', 'validate-steer',
-      'commit-steer', 'flush', 'release',
+      'assert', 'commit-steer', 'flush', 'release',
     ])
   })
 
@@ -121,7 +121,7 @@ describe('durable run controls', () => {
       port(log, false),
     )).rejects.toThrow(/LEGION_DURABLE_FLUSH_UNAVAILABLE/)
     expect(log).toEqual([
-      'capabilities', 'acquire', 'reread-1', 'plan', 'commit-recovery',
+      'capabilities', 'acquire', 'reread-1', 'plan', 'assert', 'commit-recovery',
       'flush', 'release',
     ])
   })

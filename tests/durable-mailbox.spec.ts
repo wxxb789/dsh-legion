@@ -229,6 +229,25 @@ describe('durable mailbox', () => {
     expect(view.latestSharedPrefixDigest).toBe(prefixDigest)
   })
 
+  it('requires matching generation and fence for discard', () => {
+    expect(() => transitionMail(reserved(), {
+      kind: 'discard',
+      mailId: MailId('mail-one'),
+      recipientGeneration: ContextGeneration(1),
+      fence: Fence(1),
+      reason: 'policy',
+      now: 3,
+    })).toThrow(/MAIL_FENCE_STALE/)
+    expect(transitionMail(reserved(), {
+      kind: 'discard',
+      mailId: MailId('mail-one'),
+      recipientGeneration: ContextGeneration(1),
+      fence: Fence(2),
+      reason: 'policy',
+      now: 3,
+    }).record.status).toBe('discarded')
+  })
+
   it('orders reserve, manifest, incorporation, and ack around durability barriers', async () => {
     const calls: string[] = []
     await deliverReservedMail({

@@ -29,6 +29,7 @@ import {
 import { materializePlanGraph } from './graph.ts'
 import { createAuthorityEnvelope } from './plan-delta.ts'
 import { materializeAttemptBinding } from './attempt-binding.ts'
+import { continuationDigest } from './continuation.ts'
 import {
   isLegionEventType,
   type LegionEvent,
@@ -485,6 +486,10 @@ function parseContinuationRecord(value: unknown): import('./contract.ts').Contin
       ? {}
       : { expiresAt: natural(tokenSource.expiresAt, 'expiresAt') }),
     digest: ArtifactDigest(tokenSource.digest),
+  }
+  const { digest: tokenDigest, ...unsignedToken } = token
+  if (continuationDigest(unsignedToken) !== tokenDigest) {
+    throw new Error('dsh-legion: continuation token digest mismatch')
   }
   const continuationId = ContinuationId(source.continuationId)
   const base = {

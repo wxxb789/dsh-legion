@@ -63,7 +63,6 @@ function compareTask(left: RecoveryAction, right: RecoveryAction): number {
 function receiptMatches(
   task: RecoveryTaskState,
   result: ResultEnvelope,
-  fence: Fence,
 ): boolean {
   const attempt = task.attempt
   return attempt !== undefined
@@ -71,7 +70,6 @@ function receiptMatches(
     && result.attemptId === attempt.attemptId
     && result.generation === task.generation
     && result.generation === attempt.generation
-    && result.fence === fence
     && result.fence === attempt.fence
     && result.planVersion === attempt.planVersion
     && result.routePlanDigest === attempt.routePlanDigest
@@ -100,7 +98,7 @@ export function planRecovery(input: {
     }
     const receipt = input.receipts[task.taskId]
     if (receipt?.kind === 'proven') {
-      actions.push(receiptMatches(task, receipt.result, input.fence)
+      actions.push(receiptMatches(task, receipt.result)
         ? { kind: 'incorporate-receipt', taskId: task.taskId, result: receipt.result }
         : {
             kind: 'reject-stale-result',

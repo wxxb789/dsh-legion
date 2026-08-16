@@ -218,9 +218,10 @@ describe('effect-aware recovery', () => {
       tasks: [task],
       receipts: { [taskId]: { kind: 'proven', result: result(active) } },
       baseJournalSeq: 8,
-      fence: Fence(4),
+      fence: Fence(5),
       owner,
     })
+    expect(accepted.fence).toBe(5)
     expect(accepted.actions[0]).toMatchObject({ kind: 'incorporate-receipt' })
 
     const stale = planRecovery({

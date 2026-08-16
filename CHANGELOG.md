@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Opt-in journal-native durable Strategy contracts with eight typed Session event families, projection state version 5, bounded replay/inspection, crash recovery, mailbox delivery, continuations, PlanDelta, and stair-step policies.
+- Opt-in journal-native durable Strategy contracts with eight typed Session event families, projection state version 6, bounded replay/inspection, crash recovery, mailbox delivery, continuations, PlanDelta, and stair-step policies.
 - Machine-readable journal contract and deterministic verifier covering strict unknown-field rejection, checkpoint refold, unrelated-event identity, delivery semantics, and Host capability requirements.
 - Public structural Host ports for projection, atomic coordination, global admission, and child receipts without shipping or fabricating those Host services.
 

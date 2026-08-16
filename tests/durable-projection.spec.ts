@@ -75,7 +75,7 @@ describe('legion-run projection', () => {
     expect(registered).toBe(legionRunProjection)
     expect(legionRunProjection).toMatchObject({
       key: 'legion-run',
-      stateVersion: 5,
+      stateVersion: 6,
     })
     expect(typeof legionRunProjection.schema.parse).toBe('function')
     expect(disposed).toBe(true)

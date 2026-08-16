@@ -26,7 +26,14 @@ export type MailCommand =
   | { readonly kind: 'incorporate'; readonly mailId: MailId; readonly recipientGeneration: number; readonly reservationId: ReservationId; readonly fence: Fence; readonly contextGeneration: ContextGeneration; readonly contextManifestDigest: ContextDigest; readonly sharedPrefixDigest: ContextDigest; readonly incorporatedArtifactDigests: readonly ArtifactDigest[]; readonly now: number }
   | { readonly kind: 'acknowledge'; readonly mailId: MailId; readonly recipientGeneration: number; readonly reservationId: ReservationId; readonly fence: Fence; readonly contextManifestDigest: ContextDigest; readonly now: number }
   | { readonly kind: 'reclaim'; readonly mailId: MailId; readonly recipientGeneration: number; readonly currentFence: Fence; readonly now: number }
-  | { readonly kind: 'discard'; readonly mailId: MailId; readonly now: number; readonly reason: 'expired' | 'recipient-terminal' | 'superseded' | 'policy' }
+  | {
+      readonly kind: 'discard'
+      readonly mailId: MailId
+      readonly recipientGeneration: ContextGeneration
+      readonly fence?: Fence
+      readonly now: number
+      readonly reason: 'expired' | 'recipient-terminal' | 'superseded' | 'policy'
+    }
 
 export type MailTransitionResult = {
   readonly kind: 'changed' | 'idempotent'
@@ -220,6 +227,10 @@ function discard(
   command: Extract<MailCommand, { kind: 'discard' }>,
 ): MailTransitionResult {
   if (current.status === 'acknowledged' || current.status === 'discarded') fail('MAIL_TERMINAL')
+  assertGeneration(current, command.recipientGeneration)
+  if (current.status === 'reserved' || current.status === 'incorporated') {
+    if (command.fence === undefined || current.reservation.fence !== command.fence) fail('MAIL_FENCE_STALE')
+  }
   return changed(state, {
     schemaVersion: 1,
     status: 'discarded',

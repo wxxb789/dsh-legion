@@ -1,6 +1,6 @@
 # Durable Strategy Runs
 
-Durable Strategy Runs are explicit, opt-in controllers anchored to one DSH Session. Ephemeral v1.0 Profile and Strategy behavior remains the default.
+Durable Strategy Runs are explicit, opt-in controllers anchored to one DSH Session. Ephemeral v1.0 Profile and Strategy behavior remains the default. A Strategy caller requests journal mode with an execution object whose durability is journal; omission or durability ephemeral preserves the v1.0 executor. The journal field is exposed only when deployment enables durable runs.
 
 ## Capability contract
 

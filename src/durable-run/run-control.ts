@@ -48,15 +48,19 @@ export interface RunControlPort<State, Recovery, Activation> {
   release(lease: RunLease): Promise<void>
   reread(runId: RunIdType): Promise<State>
   planRecovery(state: State, lease: RunLease): Recovery
+  /** Atomically reject unless lease owner/fence are still current at append. */
   commitRecovery(plan: Recovery, lease: RunLease): Promise<void>
   flush(): Promise<boolean>
   activate(state: State, lease: RunLease): Promise<Activation>
+  /** Atomically reject unless lease owner/fence are still current at append. */
   commitCancelIntent(state: State, lease: RunLease): Promise<void>
   closeAdmission(): void
   cancelLiveChildren(state: State): Promise<void>
   assertLease(lease: RunLease): Promise<void>
+  /** Atomically reject unless lease owner/fence are still current at append. */
   commitCancelled(state: State, lease: RunLease): Promise<void>
   validateSteer?(state: State, proposal: PlanDeltaProposal): unknown
+  /** Atomically reject unless lease owner/fence are still current at append. */
   commitSteerProposal?(state: State, proposal: unknown, lease: RunLease): Promise<void>
 }
 
@@ -82,18 +86,21 @@ export async function controlDurableRun<State, Recovery, Activation>(
         throw new Error('dsh-legion: STEER_UNAVAILABLE')
       }
       const proposal = port.validateSteer(state, input.proposal)
+      await port.assertLease(lease)
       await port.commitSteerProposal(state, proposal, lease)
       await requireFlush(port)
       return state
     }
     if (input.action === 'resume') {
       const plan = port.planRecovery(state, lease)
+      await port.assertLease(lease)
       await port.commitRecovery(plan, lease)
       await requireFlush(port)
       await port.assertLease(lease)
       state = await port.reread(input.runId)
       return await port.activate(state, lease)
     }
+    await port.assertLease(lease)
     await port.commitCancelIntent(state, lease)
     await requireFlush(port)
     port.closeAdmission()

@@ -23,6 +23,14 @@ const TERMINAL_RUN_STATUSES = new Set([
   'failed',
 ])
 
+
+const TERMINAL_TASK_STATUSES = new Set([
+  'succeeded', 'failed', 'cancelled', 'superseded', 'blocked',
+])
+const TERMINAL_ATTEMPT_STATUSES = new Set([
+  'settled', 'abandoned', 'rejected-stale',
+])
+
 function assertVersionNotLower(current: PlanVersion, next: PlanVersion): void {
   if (next < current) {
     throw new Error('dsh-legion: plan version cannot decrease')
@@ -77,6 +85,9 @@ export function assertLegionTransition<Type extends LegionEventType>(
     if (existing !== undefined && record.generation < existing.generation) {
       throw new Error('dsh-legion: task generation cannot decrease')
     }
+    if (existing !== undefined && TERMINAL_TASK_STATUSES.has(existing.status)) {
+      throw new Error('dsh-legion: terminal task cannot transition or repeat')
+    }
     return
   }
 
@@ -94,6 +105,14 @@ export function assertLegionTransition<Type extends LegionEventType>(
       || record.status === 'acknowledged')
       && mailEvent.fence !== record.reservation.fence) {
       throw new Error('dsh-legion: mail fence is stale')
+    }
+    if (record.status === 'discarded' && mailEvent.fence === undefined) {
+      throw new Error('dsh-legion: discarded mail requires an active fence')
+    }
+    if (current.run.fence !== undefined
+      && mailEvent.fence !== undefined
+      && mailEvent.fence !== current.run.fence) {
+      throw new Error('dsh-legion: mail event fence is not current')
     }
     const existing = current.mail?.[record.message.mailId]
     if (existing !== undefined) {
@@ -141,7 +160,17 @@ export function assertLegionTransition<Type extends LegionEventType>(
   if (task === undefined) {
     throw new Error('dsh-legion: attempt task must exist')
   }
+  const activeFence = current.run.fence
+  if (activeFence !== undefined && record.fence !== activeFence) {
+    throw new Error('dsh-legion: attempt fence is not current')
+  }
+  if (TERMINAL_TASK_STATUSES.has(task.status)) {
+    throw new Error('dsh-legion: terminal task cannot admit or settle another attempt')
+  }
   const existing = current.attempts[record.attemptId]
+  if (existing !== undefined && TERMINAL_ATTEMPT_STATUSES.has(existing.status)) {
+    throw new Error('dsh-legion: terminal attempt cannot transition or repeat')
+  }
   if (existing !== undefined
     && (existing.taskId !== record.taskId
       || existing.planVersion !== record.planVersion

@@ -10,7 +10,7 @@ import {
 const ROOT=dirname(fileURLToPath(new URL('../package.json',import.meta.url)))
 const journal=JSON.parse(readFileSync(join(ROOT,'contracts/journal-v1.json'),'utf8'))
 describe('v1.1 release compatibility contract',()=>{
-  it('freezes eight event families and projection state 5',()=>{
+  it('freezes eight event families and projection state 6',()=>{
     expect(journal.eventFamilies.map((item:{type:string})=>item.type)).toEqual(LEGION_EVENT_TYPES)
     expect(journal.eventFamilies).toHaveLength(8)
     expect(journal.projection).toMatchObject({key:LEGION_RUN_PROJECTION_KEY,stateVersion:LEGION_RUN_PROJECTION_STATE_VERSION})

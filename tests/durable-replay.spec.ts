@@ -229,6 +229,10 @@ describe('durable replay', () => {
       decisions: [{ decisionId: 'decision-one' }],
       continuations: { 'continuation-one': { status: 'available' } },
     })
+    expect(explainLegionRun(state, runId)).toMatchObject({
+      milestoneSequence: [{ seq: 5 }],
+      decisionSequence: [{ seq: 6 }],
+    })
   })
 
 })

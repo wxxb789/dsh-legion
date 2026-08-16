@@ -25,6 +25,8 @@ describe('public contract v1', () => {
     expect(contract.profileRequestFields).toEqual([
       'kind', 'profile', 'description', 'prompt', 'run_in_background',
     ])
-    expect(contract.strategyRequestFields).toEqual(['kind', 'strategy', 'objective', 'limits'])
+    expect(contract.strategyRequestFields).toEqual([
+      'kind', 'strategy', 'objective', 'limits', 'execution',
+    ])
   })
 })

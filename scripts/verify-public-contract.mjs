@@ -126,7 +126,9 @@ const checks = [
   ['teamRunOutcomes', contract.teamRunOutcomes, legion.TEAM_RUN_OUTCOMES],
   ['profileRequestFields', contract.profileRequestFields, ['kind', 'profile', 'description', 'prompt', 'run_in_background']],
   ['profileRequiredFields', contract.profileRequiredFields, ['description', 'prompt']],
-  ['strategyRequestFields', contract.strategyRequestFields, ['kind', 'strategy', 'objective', 'limits']],
+  ['strategyRequestFields', contract.strategyRequestFields, [
+    'kind', 'strategy', 'objective', 'limits', 'execution',
+  ]],
   ['strategyRequiredFields', contract.strategyRequiredFields, ['kind', 'strategy', 'objective']],
   ['catalogLayerSemantics', contract.catalogLayerSemantics, [
     'add-new-name', 'replace-same-name', 'disable-tombstone', 'revive-later',

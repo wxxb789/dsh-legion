@@ -7,8 +7,10 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Config, materializeConfig } from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
+  assertDurableMutationAvailable,
   detectDurableCapabilities,
   type DurableCapabilityContext,
+  type DurableCapabilitySnapshot,
 } from './durable-run/capabilities.ts'
 import {
   assertCatalogUsable,
@@ -264,6 +266,10 @@ interface StrategyToolArgs {
   readonly strategy: string
   readonly objective: string
   readonly limits?: Partial<StrategyLimits>
+  readonly execution?: {
+    readonly durability: 'ephemeral' | 'journal'
+    readonly advancement?: 'continuous' | 'checkpoint'
+  }
 }
 
 type ToolArgs = ProfileToolArgs | StrategyToolArgs
@@ -289,15 +295,43 @@ function assertAllowedArguments(input: Record<string, unknown>, allowed: readonl
   }
 }
 
-function parseToolArgs(value: unknown, enableStrategies: boolean): ToolArgs {
+
+function parseStrategyExecution(
+  value: unknown,
+): NonNullable<StrategyToolArgs['execution']> {
+  const source = argumentRecord(value)
+  assertAllowedArguments(source, ['durability', 'advancement'])
+  if (source.durability !== 'ephemeral' && source.durability !== 'journal') {
+    throw new Error('dsh-legion: REQUEST_INVALID: execution.durability must be ephemeral or journal')
+  }
+  if (source.advancement !== undefined
+    && source.advancement !== 'continuous'
+    && source.advancement !== 'checkpoint') {
+    throw new Error('dsh-legion: REQUEST_INVALID: execution.advancement is invalid')
+  }
+  return {
+    durability: source.durability,
+    ...(source.advancement === undefined ? {} : { advancement: source.advancement }),
+  }
+}
+
+function parseToolArgs(
+  value: unknown,
+  enableStrategies: boolean,
+  enableDurableRuns: boolean,
+): ToolArgs {
   const input = argumentRecord(value)
   const strategySignal = input.kind === 'strategy'
     || Object.hasOwn(input, 'strategy')
     || Object.hasOwn(input, 'objective')
     || Object.hasOwn(input, 'limits')
+    || Object.hasOwn(input, 'execution')
   if (strategySignal) {
     if (!enableStrategies) throw new Error('dsh-legion: STRATEGIES_DISABLED: model Strategy calls are disabled')
-    assertAllowedArguments(input, ['kind', 'strategy', 'objective', 'limits'])
+    assertAllowedArguments(input, [
+      'kind', 'strategy', 'objective', 'limits',
+      ...(enableDurableRuns ? ['execution'] : []),
+    ])
     if (input.kind !== 'strategy') {
       throw new Error('dsh-legion: REQUEST_INVALID: Strategy calls require kind "strategy"')
     }
@@ -313,6 +347,9 @@ function parseToolArgs(value: unknown, enableStrategies: boolean): ToolArgs {
       strategy: input.strategy,
       objective: input.objective,
       ...input.limits === undefined ? {} : { limits: input.limits as Partial<StrategyLimits> },
+      ...input.execution === undefined
+        ? {}
+        : { execution: parseStrategyExecution(input.execution) },
     }
   }
   assertAllowedArguments(input, enableStrategies
@@ -455,7 +492,14 @@ function selectedRouteId(value: JsonValue | undefined): string | undefined {
   return typeof selected.id === 'string' ? selected.id : undefined
 }
 
-function createToolDefinition(ctx: Context, snapshot: StrategyExecutionSnapshot): ToolDefinition {
+function createToolDefinition(
+  ctx: Context,
+  snapshot: StrategyExecutionSnapshot,
+  durable: {
+    readonly enabled: boolean
+    readonly capabilities: DurableCapabilitySnapshot
+  },
+): ToolDefinition {
   const { profiles: catalog, orchestration } = snapshot
   const profileNames = Object.keys(catalog.activeProfiles)
   const strategyNames = catalog.enableStrategies
@@ -516,6 +560,12 @@ function createToolDefinition(ctx: Context, snapshot: StrategyExecutionSnapshot)
           type: 'json' as const,
           description: 'Optional positive-integer narrowing limits: maxAgents, maxConcurrent, deadlineMs, maxOutputBytes.',
         },
+        ...durable.enabled ? {
+          execution: {
+            type: 'json' as const,
+            description: 'Optional { durability: ephemeral | journal, advancement?: continuous | checkpoint }. Journal mode fails closed unless mandatory Host capabilities exist.',
+          },
+        } : {},
       } : {},
       ...catalog.enableRunInBackground ? {
         run_in_background: {
@@ -584,7 +634,11 @@ function createToolDefinition(ctx: Context, snapshot: StrategyExecutionSnapshot)
     },
     isConcurrencySafe: () => true,
     async execute(rawArgs, exec) {
-      const args = parseToolArgs(rawArgs, catalog.enableStrategies)
+      const args = parseToolArgs(
+        rawArgs,
+        catalog.enableStrategies,
+        durable.enabled,
+      )
       const parent = exec.agent
       if (parent === undefined) {
         throw new Error('dsh-legion: tool requires a calling agent')
@@ -601,6 +655,13 @@ function createToolDefinition(ctx: Context, snapshot: StrategyExecutionSnapshot)
         if (!compiled.ok) {
           const details = compiled.diagnostics.map(item => `${item.code}: ${item.message}`).join('; ')
           throw new Error(`dsh-legion: STRATEGY_COMPILE_FAILED: ${details}`)
+        }
+        if (args.execution?.durability === 'journal') {
+          assertDurableMutationAvailable(durable.capabilities)
+          throw new Error(
+            'dsh-legion: LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE: '
+            + 'the current DSH Host exposes no unified durable Strategy activation adapter',
+          )
         }
         const outcome = await executeStrategyPlan(ctx, snapshot, compiled.plan, parent, exec.signal)
         return {
@@ -778,7 +839,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const nextSnapshot = createStrategyExecutionSnapshot(nextProfiles, nextOrchestration)
       const nextDefinition = Object.keys(nextProfiles.activeProfiles).length === 0
         ? undefined
-        : createToolDefinition(ctx, nextSnapshot)
+        : createToolDefinition(ctx, nextSnapshot, {
+            enabled: resolvedConfig.enableDurableRuns,
+            capabilities: durableCapabilities,
+          })
       if (nextDefinition === undefined) {
         activeSnapshot = nextSnapshot
         activeDefinition = undefined

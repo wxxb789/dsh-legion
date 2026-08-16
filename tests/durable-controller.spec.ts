@@ -99,6 +99,7 @@ function input(
       beta: { status: 'pending', generation: 1, attempts: 0 },
     },
     artifacts: { objective },
+    usage: { startedAgents: 0, acceptedOutputBytes: 0 },
     bounds: { maxStarts: 2, maxConcurrent: 2 },
     signal,
   }
@@ -185,7 +186,32 @@ describe('bounded static DAG activation', () => {
     await expect(runStaticDagActivation(input(graph({ maxOutputBytes: 5 })), {
       async commit() {},
       async execute(request) { return success(request, 3) },
-    })).rejects.toThrow(/output limit/)
+    })).rejects.toThrow(/output byte budget/)
+  })
+
+  it('preserves cumulative run limits and rejects stale outcomes before settlement', async () => {
+    let commits = 0
+    const exhausted = input(graph())
+    const idle = await runStaticDagActivation({
+      ...exhausted,
+      usage: { startedAgents: 4, acceptedOutputBytes: 0 },
+    }, {
+      async commit() { commits += 1 },
+      async execute(request) { return success(request) },
+    })
+    expect(idle.kind).toBe('idle')
+    expect(commits).toBe(0)
+
+    await expect(runStaticDagActivation(input(graph()), {
+      async commit(batch) {
+        commits += 1
+        if (batch[0]?.phase === 'settled') {
+          throw new Error('stale task outcome rejected atomically')
+        }
+      },
+      async execute(request) { return success(request) },
+    })).rejects.toThrow(/stale task outcome/)
+    expect(commits).toBe(2)
   })
 
   it('starts no child after cancellation wins at the prepared barrier', async () => {

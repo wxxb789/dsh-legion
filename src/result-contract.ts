@@ -72,6 +72,7 @@ export const PLAN_DELTA_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
           reason: { type: 'string', enum: ['after', 'artifact'] },
           artifact: { type: 'string' },
           taskId: { type: 'string' },
+          replacement: { type: 'string' },
           limits: { type: 'object' },
         },
         required: ['kind'],

@@ -708,7 +708,8 @@
     "kind",
     "strategy",
     "objective",
-    "limits"
+    "limits",
+    "execution"
   ],
   "strategyRequiredFields": [
     "kind",
@@ -748,7 +749,7 @@
   ],
   "sessionProjection": {
     "key": "legion-run",
-    "stateVersion": 5
+    "stateVersion": 6
   },
   "durableCapabilityKeys": [
     "sessions",
@@ -892,7 +893,7 @@
     "path": "contracts/journal-v1.json",
     "eventFamilies": 8,
     "projectionKey": "legion-run",
-    "projectionStateVersion": 5
+    "projectionStateVersion": 6
   },
   "runControlActions": [
     "inspect",

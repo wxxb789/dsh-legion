@@ -44,7 +44,8 @@ try {
   }
   if (journalContract.schemaVersion !== 'dsh-legion-journal-contract-v1'
     || journalContract.projection?.key !== 'legion-run'
-    || journalContract.projection?.stateVersion !== 5) {
+    || journalContract.projection?.stateVersion
+      !== publicContract.journalContract.projectionStateVersion) {
     throw new Error('journal release metadata is inconsistent')
   }
 } catch (error) {

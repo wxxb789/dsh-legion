@@ -1,6 +1,7 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import { deepCopy, deepFreeze } from '../internal/value.ts'
 import type {
+  ArtifactRef,
   AttemptRecord,
   ContinuationRecord,
   DecisionRecord,
@@ -10,11 +11,13 @@ import type {
   RunId,
   RunRecord,
   TaskRecord,
+  TaskId,
 } from './contract.ts'
+import { deriveReadyFrontier, type FrontierArtifact, type FrontierTaskState } from './graph.ts'
 import { isLegionEvent } from './events.ts'
 
 export const LEGION_RUN_PROJECTION_KEY = 'legion-run'
-export const LEGION_RUN_PROJECTION_STATE_VERSION = 5
+export const LEGION_RUN_PROJECTION_STATE_VERSION = 6
 
 export interface ProjectedRun {
   readonly run?: RunRecord
@@ -24,7 +27,9 @@ export interface ProjectedRun {
   readonly mail: Readonly<Record<string, MailRecord>>
   readonly continuations: Readonly<Record<string, ContinuationRecord>>
   readonly milestones: readonly MilestoneReceipt[]
+  readonly milestoneEventSeqs: readonly number[]
   readonly decisions: readonly DecisionRecord[]
+  readonly decisionEventSeqs: readonly number[]
 }
 
 export interface LegionProjectionState {
@@ -43,7 +48,9 @@ function emptyProjectedRun(): ProjectedRun {
     mail: {},
     continuations: {},
     milestones: [],
+    milestoneEventSeqs: [],
     decisions: [],
+    decisionEventSeqs: [],
   }
 }
 
@@ -83,10 +90,18 @@ export function applyLegionProjection(
       next = { ...previous, mail: { ...previous.mail, [event.data.record.message.mailId]: event.data.record } }
       break
     case 'legion/milestone':
-      next = { ...previous, milestones: [...previous.milestones, event.data.record] }
+      next = {
+        ...previous,
+        milestones: [...previous.milestones, event.data.record],
+        milestoneEventSeqs: [...previous.milestoneEventSeqs, event.seq],
+      }
       break
     case 'legion/decision':
-      next = { ...previous, decisions: [...previous.decisions, event.data.record] }
+      next = {
+        ...previous,
+        decisions: [...previous.decisions, event.data.record],
+        decisionEventSeqs: [...previous.decisionEventSeqs, event.seq],
+      }
       break
     case 'legion/continuation-state':
       next = { ...previous, continuations: { ...previous.continuations, [event.data.record.continuationId]: event.data.record } }
@@ -134,6 +149,88 @@ export interface LegionRunProjectionView {
   readonly mailCounts: Readonly<Record<MailRecord['status'], number>>
   readonly latestContextDigest?: import('./contract.ts').ContextDigest
   readonly latestSharedPrefixDigest?: import('./contract.ts').ContextDigest
+  readonly artifacts: readonly ArtifactRef[]
+  readonly readyFrontier: readonly TaskId[]
+  readonly milestoneSequence: readonly { readonly seq: number; readonly receipt: MilestoneReceipt }[]
+  readonly decisionSequence: readonly { readonly seq: number; readonly decision: DecisionRecord }[]
+  readonly failureSeqs: readonly number[]
+  readonly recoverySeqs: readonly number[]
+  readonly planChangeSeqs: readonly number[]
+  readonly metrics: {
+    readonly acceptedArtifactBytes: number
+    readonly startedAgents: number
+    readonly attemptCount: number
+    readonly terminalTaskCount: number
+  }
+}
+
+
+function derivedRunFacts(
+  projected: ProjectedRun,
+  currentPlan: PlanRecord | undefined,
+): Pick<LegionRunProjectionView,
+  'artifacts' | 'readyFrontier' | 'milestoneSequence' | 'decisionSequence'
+  | 'failureSeqs' | 'recoverySeqs' | 'planChangeSeqs' | 'metrics'> {
+  const artifacts = Object.values(projected.tasks)
+    .flatMap(task => task.acceptedArtifacts)
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
+  const graph = currentPlan?.graph
+  let readyFrontier: readonly TaskId[] = []
+  if (graph !== undefined) {
+    const taskStates: Record<string, FrontierTaskState> = {}
+    for (const [taskId, task] of Object.entries(projected.tasks)) {
+      taskStates[taskId] = {
+        status: task.status,
+        generation: task.generation,
+        attempts: Object.values(projected.attempts)
+          .filter(attempt => attempt.taskId === task.taskId).length,
+      }
+    }
+    const frontierArtifacts: Record<string, FrontierArtifact> = {
+      objective: {
+        name: 'objective', contract: 'objective-v1', collection: false,
+        value: null, bytes: 0,
+      },
+    }
+    for (const artifact of artifacts) {
+      const producer = Object.values(graph.nodes)
+        .find(node => node.output.artifact === artifact.name)
+      if (producer !== undefined) {
+        frontierArtifacts[artifact.name] = {
+          name: artifact.name,
+          contract: producer.output.contract,
+          collection: producer.output.collection,
+          value: null,
+          bytes: artifact.byteLength,
+        }
+      }
+    }
+    readyFrontier = deriveReadyFrontier(graph, taskStates, frontierArtifacts)
+  }
+  return {
+    artifacts,
+    readyFrontier,
+    milestoneSequence: projected.milestones.map((receipt, index) => ({
+      seq: projected.milestoneEventSeqs[index]!, receipt,
+    })),
+    decisionSequence: projected.decisions.map((decision, index) => ({
+      seq: projected.decisionEventSeqs[index]!, decision,
+    })),
+    failureSeqs: projected.decisions.flatMap((decision, index) =>
+      decision.kind === 'failure' ? [projected.decisionEventSeqs[index]!] : []),
+    recoverySeqs: projected.decisions.flatMap((decision, index) =>
+      decision.kind === 'recovery' ? [projected.decisionEventSeqs[index]!] : []),
+    planChangeSeqs: projected.decisions.flatMap((decision, index) =>
+      decision.kind === 'plan-change' ? [projected.decisionEventSeqs[index]!] : []),
+    metrics: {
+      acceptedArtifactBytes: artifacts.reduce((sum, artifact) => sum + artifact.byteLength, 0),
+      startedAgents: Object.values(projected.attempts).reduce((sum, attempt) =>
+        sum + (graph?.nodes[attempt.taskId]?.agentCount ?? 1), 0),
+      attemptCount: Object.keys(projected.attempts).length,
+      terminalTaskCount: Object.values(projected.tasks).filter(task =>
+        ['succeeded', 'failed', 'cancelled', 'superseded', 'blocked'].includes(task.status)).length,
+    },
+  }
 }
 
 export function viewLegionRun(
@@ -147,6 +244,17 @@ export function viewLegionRun(
       found: false,
       counts: { plans: 0, tasks: 0, attempts: 0, mail: 0, continuations: 0, milestones: 0, decisions: 0 },
       mailCounts: { queued: 0, reserved: 0, incorporated: 0, acknowledged: 0, discarded: 0 },
+      artifacts: [],
+      readyFrontier: [],
+      milestoneSequence: [],
+      decisionSequence: [],
+      failureSeqs: [],
+      recoverySeqs: [],
+      planChangeSeqs: [],
+      metrics: {
+        acceptedArtifactBytes: 0, startedAgents: 0,
+        attemptCount: 0, terminalTaskCount: 0,
+      },
     })
   }
 
@@ -176,6 +284,7 @@ export function viewLegionRun(
       decisions: projected.decisions.length,
     },
     mailCounts,
+    ...derivedRunFacts(projected, currentPlan),
     ...(latestContext === undefined ? {} : { latestContextDigest: latestContext.contextManifestDigest, latestSharedPrefixDigest: latestContext.sharedPrefixDigest }),
   })
 }
@@ -211,7 +320,9 @@ function parseProjectionState(value: unknown): LegionProjectionState {
   }
   const runs = plainRecord(state.runs, 'runs')
   const containerFields = ['plans', 'tasks', 'attempts', 'mail', 'continuations'] as const
-  const listFields = ['milestones', 'decisions'] as const
+  const listFields = [
+    'milestones', 'milestoneEventSeqs', 'decisions', 'decisionEventSeqs',
+  ] as const
   for (const [runId, candidate] of Object.entries(runs)) {
     const run = plainRecord(candidate, `run ${JSON.stringify(runId)}`)
     const allowed = new Set(['run', ...containerFields, ...listFields])
