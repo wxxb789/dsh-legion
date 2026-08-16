@@ -20,6 +20,8 @@ Catalog Layers
 
 Legion is an agent-plane Cordis plugin. It consumes DSH's existing Host-owned `ctx.subagents`, `ctx.tools`, and `ctx.systemPrompt` seams instead of replacing the agent loop, Session lifecycle, model adapters, sandbox, approval stack, or subagent registry.
 
+`dsh-legion` is not a standalone runtime: it must be loaded by a compatible DeepSeek Harness composition. Its DSH packages are intentional peer dependencies supplied by the Host, so executing a bare extracted tarball without those peers is unsupported.
+
 One model-facing tool provides a small interface:
 
 ```json
@@ -348,6 +350,7 @@ The repository's tests exercise the real DSH `ToolRuntime`, `SystemPrompt`, and 
 ## Design notes
 
 - [Implementation roadmap](https://github.com/wxxb789/dsh-legion/blob/main/docs/roadmap.md)
+- [Publication TODO](https://github.com/wxxb789/dsh-legion/blob/main/docs/TODO.md)
 - [ADR 0001: Semantic profile router](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0001-semantic-profile-router.md)
 - [ADR 0002: EffectiveProfile compiler](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0002-effective-profile-compiler.md)
 - [ADR 0003: Customization first; defaults as data](https://github.com/wxxb789/dsh-legion/blob/main/docs/adr/0003-customization-first-defaults-as-data.md)
