@@ -99,8 +99,8 @@ function setup(
   return { ctx, provider, starts, disposed }
 }
 
-function catalogs() {
-  const materialized = materializeConfig(config())
+function catalogs(authored: Config = config()) {
+  const materialized = materializeConfig(authored)
   const profiles = compileCatalog(materialized, {
     providers: {
       spawn: {
@@ -150,6 +150,52 @@ describe('bounded Strategy execution adapter', () => {
     expect(runtime.starts).toHaveLength(2)
     expect(runtime.starts[1]).toContain('execution evidence')
     expect(runtime.disposed).toHaveLength(2)
+  })
+
+  it('materializes objective-v1 when it is the declared completion artifact', async () => {
+    const runtime = setup(() => completed('supporting evidence'))
+    await runtime.ctx.plugin(SubagentRuntime)
+    runtime.ctx.subagents.registerProvider(runtime.provider)
+    const authored: Config = {
+      ...config(),
+      teams: {
+        single: {
+          description: 'Single executor.',
+          members: { executor: { profile: 'deep' } },
+          limits: { maxMembers: 1, maxConcurrentMembers: 1 },
+        },
+      },
+      strategies: {
+        'return-objective': {
+          description: 'Execute but return the objective.',
+          team: 'single',
+          stages: [{
+            kind: 'delegate', id: 'execute', member: 'executor',
+            inputs: [{ artifact: 'objective', contract: 'objective-v1' }],
+            output: { artifact: 'evidence', contract: 'text' },
+            prompt: 'Execute.',
+          }],
+          completion: { artifact: 'objective', contract: 'objective-v1' },
+          limits: { maxAgents: 1, maxConcurrent: 1, deadlineMs: 60_000, maxOutputBytes: 64_000 },
+          memberFailure: 'fail',
+        },
+      },
+    }
+    const { orchestration, snapshot } = catalogs(authored)
+    const compiled = compileStrategy(orchestration, {
+      strategy: 'return-objective', objective: 'Preserve this objective.',
+    })
+    if (!compiled.ok) throw new Error('expected strategy plan')
+    const outcome = await executeStrategyPlan(
+      runtime.ctx, snapshot, compiled.plan, parent, new AbortController().signal,
+    )
+    expect(outcome).toMatchObject({
+      kind: 'completed',
+      final: {
+        name: 'objective', contract: 'objective-v1', value: 'Preserve this objective.',
+      },
+    })
+    expect(runtime.starts).toHaveLength(1)
   })
 
   it('executes research fanout concurrently and returns an explicit degraded outcome', async () => {

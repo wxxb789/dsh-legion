@@ -413,6 +413,13 @@ export async function executeStrategyPlan(
   const failures: StrategyMemberFailure[] = []
   let outputBytes = 0
   try {
+    if (String(plan.completion.artifact) === 'objective') {
+      const objective = plan.artifacts.objective
+      if (objective === undefined || objective.contract !== 'objective-v1') {
+        throw new Error('dsh-legion: Strategy Plan objective artifact is invalid')
+      }
+      artifacts.set('objective', materializedArtifact(objective, plan.objective))
+    }
     for (const primitive of plan.primitives) {
       deadline.signal.throwIfAborted()
       const prompt = renderPrompt(primitive, plan.objective, artifacts)
