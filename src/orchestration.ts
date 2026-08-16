@@ -38,6 +38,7 @@ export type OrchestrationDiagnosticCode =
   | 'STRATEGY_ARTIFACT_FORWARD_REFERENCE'
   | 'STRATEGY_ARTIFACT_DUPLICATE'
   | 'STRATEGY_ARTIFACT_CONTRACT_MISMATCH'
+  | 'STRATEGY_OBJECTIVE_INVALID'
   | 'STRATEGY_ARTIFACT_AVAILABILITY_MISMATCH'
   | 'STRATEGY_PROFILE_RESULT_MISMATCH'
   | 'STRATEGY_CONTINUABLE_ARTIFACT_UNSUPPORTED'
@@ -786,7 +787,7 @@ export function compileStrategy(
   if (objective.length === 0 || objective.length > 100_000) {
     push(
       diagnostics,
-      'STRATEGY_ARTIFACT_CONTRACT_MISMATCH',
+      'STRATEGY_OBJECTIVE_INVALID',
       'error',
       'strategy objective must be a non-empty bounded string',
       { strategy: request.strategy },

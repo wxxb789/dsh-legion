@@ -124,7 +124,7 @@ export interface DelegationPlan {
 }
 
 export class DelegationPlanError extends Error {
-  readonly code: 'PROFILE_REQUIRED' | 'PROFILE_UNKNOWN' | 'PROFILE_INACTIVE' | 'BACKGROUND_DISABLED' | 'MODE_UNSUPPORTED' | 'STRUCTURED_BACKGROUND_UNSUPPORTED'
+  readonly code: 'REQUEST_INVALID' | 'PROFILE_REQUIRED' | 'PROFILE_UNKNOWN' | 'PROFILE_INACTIVE' | 'BACKGROUND_DISABLED' | 'MODE_UNSUPPORTED' | 'STRUCTURED_BACKGROUND_UNSUPPORTED'
 
   constructor(code: DelegationPlanError['code'], message: string) {
     super(`dsh-legion: ${message}`)
@@ -424,6 +424,17 @@ export function compileDelegationPlan(
   catalog: CompiledCatalog,
   invocation: DelegationInvocation,
 ): DelegationPlan {
+  if (typeof invocation.description !== 'string'
+    || invocation.description.trim().length === 0
+    || invocation.description.length > 100_000
+    || typeof invocation.prompt !== 'string'
+    || invocation.prompt.trim().length === 0
+    || invocation.prompt.length > 100_000) {
+    throw new DelegationPlanError(
+      'REQUEST_INVALID',
+      'description and prompt must be non-empty bounded strings',
+    )
+  }
   const selected = invocation.profile ?? catalog.defaultProfile
   if (selected === undefined) {
     throw new DelegationPlanError('PROFILE_REQUIRED', 'profile is required because no active default is configured')

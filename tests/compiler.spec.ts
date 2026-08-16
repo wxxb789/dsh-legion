@@ -203,6 +203,18 @@ describe('compileCatalog', () => {
     ])
   })
 
+  it('rejects invalid delegation text at the public compiler seam', () => {
+    const catalog = compileCatalog(base, spawn)
+    expect(() => compileDelegationPlan(catalog, {
+      description: '   ',
+      prompt: 'Work.',
+    })).toThrow(/non-empty bounded strings/)
+    expect(() => compileDelegationPlan(catalog, {
+      description: 'Work.',
+      prompt: 'x'.repeat(100_001),
+    })).toThrow(/non-empty bounded strings/)
+  })
+
   it('compiles one invocation to detached plan data and a structured schema', () => {
     const catalog = compileCatalog(base, spawn)
     const plan = compileDelegationPlan(catalog, {

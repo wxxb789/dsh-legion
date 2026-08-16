@@ -151,6 +151,13 @@ describe('Team and Strategy compiler', () => {
     })).toEqual(first)
     expect(compileStrategy(orchestration, {
       strategy: 'independent-review',
+      objective: '   ',
+    })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'STRATEGY_OBJECTIVE_INVALID' }],
+    })
+    expect(compileStrategy(orchestration, {
+      strategy: 'independent-review',
       objective: 'Work.',
       limits: { hiddenBudget: 1 },
     })).toMatchObject({
