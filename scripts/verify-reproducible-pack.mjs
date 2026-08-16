@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -17,8 +17,7 @@ const outputArgument = arguments_.find(argument => !argument.startsWith('--sourc
 const outputDirectory = outputArgument === undefined ? undefined : resolve(outputArgument)
 const canonicalTempRoot = trustedTempRoot()
 const sandbox = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-reproducible-pack-'))
-const canonicalSandboxRoot = await realpath(sandbox)
-const relativeSandbox = relative(canonicalTempRoot, canonicalSandboxRoot)
+const relativeSandbox = relative(canonicalTempRoot, resolve(sandbox))
 if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
   throw new Error(`refusing to use unexpected temporary path: ${sandbox}`)
 }

@@ -32,6 +32,7 @@
     "scripts/verify-reproducible-pack.mjs",
     "scripts/verify-supplied-packed-delegation.mjs",
     "scripts/trusted-temp-root.mjs",
+    "scripts/trusted-temp-root.d.mts",
     "README.md",
     "CHANGELOG.md",
     "SECURITY.md",

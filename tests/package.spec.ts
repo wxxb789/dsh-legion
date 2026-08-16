@@ -65,6 +65,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/verify-reproducible-pack.mjs')),
       access(resolve(ROOT, 'scripts/verify-supplied-packed-delegation.mjs')),
       access(resolve(ROOT, 'scripts/trusted-temp-root.mjs')),
+      access(resolve(ROOT, 'scripts/trusted-temp-root.d.mts')),
       access(resolve(ROOT, 'contracts/v1.json')),
       access(resolve(ROOT, 'contracts/compatibility.json')),
     ])
