@@ -4,6 +4,7 @@ import type {
   ArtifactContract,
   StrategyLimits,
   StrategySpec,
+  StairStepPolicySpec,
   StrategyStageSpec,
   TeamSpec,
 } from './orchestration-contract.ts'
@@ -36,6 +37,9 @@ export type OrchestrationDiagnosticCode =
   | 'STRATEGY_STAGE_DEPENDENCY_UNKNOWN'
   | 'STRATEGY_STAGE_DEPENDENCY_SELF'
   | 'STRATEGY_STAGE_DEPENDENCY_CYCLE'
+  | 'STRATEGY_ADVANCEMENT_MEMBER_UNKNOWN'
+  | 'STRATEGY_ADVANCEMENT_LIMIT_INVALID'
+  | 'STRATEGY_ADVANCEMENT_PAUSE_DUPLICATE'
   | 'STRATEGY_MEMBER_UNKNOWN'
   | 'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED'
   | 'STRATEGY_ARTIFACT_UNKNOWN'
@@ -128,6 +132,7 @@ export interface CompiledStrategyTemplate {
     readonly artifact: ArtifactNameType
     readonly contract: ArtifactContract
   }
+  readonly advancement?: Readonly<Required<StairStepPolicySpec>>
   readonly limits: Readonly<StrategyLimits>
   readonly memberFailure: 'fail' | 'allow-partial'
   readonly active: boolean
@@ -183,6 +188,7 @@ export interface CompiledStrategyPlan {
   readonly primitives: readonly DshPrimitive[]
   readonly artifacts: Readonly<Record<string, CompiledArtifact>>
   readonly completion: CompiledStrategyTemplate['completion']
+  readonly advancement?: CompiledStrategyTemplate['advancement']
   readonly limits: Readonly<StrategyLimits>
   readonly memberFailure: 'fail' | 'allow-partial'
 }
@@ -366,6 +372,44 @@ function compileStrategyTemplate(
       { strategy: name },
     )
     return undefined
+  }
+  if (spec.advancement !== undefined) {
+    if (team.members[spec.advancement.plannerMember] === undefined) {
+      push(
+        diagnostics,
+        'STRATEGY_ADVANCEMENT_MEMBER_UNKNOWN',
+        'error',
+        `strategy "${name}" advancement references unavailable planner member "${spec.advancement.plannerMember}"`,
+        { strategy: name },
+      )
+    }
+    if (team.members[spec.advancement.verifierMember] === undefined) {
+      push(
+        diagnostics,
+        'STRATEGY_ADVANCEMENT_MEMBER_UNKNOWN',
+        'error',
+        `strategy "${name}" advancement references unavailable verifier member "${spec.advancement.verifierMember}"`,
+        { strategy: name },
+      )
+    }
+    if (spec.advancement.maxNoProgressMilestones! > spec.advancement.maxMilestones!) {
+      push(
+        diagnostics,
+        'STRATEGY_ADVANCEMENT_LIMIT_INVALID',
+        'error',
+        `strategy "${name}" maxNoProgressMilestones exceeds maxMilestones`,
+        { strategy: name },
+      )
+    }
+    if (new Set(spec.advancement.pauseOn).size !== spec.advancement.pauseOn!.length) {
+      push(
+        diagnostics,
+        'STRATEGY_ADVANCEMENT_PAUSE_DUPLICATE',
+        'error',
+        `strategy "${name}" advancement pauseOn contains duplicate reasons`,
+        { strategy: name },
+      )
+    }
   }
   if (hasStrategyDependencyCycle(spec)) {
     push(
@@ -668,6 +712,7 @@ function compileStrategyTemplate(
     primitives,
     artifacts,
     completion: { artifact: completion.name, contract: completion.contract },
+    ...spec.advancement === undefined ? {} : { advancement: spec.advancement as Required<StairStepPolicySpec> },
     limits: effectiveLimits,
     memberFailure: spec.memberFailure,
     active: primitives.every(primitive => team.members[primitive.member]?.active === true),
@@ -786,6 +831,7 @@ export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
     primitives: plan.primitives,
     artifacts: plan.artifacts,
     completion: plan.completion,
+    ...plan.advancement === undefined ? {} : { advancement: plan.advancement },
     limits: plan.limits,
     memberFailure: plan.memberFailure,
   }
@@ -895,6 +941,7 @@ export function compileStrategy(
     primitives: strategy.primitives,
     artifacts: strategy.artifacts,
     completion: strategy.completion,
+    ...strategy.advancement === undefined ? {} : { advancement: strategy.advancement },
     limits,
     memberFailure: strategy.memberFailure,
   }
@@ -909,6 +956,7 @@ export function compileStrategy(
     primitives: strategy.primitives,
     artifacts: strategy.artifacts,
     completion: strategy.completion,
+    ...strategy.advancement === undefined ? {} : { advancement: strategy.advancement },
     limits,
     memberFailure: strategy.memberFailure,
   } as unknown as CompiledStrategyPlan

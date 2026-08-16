@@ -97,6 +97,78 @@ describe('Team and Strategy compiler', () => {
     expect(Object.isFrozen(orchestration)).toBe(true)
   })
 
+  it('materializes, compiles, and validates the public stair-step advancement policy', () => {
+    const base = DEFAULT_CATALOG_LAYER.strategies?.['independent-review']
+    if (base === undefined) throw new Error('missing default Strategy')
+    const authored = {
+      ...config,
+      catalogLayers: [],
+      teams: DEFAULT_CATALOG_LAYER.teams,
+      strategies: {
+        incremental: {
+          ...base,
+          team: 'independent-review',
+          advancement: {
+            kind: 'stair-step' as const,
+            plannerMember: 'executor',
+            verifierMember: 'reviewer',
+          },
+        },
+      },
+    }
+    const materialized = materializeConfig(authored)
+    expect(materialized.strategies.incremental?.advancement).toEqual({
+      kind: 'stair-step',
+      plannerMember: 'executor',
+      verifierMember: 'reviewer',
+      advancement: 'checkpoint',
+      maxMilestones: 12,
+      maxNoProgressMilestones: 2,
+      requireVisibleArtifact: true,
+      pauseOn: [
+        'authority-expansion',
+        'irreversible-effect',
+        'high-cost-ambiguity',
+        'verification-failure',
+        'no-progress',
+      ],
+    })
+    const orchestration = compileOrchestrationCatalog(compileCatalog(materialized, runtime))
+    expect(orchestration.strategies.incremental?.advancement).toEqual(
+      materialized.strategies.incremental?.advancement,
+    )
+    const result = compileStrategy(orchestration, { strategy: 'incremental', objective: 'Work.' })
+    expect(result).toMatchObject({ ok: true, plan: { advancement: { kind: 'stair-step' } } })
+    expect(Object.isFrozen(orchestration.strategies.incremental?.advancement)).toBe(true)
+  })
+
+  it('rejects invalid stair-step advancement policy fields and compiler relationships', () => {
+    const base = DEFAULT_CATALOG_LAYER.strategies?.['independent-review']
+    if (base === undefined) throw new Error('missing default Strategy')
+    expect(() => materializeConfig({
+      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.teams,
+      strategies: { broken: { ...base, advancement: {
+        kind: 'stair-step', plannerMember: 'executor', verifierMember: 'reviewer', hidden: true,
+      } } },
+    })).toThrow(/unknown field.*hidden/)
+
+    const materialized = materializeConfig({
+      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.teams,
+      strategies: { broken: { ...base, advancement: {
+        kind: 'stair-step', plannerMember: 'missing', verifierMember: 'reviewer',
+        maxMilestones: 1, maxNoProgressMilestones: 2,
+        pauseOn: ['no-progress', 'no-progress'],
+      } } },
+    })
+    const orchestration = compileOrchestrationCatalog(compileCatalog(materialized, runtime))
+    expect(orchestration.strategies.broken).toBeUndefined()
+    expect(orchestration.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'STRATEGY_ADVANCEMENT_MEMBER_UNKNOWN' }),
+      expect.objectContaining({ code: 'STRATEGY_ADVANCEMENT_LIMIT_INVALID' }),
+      expect.objectContaining({ code: 'STRATEGY_ADVANCEMENT_PAUSE_DUPLICATE' }),
+    ]))
+  })
+
   it('recreates every default entirely through ordinary public deployment data', () => {
     const layered = compiled().orchestration
     const recreatedConfig = materializeConfig({

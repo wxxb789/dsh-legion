@@ -1,6 +1,6 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import { deepCopy, deepFreeze } from '../internal/value.ts'
-import { RunId, type AttemptRecord, type TaskRecord } from './contract.ts'
+import { RunId, type AttemptRecord, type MilestoneReceipt, type TaskRecord } from './contract.ts'
 import {
   LEGION_RUN_PROJECTION_STATE_VERSION,
   foldLegionProjection,
@@ -44,6 +44,11 @@ export interface InspectFilter {
 export interface LegionRunExplainView extends LegionRunProjectionView {
   readonly tasks: readonly TaskRecord[]
   readonly attempts: readonly AttemptRecord[]
+  readonly milestones: readonly MilestoneReceipt[]
+  readonly currentStep?: number
+  readonly retiredRisks: readonly string[]
+  readonly nextDecision?: MilestoneReceipt['nextDecision']
+  readonly decisionSummary?: string
   readonly truncated: boolean
 }
 
@@ -65,12 +70,22 @@ export function explainLegionRun(
   const allAttempts = Object.values(projected?.attempts ?? {})
     .filter(attempt => filter.attemptId === undefined || attempt.attemptId === filter.attemptId)
     .sort((left, right) => compareIdentity(left.attemptId, right.attemptId))
+  const allMilestones = projected?.milestones ?? []
+  const milestones = allMilestones.slice(-limit)
+  const latestMilestone = allMilestones.at(-1)
 
   return deepFreeze({
     ...deepCopy(summary),
     tasks: allTasks.slice(0, limit).map(deepCopy),
     attempts: allAttempts.slice(0, limit).map(deepCopy),
-    truncated: allTasks.length > limit || allAttempts.length > limit,
+    milestones: milestones.map(deepCopy),
+    ...(latestMilestone === undefined ? {} : {
+      currentStep: latestMilestone.step,
+      nextDecision: latestMilestone.nextDecision,
+      decisionSummary: latestMilestone.decisionSummary,
+    }),
+    retiredRisks: [...new Set(allMilestones.flatMap(item => item.retiredRisks))],
+    truncated: allTasks.length > limit || allAttempts.length > limit || allMilestones.length > limit,
   })
 }
 

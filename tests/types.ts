@@ -23,6 +23,7 @@ import {
   type ResourceDigest,
   type RoutePlan,
   type RoutePlanDigest,
+  type StairStepPolicySpec,
   type StrategyName as StrategyNameType,
   type TeamName as TeamNameType,
   type TeamRunId as TeamRunIdType,
@@ -155,6 +156,15 @@ const invalidReasoningConfig: LegionConfig = {
   },
 }
 void invalidReasoningConfig
+
+const stairStepPolicy: StairStepPolicySpec = {
+  kind: 'stair-step',
+  plannerMember: 'executor',
+  verifierMember: 'reviewer',
+  advancement: 'continuous',
+  pauseOn: ['verification-failure', 'no-progress'],
+}
+void stairStepPolicy
 
 const typedStrategy = defineStrategy({
   description: 'Typed pipeline.',

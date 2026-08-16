@@ -150,6 +150,22 @@ export const DEFAULT_CATALOG_LAYER = {
           prompt: 'Perform one bounded repair from the review, or preserve the evidence when no repair is required.',
         },
       ],
+      advancement: {
+        kind: 'stair-step',
+        plannerMember: 'planner',
+        verifierMember: 'reviewer',
+        advancement: 'checkpoint',
+        maxMilestones: 12,
+        maxNoProgressMilestones: 2,
+        requireVisibleArtifact: true,
+        pauseOn: [
+          'authority-expansion',
+          'irreversible-effect',
+          'high-cost-ambiguity',
+          'verification-failure',
+          'no-progress',
+        ],
+      },
       completion: { artifact: 'final', contract: 'text' },
       limits: {
         maxAgents: 4,

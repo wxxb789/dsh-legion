@@ -5,7 +5,7 @@ import type {
   ContinuationRecord,
   DecisionRecord,
   MailRecord,
-  MilestoneRecord,
+  MilestoneReceipt,
   PlanRecord,
   RunId,
   RunRecord,
@@ -14,7 +14,7 @@ import type {
 import { isLegionEvent } from './events.ts'
 
 export const LEGION_RUN_PROJECTION_KEY = 'legion-run'
-export const LEGION_RUN_PROJECTION_STATE_VERSION = 3
+export const LEGION_RUN_PROJECTION_STATE_VERSION = 4
 
 export interface ProjectedRun {
   readonly run?: RunRecord
@@ -23,7 +23,7 @@ export interface ProjectedRun {
   readonly attempts: Readonly<Record<string, AttemptRecord>>
   readonly mail: Readonly<Record<string, MailRecord>>
   readonly continuations: Readonly<Record<string, ContinuationRecord>>
-  readonly milestones: readonly MilestoneRecord[]
+  readonly milestones: readonly MilestoneReceipt[]
   readonly decisions: readonly DecisionRecord[]
 }
 

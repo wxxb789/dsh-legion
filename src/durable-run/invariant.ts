@@ -1,5 +1,5 @@
 import type { SessionEventMap } from '@deepseek-ai/dsh-session/types'
-import type { AttemptRecord, ContinuationRecord, MailRecord, PlanVersion, RunRecord, TaskRecord } from './contract.ts'
+import type { AttemptRecord, ContinuationRecord, MailRecord, MilestoneReceipt, PlanVersion, RunRecord, TaskRecord } from './contract.ts'
 import type { LegionEventType } from './events.ts'
 
 export interface LegionInvariantRun {
@@ -9,6 +9,7 @@ export interface LegionInvariantRun {
   readonly attempts: Readonly<Record<string, AttemptRecord>>
   readonly mail?: Readonly<Record<string, MailRecord>>
   readonly continuations?: Readonly<Record<string, ContinuationRecord>>
+  readonly milestones?: readonly MilestoneReceipt[]
 }
 
 export interface LegionInvariantState {
@@ -117,7 +118,23 @@ export function assertLegionTransition<Type extends LegionEventType>(
     return
   }
 
-  if (type === 'legion/milestone' || type === 'legion/decision') return
+  if (type === 'legion/milestone') {
+    const receipt = (data as SessionEventMap['legion/milestone']).record
+    const previous = current.milestones?.at(-1)
+    if (previous !== undefined && receipt.step !== previous.step + 1) {
+      throw new Error('dsh-legion: milestone step must advance contiguously')
+    }
+    if (previous === undefined && receipt.step !== 1) {
+      throw new Error('dsh-legion: first milestone step must be 1')
+    }
+    if (current.milestones?.some(item => item.milestoneId === receipt.milestoneId
+      || item.receiptDigest === receipt.receiptDigest)) {
+      throw new Error('dsh-legion: milestone receipt cannot be duplicated')
+    }
+    return
+  }
+
+  if (type === 'legion/decision') return
 
   const record = (data as SessionEventMap['legion/attempt-state']).record
   const task = current.tasks[record.taskId]

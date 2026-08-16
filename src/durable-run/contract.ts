@@ -388,12 +388,48 @@ export type MailRecord =
   | AcknowledgedMailRecord
   | DiscardedMailRecord
 
-export interface MilestoneRecord {
+export interface AcceptanceCriterion { readonly criterion: string }
+export interface MilestoneBudget { readonly maxTasks: number; readonly maxAttempts: number }
+export interface MilestoneSpec {
+  readonly index: number
+  readonly outcomeDelta: string
+  readonly deliverable: string
+  readonly acceptance: readonly AcceptanceCriterion[]
+  readonly risksToRetire: readonly string[]
+  readonly taskIds: readonly TaskId[]
+  readonly budget: MilestoneBudget
+  readonly interaction: 'auto' | 'checkpoint'
+}
+export type ProgressEvidence =
+  | { readonly kind: 'accepted-artifact'; readonly digest: ArtifactDigest }
+  | { readonly kind: 'criterion-satisfied'; readonly criterion: string; readonly evidence: readonly ArtifactDigest[] }
+  | { readonly kind: 'risk-retired'; readonly risk: string; readonly evidence: readonly ArtifactDigest[] }
+  | { readonly kind: 'uncertainty-reduced'; readonly uncertainty: string; readonly evidence: readonly ArtifactDigest[] }
+  | { readonly kind: 'blocked-path-rejected'; readonly path: string; readonly evidence: readonly ArtifactDigest[] }
+export interface MilestoneVerification {
+  readonly criterion: string
+  readonly accepted: boolean
+  readonly evidence: readonly ArtifactDigest[]
+}
+export interface MilestoneReceipt {
   readonly schemaVersion: 1
   readonly milestoneId: string
+  readonly step: number
   readonly title: string
   readonly summary: string
+  readonly spec: MilestoneSpec
+  readonly artifacts: readonly ArtifactRef[]
+  readonly verification: readonly MilestoneVerification[]
+  readonly retiredRisks: readonly string[]
+  readonly openRisks: readonly string[]
+  readonly observedDelta: string
+  readonly progress: readonly ProgressEvidence[]
+  readonly progressDigest: ArtifactDigest
+  readonly nextDecision: 'advance' | 'revise' | 'pause' | 'complete'
+  readonly decisionSummary: string
   readonly acceptedAt: number
+  readonly noProgressMilestones: number
+  readonly receiptDigest: ArtifactDigest
 }
 
 export interface DecisionRecord {

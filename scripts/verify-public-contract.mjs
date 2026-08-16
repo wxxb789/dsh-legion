@@ -82,6 +82,18 @@ const checks = [
   ['authorityProfileFields', contract.authorityProfileFields, [
     'members', 'tools', 'providers', 'models', 'routes', 'effectClasses',
   ]],
+  ['stairStepPolicyFields', contract.stairStepPolicyFields, [
+    'kind', 'plannerMember', 'verifierMember', 'advancement', 'maxMilestones',
+    'maxNoProgressMilestones', 'requireVisibleArtifact', 'pauseOn',
+  ]],
+  ['stairStepPauseReasons', contract.stairStepPauseReasons, legion.STAIR_STEP_PAUSE_REASONS],
+  ['milestoneProgressKinds', contract.milestoneProgressKinds, [
+    'accepted-artifact', 'criterion-satisfied', 'risk-retired',
+    'uncertainty-reduced', 'blocked-path-rejected',
+  ]],
+  ['milestoneNextDecisions', contract.milestoneNextDecisions, [
+    'advance', 'revise', 'pause', 'complete',
+  ]],
   ['resultContracts', contract.resultContracts, legion.RESULT_CONTRACTS],
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],

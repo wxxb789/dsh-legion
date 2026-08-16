@@ -594,9 +594,52 @@ export function validateLegionEventData<Type extends LegionEventType>(
       break
     }
     case 'legion/milestone': {
-      const value = record(source.record, 'milestone record')
-      assertKeys(value, ['schemaVersion', 'milestoneId', 'title', 'summary', 'acceptedAt'], 'milestone record')
-      data = { ...header, record: { schemaVersion: 1, milestoneId: text(value.milestoneId, 'milestoneId'), title: text(value.title, 'title'), summary: text(value.summary, 'summary'), acceptedAt: natural(value.acceptedAt, 'acceptedAt') } }
+      const value = record(source.record, 'milestone receipt')
+      assertKeys(value, [
+        'schemaVersion', 'milestoneId', 'step', 'title', 'summary', 'spec', 'artifacts',
+        'verification', 'retiredRisks', 'openRisks', 'observedDelta', 'progress',
+        'progressDigest', 'nextDecision', 'decisionSummary', 'acceptedAt',
+        'noProgressMilestones', 'receiptDigest',
+      ], 'milestone receipt')
+      if (value.schemaVersion !== 1) throw new Error('dsh-legion: invalid milestone receipt schemaVersion')
+      if (!Array.isArray(value.artifacts) || value.artifacts.length < 1 || value.artifacts.length > 16
+        || !Array.isArray(value.verification) || value.verification.length < 1 || value.verification.length > 16
+        || !Array.isArray(value.progress) || value.progress.length > 32) {
+        throw new Error('dsh-legion: milestone receipt collections exceed bounded limits')
+      }
+      const retiredRisks = stringList(value.retiredRisks, 'milestone retiredRisks')
+      const openRisks = stringList(value.openRisks, 'milestone openRisks')
+      if (retiredRisks.length > 32 || openRisks.length > 32) throw new Error('dsh-legion: milestone risk lists exceed bounded limit')
+      const spec = record(value.spec, 'milestone spec')
+      assertKeys(spec, ['index', 'outcomeDelta', 'deliverable', 'acceptance', 'risksToRetire', 'taskIds', 'budget', 'interaction'], 'milestone spec')
+      if (!Array.isArray(spec.acceptance) || !Array.isArray(spec.risksToRetire) || !Array.isArray(spec.taskIds)) throw new Error('dsh-legion: invalid milestone spec collections')
+      const budget = record(spec.budget, 'milestone budget')
+      assertKeys(budget, ['maxTasks', 'maxAttempts'], 'milestone budget')
+      const milestoneSpec = {
+        index: natural(spec.index, 'milestone spec index'),
+        outcomeDelta: text(spec.outcomeDelta, 'milestone outcomeDelta'), deliverable: text(spec.deliverable, 'milestone deliverable'),
+        acceptance: spec.acceptance.map((item, index) => { const entry = record(item, 'milestone acceptance'); assertKeys(entry, ['criterion'], 'milestone acceptance'); return { criterion: text(entry.criterion, 'milestone criterion ' + index) } }),
+        risksToRetire: stringList(spec.risksToRetire, 'milestone risksToRetire'), taskIds: spec.taskIds.map(TaskId),
+        budget: { maxTasks: natural(budget.maxTasks, 'milestone maxTasks'), maxAttempts: natural(budget.maxAttempts, 'milestone maxAttempts') },
+        interaction: choice(spec.interaction, ['auto', 'checkpoint'] as const, 'milestone interaction'),
+      }
+      const verification = value.verification.map(item => { const entry = record(item, 'milestone verification'); assertKeys(entry, ['criterion', 'accepted', 'evidence'], 'milestone verification'); if (typeof entry.accepted !== 'boolean' || !Array.isArray(entry.evidence)) throw new Error('dsh-legion: invalid milestone verification'); return { criterion: text(entry.criterion, 'milestone verification criterion'), accepted: entry.accepted, evidence: entry.evidence.map(ArtifactDigest) } })
+      data = { ...header, record: {
+        schemaVersion: 1, milestoneId: text(value.milestoneId, 'milestoneId'), step: natural(value.step, 'milestone step'), title: text(value.title, 'title'), summary: text(value.summary, 'summary'),
+        spec: milestoneSpec, artifacts: value.artifacts.map(parseArtifact), verification, retiredRisks, openRisks,
+        observedDelta: text(value.observedDelta, 'milestone observedDelta'), progress: value.progress.map(item => {
+          const entry = record(item, 'milestone progress')
+          const kind = choice(entry.kind, ['accepted-artifact', 'criterion-satisfied', 'risk-retired', 'uncertainty-reduced', 'blocked-path-rejected'] as const, 'milestone progress kind')
+          if (kind === 'accepted-artifact') { assertKeys(entry, ['kind', 'digest'], 'milestone progress'); return { kind, digest: ArtifactDigest(entry.digest) } }
+          assertKeys(entry, ['kind', kind === 'criterion-satisfied' ? 'criterion' : kind === 'risk-retired' ? 'risk' : kind === 'uncertainty-reduced' ? 'uncertainty' : 'path', 'evidence'], 'milestone progress')
+          if (!Array.isArray(entry.evidence)) throw new Error('dsh-legion: invalid milestone progress evidence')
+          const evidence = entry.evidence.map(ArtifactDigest)
+          return kind === 'criterion-satisfied' ? { kind, criterion: text(entry.criterion, 'criterion'), evidence } : kind === 'risk-retired' ? { kind, risk: text(entry.risk, 'risk'), evidence } : kind === 'uncertainty-reduced' ? { kind, uncertainty: text(entry.uncertainty, 'uncertainty'), evidence } : { kind, path: text(entry.path, 'path'), evidence }
+        }),
+        progressDigest: ArtifactDigest(value.progressDigest), nextDecision: choice(value.nextDecision, ['advance', 'revise', 'pause', 'complete'] as const, 'milestone nextDecision'),
+        decisionSummary: text(value.decisionSummary, 'milestone decisionSummary'), acceptedAt: natural(value.acceptedAt, 'acceptedAt'),
+        noProgressMilestones: natural(value.noProgressMilestones, 'milestone noProgressMilestones'), receiptDigest: ArtifactDigest(value.receiptDigest),
+      } }
       break
     }
     case 'legion/decision': {

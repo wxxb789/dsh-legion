@@ -51,6 +51,33 @@ describe('durable replay', () => {
     expect(Object.isFrozen(view)).toBe(true)
     expect(view.run).not.toBe(state.runs[runId]?.run)
   })
+  it('rejects unbounded or incomplete milestone receipts', () => {
+    const common = {
+      schemaVersion: 1,
+      runId,
+      planVersion,
+      correlationId: 'milestone-validation',
+    }
+    const receipt = {
+      schemaVersion: 1,
+      milestoneId: 'milestone-one',
+      step: 1,
+      title: 'First',
+      summary: 'Visible progress.',
+      spec: { index: 1, outcomeDelta: 'Replay works.', deliverable: 'artifact.txt', acceptance: [{ criterion: 'Replay passes' }], risksToRetire: ['Replay mismatch'], taskIds: [taskRecord.taskId], budget: { maxTasks: 1, maxAttempts: 1 }, interaction: 'auto' },
+      artifacts: [{ name: 'artifact.txt', digest: artifactDigest, mediaType: 'text/plain', byteLength: 10 }],
+      verification: [{ criterion: 'Replay passes', accepted: true, evidence: [artifactDigest] }],
+      retiredRisks: ['Replay mismatch'], openRisks: [], observedDelta: 'Replay works.', progress: [], progressDigest: artifactDigest,
+      nextDecision: 'advance', decisionSummary: 'Proceed.', acceptedAt: 6, noProgressMilestones: 0, receiptDigest: artifactDigest,
+    }
+    const event = (record: unknown) => JSON.stringify({
+      type: 'legion/milestone', seq: 0, time: 6, data: { ...common, record },
+    })
+    expect(() => parseExportedSessionEvents(event({ ...receipt, verification: [] }))).toThrow(/bounded limits/)
+    expect(() => parseExportedSessionEvents(event({ ...receipt, retiredRisks: Array(33).fill('risk') }))).toThrow(/bounded limit/)
+    expect(() => parseExportedSessionEvents(event({ ...receipt, nextDecision: 'wander' }))).toThrow(/nextDecision/)
+  })
+
   it('validates and projects the complete eight-event vocabulary', () => {
     const digest = `sha256:${'b'.repeat(64)}`
     const common = {
@@ -146,9 +173,14 @@ describe('durable replay', () => {
           record: {
             schemaVersion: 1,
             milestoneId: 'milestone-one',
+            step: 1,
             title: 'First',
             summary: 'Visible progress.',
-            acceptedAt: 6,
+            spec: { index: 1, outcomeDelta: 'Replay works.', deliverable: 'artifact.txt', acceptance: [{ criterion: 'Replay passes' }], risksToRetire: ['Replay mismatch'], taskIds: [taskRecord.taskId], budget: { maxTasks: 1, maxAttempts: 1 }, interaction: 'auto' },
+            artifacts: [{ name: 'artifact.txt', digest: artifactDigest, mediaType: 'text/plain', byteLength: 10 }],
+            verification: [{ criterion: 'Replay passes', accepted: true, evidence: [artifactDigest] }],
+            retiredRisks: ['Replay mismatch'], openRisks: ['Host integration'], observedDelta: 'Replay works.', progress: [], progressDigest: artifactDigest,
+            nextDecision: 'advance', decisionSummary: 'Proceed to the next bounded step.', acceptedAt: 6, noProgressMilestones: 0, receiptDigest: artifactDigest,
           },
         },
       },
@@ -182,12 +214,18 @@ describe('durable replay', () => {
       records.map(value => JSON.stringify(value)).join('\n'),
     )
     const state = foldLegionProjection(events)
+    expect(explainLegionRun(state, runId)).toMatchObject({
+      currentStep: 1,
+      retiredRisks: ['Replay mismatch'],
+      nextDecision: 'advance',
+      decisionSummary: 'Proceed to the next bounded step.',
+    })
     expect(state.runs[runId]).toMatchObject({
       plans: { 1: { nodeCount: 1 } },
       tasks: { 'task-one': { status: 'pending' } },
       attempts: { 'attempt-one': { status: 'prepared' } },
       mail: { 'mail-one': { status: 'queued' } },
-      milestones: [{ milestoneId: 'milestone-one' }],
+      milestones: [{ milestoneId: 'milestone-one', step: 1 }],
       decisions: [{ decisionId: 'decision-one' }],
       continuations: { 'continuation-one': { status: 'available' } },
     })

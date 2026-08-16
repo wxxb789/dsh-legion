@@ -6,7 +6,7 @@ import type {
   DecisionRecord,
   Fence,
   MailRecord,
-  MilestoneRecord,
+  MilestoneReceipt,
   PlanRecord,
   PlanVersion,
   RunId,
@@ -48,7 +48,7 @@ export interface LegionMailStateEvent extends LegionEventHeader {
 }
 
 export interface LegionMilestoneEvent extends LegionEventHeader {
-  readonly record: MilestoneRecord
+  readonly record: MilestoneReceipt
 }
 
 export interface LegionDecisionEvent extends LegionEventHeader {

@@ -82,10 +82,31 @@ export interface StrategyLimits {
   readonly maxOutputBytes: number
 }
 
+export const STAIR_STEP_PAUSE_REASONS = Object.freeze([
+  'authority-expansion',
+  'irreversible-effect',
+  'high-cost-ambiguity',
+  'verification-failure',
+  'no-progress',
+] as const)
+export type StairStepPauseReason = (typeof STAIR_STEP_PAUSE_REASONS)[number]
+
+export interface StairStepPolicySpec {
+  readonly kind: 'stair-step'
+  readonly plannerMember: string
+  readonly verifierMember: string
+  readonly advancement?: 'continuous' | 'checkpoint'
+  readonly maxMilestones?: number
+  readonly maxNoProgressMilestones?: number
+  readonly requireVisibleArtifact?: boolean
+  readonly pauseOn?: readonly StairStepPauseReason[]
+}
+
 export interface StrategySpec {
   readonly description: string
   readonly team: string
   readonly stages: readonly StrategyStageSpec[]
+  readonly advancement?: StairStepPolicySpec
   readonly completion: {
     readonly artifact: string
     readonly contract: ArtifactContract
@@ -179,10 +200,28 @@ const StrategyLimitsSchema: z<StrategyLimits> = z.object({
   maxOutputBytes: z.number().step(1).min(1).max(16 * 1024 * 1024).required(),
 })
 
+export const StairStepPolicySpecSchema = z.object({
+  kind: z.const('stair-step' as const).required(),
+  plannerMember: z.string().pattern(ORCHESTRATION_NAME).required(),
+  verifierMember: z.string().pattern(ORCHESTRATION_NAME).required(),
+  advancement: z.union(['continuous', 'checkpoint'] as const).default('checkpoint'),
+  maxMilestones: z.number().step(1).min(1).max(256).default(12),
+  maxNoProgressMilestones: z.number().step(1).min(1).max(256).default(2),
+  requireVisibleArtifact: z.boolean().default(true),
+  pauseOn: z.array(z.union(STAIR_STEP_PAUSE_REASONS)).max(STAIR_STEP_PAUSE_REASONS.length).default([
+    'authority-expansion',
+    'irreversible-effect',
+    'high-cost-ambiguity',
+    'verification-failure',
+    'no-progress',
+  ]),
+}) as unknown as z<StairStepPolicySpec>
+
 export const StrategySpecSchema = z.object({
   description: z.string().min(1).required(),
   team: z.string().pattern(ORCHESTRATION_NAME).required(),
   stages: z.array(StrategyStageSchema).min(1).max(32).required(),
+  advancement: z.union([StairStepPolicySpecSchema]),
   completion: z.object({
     artifact: z.string().pattern(ORCHESTRATION_NAME).required(),
     contract: z.union(ARTIFACT_CONTRACTS).required(),
@@ -255,10 +294,18 @@ export function assertKnownOrchestrationKeys(
     for (const [name, strategy] of Object.entries(strategyMap)) {
       assertKnownKeys(
         strategy,
-        ['description', 'team', 'stages', 'completion', 'limits', 'memberFailure'],
+        ['description', 'team', 'stages', 'advancement', 'completion', 'limits', 'memberFailure'],
         `${at}.strategies.${name}`,
       )
       const source = record(strategy)
+      assertKnownKeys(
+        source?.advancement,
+        [
+          'kind', 'plannerMember', 'verifierMember', 'advancement', 'maxMilestones',
+          'maxNoProgressMilestones', 'requireVisibleArtifact', 'pauseOn',
+        ],
+        `${at}.strategies.${name}.advancement`,
+      )
       assertKnownKeys(source?.completion, ['artifact', 'contract'], `${at}.strategies.${name}.completion`)
       assertKnownKeys(
         source?.limits,

@@ -155,8 +155,10 @@ export type {
 export {
   ARTIFACT_CONTRACTS,
   ORCHESTRATION_NAME,
+  STAIR_STEP_PAUSE_REASONS,
   STRATEGY_LIMIT_FIELDS,
   STRATEGY_STAGE_KINDS,
+  StairStepPolicySpecSchema,
   StrategySpecSchema,
   TeamSpecSchema,
   defineStrategy,
@@ -173,6 +175,8 @@ export type {
   DelegateStageSpec,
   FanoutStageSpec,
   MemberSlotSpec,
+  StairStepPauseReason,
+  StairStepPolicySpec,
   StrategyLimits,
   StrategySpec,
   StrategyStageSpec,
@@ -222,6 +226,7 @@ export * from './durable-run/context.ts'
 export * from './durable-run/mailbox.ts'
 export * from './durable-run/plan-delta.ts'
 export * from './durable-run/continuation.ts'
+export * from './durable-run/stair-step.ts'
 export * from './durable-run/events.ts'
 export * from './durable-run/invariant.ts'
 export * from './durable-run/projection.ts'
