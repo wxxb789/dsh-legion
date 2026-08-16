@@ -4,6 +4,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ProfileName, StrategyName } from '../identity.ts'
 import {
   ArtifactDigest,
+  AuthorityDigest,
   AttemptId,
   ContextDigest,
   ContextGeneration,
@@ -26,6 +27,7 @@ import {
   trustedRecord,
 } from './contract.ts'
 import { materializePlanGraph } from './graph.ts'
+import { createAuthorityEnvelope } from './plan-delta.ts'
 import {
   isLegionEventType,
   type LegionEvent,
@@ -410,6 +412,107 @@ function parseMailRecord(value: unknown): import('./contract.ts').MailRecord {
   }
 }
 
+
+function parseContinuationRecord(value: unknown): import('./contract.ts').ContinuationRecord {
+  const source = record(value, 'continuation record')
+  const status = choice(
+    source.status,
+    ['available', 'consumed', 'invalidated'] as const,
+    'continuation status',
+  )
+  const extra = status === 'consumed'
+    ? ['consumedAt', 'consumingFence']
+    : status === 'invalidated' ? ['invalidatedAt', 'reason'] : []
+  assertKeys(
+    source,
+    ['schemaVersion', 'continuationId', 'status', 'token', 'updatedAt', ...extra],
+    'continuation record',
+  )
+  if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid continuation schemaVersion')
+  const tokenSource = record(source.token, 'continuation token')
+  assertKeys(tokenSource, [
+    'schemaVersion', 'continuationId', 'runId', 'anchorSessionId', 'owner',
+    'fence', 'planVersion', 'goalVersion', 'contextDigest', 'environmentDigest',
+    'expectedInputs', 'limits', 'authority', 'authorityDigest', 'issuedAt',
+    'expiresAt', 'digest',
+  ], 'continuation token')
+  if (tokenSource.schemaVersion !== 1 || !Array.isArray(tokenSource.expectedInputs)) {
+    throw new Error('dsh-legion: invalid continuation token')
+  }
+  const limitSource = record(tokenSource.limits, 'continuation limits')
+  const limits = Object.fromEntries(Object.entries(limitSource).map(([key, item]) => [
+    key, natural(item, 'continuation limits.' + key),
+  ]))
+  const authoritySource = record(tokenSource.authority, 'continuation authority')
+  assertKeys(
+    authoritySource,
+    ['profiles', 'maxDepth', 'allowGoalRevision', 'digest'],
+    'continuation authority',
+  )
+  const authority = createAuthorityEnvelope({
+    profiles: record(authoritySource.profiles, 'continuation authority profiles') as never,
+    maxDepth: natural(authoritySource.maxDepth, 'authority maxDepth'),
+    allowGoalRevision: authoritySource.allowGoalRevision === true,
+  })
+  const authorityDigest = AuthorityDigest(tokenSource.authorityDigest)
+  if (authority.digest !== AuthorityDigest(authoritySource.digest)
+    || authority.digest !== authorityDigest) {
+    throw new Error('dsh-legion: continuation authority digest mismatch')
+  }
+  const token = {
+    schemaVersion: 1 as const,
+    continuationId: ContinuationId(tokenSource.continuationId),
+    runId: RunId(tokenSource.runId),
+    anchorSessionId: SessionId(text(tokenSource.anchorSessionId, 'anchorSessionId')),
+    owner: parseOwnerFingerprint(tokenSource.owner),
+    fence: Fence(tokenSource.fence),
+    planVersion: PlanVersion(tokenSource.planVersion),
+    goalVersion: GoalVersion(tokenSource.goalVersion),
+    ...(tokenSource.contextDigest === undefined
+      ? {}
+      : { contextDigest: ContextDigest(tokenSource.contextDigest) }),
+    environmentDigest: EnvironmentDigest(tokenSource.environmentDigest),
+    expectedInputs: tokenSource.expectedInputs.map(ArtifactDigest),
+    limits,
+    authority,
+    authorityDigest,
+    issuedAt: natural(tokenSource.issuedAt, 'issuedAt'),
+    ...(tokenSource.expiresAt === undefined
+      ? {}
+      : { expiresAt: natural(tokenSource.expiresAt, 'expiresAt') }),
+    digest: ArtifactDigest(tokenSource.digest),
+  }
+  const continuationId = ContinuationId(source.continuationId)
+  const base = {
+    schemaVersion: 1 as const,
+    continuationId,
+    token,
+    updatedAt: natural(source.updatedAt, 'updatedAt'),
+  }
+  if (token.continuationId !== continuationId) {
+    throw new Error('dsh-legion: continuation identity mismatch')
+  }
+  if (status === 'available') return { ...base, status }
+  if (status === 'consumed') {
+    return {
+      ...base,
+      status,
+      consumedAt: natural(source.consumedAt, 'consumedAt'),
+      consumingFence: Fence(source.consumingFence),
+    }
+  }
+  return {
+    ...base,
+    status,
+    invalidatedAt: natural(source.invalidatedAt, 'invalidatedAt'),
+    reason: choice(source.reason, [
+      'expired', 'stale-fence', 'plan-changed', 'goal-changed',
+      'context-changed', 'environment-changed', 'inputs-changed',
+      'limits-incompatible', 'authority-incompatible', 'owner-changed',
+    ] as const, 'continuation invalidation reason'),
+  }
+}
+
 export function validateLegionEventData<Type extends LegionEventType>(
   type: Type,
   input: unknown,
@@ -503,11 +606,13 @@ export function validateLegionEventData<Type extends LegionEventType>(
       break
     }
     case 'legion/continuation-state': {
-      const value = record(source.record, 'continuation record')
-      assertKeys(value, ['schemaVersion', 'continuationId', 'status', 'planVersion', 'digest', 'updatedAt'], 'continuation record')
+      const continuation = parseContinuationRecord(source.record)
       const continuationId = ContinuationId(source.continuationId)
-      const continuation = { schemaVersion: 1 as const, continuationId: ContinuationId(value.continuationId), status: choice(value.status, ['active', 'consumed'] as const, 'continuation status'), planVersion: PlanVersion(value.planVersion), digest: ArtifactDigest(value.digest), updatedAt: natural(value.updatedAt, 'updatedAt') }
-      if (continuation.continuationId !== continuationId || continuation.planVersion !== planVersion) throw new Error('dsh-legion: continuation header does not match record')
+      if (continuation.continuationId !== continuationId
+        || continuation.token.runId !== runId
+        || continuation.token.planVersion !== planVersion) {
+        throw new Error('dsh-legion: continuation header does not match record')
+      }
       data = { ...header, continuationId, record: continuation }
       break
     }

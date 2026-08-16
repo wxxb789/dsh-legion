@@ -93,7 +93,7 @@ A monotonically increasing Host coordination token used with task generations to
 _Avoid_: Timestamp, Owner fingerprint, Retry count
 
 **Durable Mailbox**:
-A task-addressed delivery protocol whose queued, reserved, incorporated, acknowledged, reclaimed, and discarded facts exist only as typed events in the anchor Session journal.
+A task-addressed delivery protocol whose queued, reserved, incorporated, acknowledged, and discarded post-states exist only as typed events in the anchor Session journal; reclaiming an expired reservation returns it to queued state with an incremented reclaim count.
 _Avoid_: Agent chat, Queue service, Mailbox directory
 
 **Context Manifest**:

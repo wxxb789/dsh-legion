@@ -14,7 +14,7 @@ export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
 export const CURRENT_CONFIG_VERSION = 2 as const
 export type ConfigVersion = 1 | typeof CURRENT_CONFIG_VERSION
 export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
-export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1'] as const)
+export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1', 'plan-delta-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
 export interface DurableRunPolicySpec {

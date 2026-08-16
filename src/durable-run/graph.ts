@@ -7,6 +7,7 @@ import {
   PlanDigest,
   PlanVersion,
   TaskId,
+  type EffectClass,
   type GoalVersion as GoalVersionType,
   type PlanDigest as PlanDigestType,
   type PlanVersion as PlanVersionType,
@@ -45,7 +46,7 @@ export interface InvokeTaskSpec {
   readonly agentCount: number
   readonly inputs: readonly TaskArtifactInput[]
   readonly output: TaskArtifactOutput
-  readonly effectClass: 'read'
+  readonly effectClass: EffectClass
   readonly retryPolicy: { readonly kind: 'none' }
   readonly memberFailure: CompiledStrategyPlan['memberFailure']
 }
@@ -270,6 +271,48 @@ export function compileStaticPlanGraph(
   return deepFreeze({
     ...graph,
     planVersion,
+    digest: PlanDigest(sha256Digest(planGraphIdentity(graph))),
+  })
+}
+
+/** Construct one immutable next PlanGraph through the same canonical digest path. */
+export function evolvePlanGraph(
+  base: PlanGraph,
+  changes: {
+    readonly planVersion: PlanVersionType
+    readonly nodes: Readonly<Record<string, TaskSpec>>
+    readonly edges: readonly PlanEdge[]
+    readonly limits?: Readonly<StrategyLimits>
+  },
+): PlanGraph {
+  const nodes = Object.fromEntries(Object.keys(changes.nodes).sort().map((id) => {
+    const taskId = TaskId(id)
+    const node = changes.nodes[id]
+    if (node === undefined || node.taskId !== taskId) {
+      throw new Error(`dsh-legion: PlanGraph node identity mismatch for "${id}"`)
+    }
+    return [id, deepCopy(node)]
+  }))
+  const edges = [...changes.edges].sort(edgeOrder)
+  validateAcyclic(Object.keys(nodes), edges)
+  const limits = changes.limits ?? base.limits
+  const graph = {
+    schemaVersion: 1 as const,
+    goalVersion: base.goalVersion,
+    strategy: base.strategy,
+    team: base.team,
+    generationId: base.generationId,
+    catalogDigest: base.catalogDigest,
+    objectiveDigest: base.objectiveDigest,
+    environmentDigest: base.environmentDigest,
+    nodes,
+    edges,
+    completion: base.completion,
+    limits: deepCopy(limits),
+  }
+  return deepFreeze({
+    ...graph,
+    planVersion: changes.planVersion,
     digest: PlanDigest(sha256Digest(planGraphIdentity(graph))),
   })
 }

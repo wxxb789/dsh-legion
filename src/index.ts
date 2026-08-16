@@ -218,6 +218,10 @@ export type {
 } from './execution.ts'
 
 export * from './durable-run/contract.ts'
+export * from './durable-run/context.ts'
+export * from './durable-run/mailbox.ts'
+export * from './durable-run/plan-delta.ts'
+export * from './durable-run/continuation.ts'
 export * from './durable-run/events.ts'
 export * from './durable-run/invariant.ts'
 export * from './durable-run/projection.ts'
@@ -230,8 +234,6 @@ export * from './durable-run/lease.ts'
 export * from './durable-run/recovery.ts'
 export * from './durable-run/result-acceptance.ts'
 export * from './durable-run/run-control.ts'
-export * from './durable-run/mailbox.ts'
-export * from './durable-run/context.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']

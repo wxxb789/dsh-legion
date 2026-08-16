@@ -1,11 +1,18 @@
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { describe, expect, it } from 'vitest'
+import { ContinuationId } from '../src/durable-run/contract.ts'
+import { issueContinuation } from '../src/durable-run/continuation.ts'
+import { createAuthorityEnvelope } from '../src/durable-run/plan-delta.ts'
 import { explainLegionRun, parseExportedSessionEvents, replayExportedSessionEvents } from '../src/durable-run/replay.ts'
 import { foldLegionProjection } from '../src/durable-run/projection.ts'
 import {
+  artifactDigest,
   attemptRecord,
+  environmentDigest,
   exportedEvent,
   pendingRun,
   planRecord,
+  planVersion,
   runId,
   taskRecord,
 } from './durable-fixture.ts'
@@ -52,6 +59,24 @@ describe('durable replay', () => {
       planVersion: 1,
       correlationId: 'all-events',
     }
+    const continuationRecord = issueContinuation({
+      continuationId: ContinuationId('continuation-one'),
+      runId,
+      anchorSessionId: SessionId('session-one'),
+      owner: attemptRecord.owner,
+      fence: attemptRecord.fence,
+      planVersion,
+      goalVersion: planRecord.goalVersion,
+      environmentDigest,
+      expectedInputs: [artifactDigest],
+      limits: { activations: 1 },
+      authority: createAuthorityEnvelope({
+        profiles: {},
+        maxDepth: 1,
+        allowGoalRevision: false,
+      }),
+      issuedAt: 8,
+    })
     const records = [
       exportedEvent(pendingRun(), 0),
       {
@@ -149,14 +174,7 @@ describe('durable replay', () => {
         data: {
           ...common,
           continuationId: 'continuation-one',
-          record: {
-            schemaVersion: 1,
-            continuationId: 'continuation-one',
-            status: 'active',
-            planVersion: 1,
-            digest,
-            updatedAt: 8,
-          },
+          record: continuationRecord,
         },
       },
     ]
@@ -171,7 +189,7 @@ describe('durable replay', () => {
       mail: { 'mail-one': { status: 'queued' } },
       milestones: [{ milestoneId: 'milestone-one' }],
       decisions: [{ decisionId: 'decision-one' }],
-      continuations: { 'continuation-one': { status: 'active' } },
+      continuations: { 'continuation-one': { status: 'available' } },
     })
   })
 

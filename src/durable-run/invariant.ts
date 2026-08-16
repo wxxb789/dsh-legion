@@ -108,8 +108,11 @@ export function assertLegionTransition<Type extends LegionEventType>(
   if (type === 'legion/continuation-state') {
     const record = (data as SessionEventMap['legion/continuation-state']).record
     const existing = current.continuations?.[record.continuationId]
-    if (existing?.status === 'consumed' && record.status === 'active') {
-      throw new Error('dsh-legion: consumed continuation cannot reactivate')
+    if (existing !== undefined && existing.status !== 'available' && JSON.stringify(existing) !== JSON.stringify(record)) {
+      throw new Error('dsh-legion: terminal continuation cannot transition')
+    }
+    if (existing?.status === 'available' && record.status === 'available' && JSON.stringify(existing) !== JSON.stringify(record)) {
+      throw new Error('dsh-legion: available continuation cannot be rewritten')
     }
     return
   }

@@ -67,6 +67,20 @@ describe('versioned result contracts', () => {
     })).toThrow(/must not be blank/)
   })
 
+  it('accepts bounded plan proposals but rejects generated identities and events', () => {
+    const proposal = {
+      schemaVersion: 1, deltaId: 'delta-one', basePlanVersion: 1, reason: 'Add verification.',
+      evidence: [{ source: 'artifact-one', detail: 'Needs verification.' }],
+      operations: [{ kind: 'supersede-pending', taskId: 'task-one' }],
+    }
+    expect(materializeStructuredResult('plan-delta-v1', proposal)).toEqual(proposal)
+    expect(() => materializeStructuredResult('plan-delta-v1', {
+      ...proposal, operations: [{ kind: 'add-edge', from: '@legion/delta/one/task', to: 'task-one', reason: 'after' }],
+    })).toThrow(/generated identities/)
+    expect(() => materializeStructuredResult('plan-delta-v1', { ...proposal, events: [] }))
+      .toThrow(/violated plan-delta-v1/)
+  })
+
   it('keeps text contract schema-free', () => {
     expect(outputSchemaFor('text')).toBeUndefined()
     expect(materializeStructuredResult('text', { ignored: true })).toBeUndefined()

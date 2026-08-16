@@ -4,6 +4,7 @@ import {
   RunId,
   controlDurableRun,
   type OwnerFingerprint,
+  materializePlanDeltaProposal,
   type RunControlPort,
   type RunLease,
 } from '../src/index.ts'
@@ -81,6 +82,35 @@ describe('durable run controls', () => {
     expect(log).toEqual([
       'capabilities', 'acquire', 'reread-1', 'cancel-intent', 'flush',
       'close-admission', 'cancel-live', 'assert', 'cancelled', 'flush', 'release',
+    ])
+  })
+
+  it('records steering only as a validated durable proposal', async () => {
+    const log: string[] = []
+    const adapter = {
+      ...port(log),
+      validateSteer(_state: string, proposal: unknown) { log.push('validate-steer'); return proposal },
+      async commitSteerProposal() { log.push('commit-steer') },
+    }
+    await controlDurableRun(
+      {
+        kind: 'run',
+        action: 'steer',
+        runId: RunId('run'),
+        proposal: materializePlanDeltaProposal({
+          schemaVersion: 1,
+          deltaId: 'steer-one',
+          basePlanVersion: 1,
+          reason: 'Refine.',
+          evidence: [],
+          operations: [],
+        }),
+      },
+      adapter,
+    )
+    expect(log).toEqual([
+      'capabilities', 'acquire', 'reread-1', 'validate-steer',
+      'commit-steer', 'flush', 'release',
     ])
   })
 

@@ -72,6 +72,16 @@ const checks = [
   ['contextFreshnessKinds', contract.contextFreshnessKinds, [
     'timeless', 'fresh', 'expired',
   ]],
+  ['planDeltaSchemaVersion', contract.planDeltaSchemaVersion, 1],
+  ['planDeltaOperationKinds', contract.planDeltaOperationKinds, [
+    'add-node', 'add-edge', 'supersede-pending', 'narrow-limits',
+  ]],
+  ['continuationStatuses', contract.continuationStatuses, [
+    'available', 'consumed', 'invalidated',
+  ]],
+  ['authorityProfileFields', contract.authorityProfileFields, [
+    'members', 'tools', 'providers', 'models', 'routes', 'effectClasses',
+  ]],
   ['resultContracts', contract.resultContracts, legion.RESULT_CONTRACTS],
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],

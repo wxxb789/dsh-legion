@@ -49,6 +49,38 @@ export const FINDINGS_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
   required: ['summary', 'findings', 'decisions', 'verification', 'openRisks'],
 })
 
+export const PLAN_DELTA_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    schemaVersion: { type: 'number', const: 1 },
+    deltaId: { type: 'string' },
+    basePlanVersion: { type: 'number' },
+    reason: { type: 'string' },
+    evidence: { type: 'array', items: evidenceItem },
+    operations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          kind: { type: 'string', enum: ['add-node', 'add-edge', 'supersede-pending', 'narrow-limits'] },
+          localId: { type: 'string' },
+          node: { type: 'object' },
+          from: { type: 'string' },
+          to: { type: 'string' },
+          reason: { type: 'string', enum: ['after', 'artifact'] },
+          artifact: { type: 'string' },
+          taskId: { type: 'string' },
+          limits: { type: 'object' },
+        },
+        required: ['kind'],
+      },
+    },
+  },
+  required: ['schemaVersion', 'deltaId', 'basePlanVersion', 'reason', 'evidence', 'operations'],
+})
+
 export const REVIEW_V1_SCHEMA: ObjectJsonSchema = deepFreeze({
   type: 'object',
   additionalProperties: false,
@@ -123,6 +155,62 @@ function projectFindings(value: unknown): JsonValue {
   }
 }
 
+function projectPlanDelta(value: unknown): JsonValue {
+  const source = record(value)
+  const operations = source.operations
+  if (!Array.isArray(operations) || operations.length > 32) {
+    throw new Error('dsh-legion: structured result operations must contain at most 32 entries')
+  }
+  const exact = (
+    operation: Record<string, unknown>,
+    allowed: readonly string[],
+    required: readonly string[],
+  ): void => {
+    if (Object.keys(operation).some(key => !allowed.includes(key))
+      || required.some(key => !Object.hasOwn(operation, key))) {
+      throw new Error('dsh-legion: structured result PlanDelta operation fields are invalid')
+    }
+  }
+  for (const value of operations) {
+    const operation = record(value)
+    switch (operation.kind) {
+      case 'add-node':
+        exact(operation, ['kind', 'localId', 'node'], ['kind', 'localId', 'node'])
+        if (Object.hasOwn(record(operation.node), 'taskId')) {
+          throw new Error('dsh-legion: model plan delta cannot emit final task identities')
+        }
+        break
+      case 'add-edge':
+        exact(
+          operation,
+          ['kind', 'from', 'to', 'reason', 'artifact'],
+          ['kind', 'from', 'to', 'reason'],
+        )
+        break
+      case 'supersede-pending':
+        exact(
+          operation,
+          ['kind', 'taskId', 'replacement'],
+          ['kind', 'taskId'],
+        )
+        break
+      case 'narrow-limits':
+        exact(operation, ['kind', 'limits'], ['kind', 'limits'])
+        break
+      default:
+        throw new Error('dsh-legion: structured result PlanDelta operation kind is invalid')
+    }
+  }
+  const encoded = JSON.stringify(value)
+  if (encoded.length > 64 * 1024) {
+    throw new Error('dsh-legion: structured result plan delta exceeds byte limit')
+  }
+  if (operations.some(operation => JSON.stringify(operation).includes('@legion/delta/'))) {
+    throw new Error('dsh-legion: model plan delta cannot emit generated identities')
+  }
+  return deepFreeze(JSON.parse(encoded) as JsonValue)
+}
+
 function projectReview(value: unknown): JsonValue {
   const source = record(value)
   const findings = source.findings
@@ -153,6 +241,7 @@ const RESULT_CONTRACT_REGISTRY: Record<ResultContract, ResultContractCodec> = {
   text: { project: () => undefined },
   'findings-v1': { schema: FINDINGS_V1_SCHEMA, project: projectFindings },
   'review-v1': { schema: REVIEW_V1_SCHEMA, project: projectReview },
+  'plan-delta-v1': { schema: PLAN_DELTA_V1_SCHEMA, project: projectPlanDelta },
 }
 
 /**

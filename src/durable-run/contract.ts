@@ -26,6 +26,8 @@ export type MailId = Brand<string, 'LegionMailId'>
 export type ReservationId = Brand<string, 'LegionReservationId'>
 export type ContextGeneration = Brand<number, 'LegionContextGeneration'>
 export type ContinuationId = Brand<string, 'LegionContinuationId'>
+export type DeltaId = Brand<string, 'LegionDeltaId'>
+export type AuthorityDigest = Brand<`sha256:${string}`, 'LegionAuthorityDigest'>
 export type Fence = Brand<number, 'LegionFence'>
 export type PlanDigest = Brand<`sha256:${string}`, 'LegionPlanDigest'>
 export type ArtifactDigest = Brand<`sha256:${string}`, 'ArtifactDigest'>
@@ -33,6 +35,7 @@ export type EnvironmentDigest = Brand<`sha256:${string}`, 'EnvironmentDigest'>
 export type ContextDigest = Brand<`sha256:${string}`, 'ContextDigest'>
 
 const IDENTITY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+const GENERATED_TASK_ID = /^@legion\/delta\/[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/
 
 function namedIdentity<Name extends string>(
@@ -78,6 +81,9 @@ export function GoalVersion(value: unknown): GoalVersion {
 }
 
 export function TaskId(value: unknown): TaskId {
+  if (typeof value === 'string' && GENERATED_TASK_ID.test(value) && value.length <= 384) {
+    return value as TaskId
+  }
   return namedIdentity(value, 'LegionTaskId')
 }
 
@@ -99,6 +105,14 @@ export function ContextGeneration(value: unknown): ContextGeneration {
 
 export function ContinuationId(value: unknown): ContinuationId {
   return namedIdentity(value, 'LegionContinuationId')
+}
+
+export function DeltaId(value: unknown): DeltaId {
+  return namedIdentity(value, 'LegionDeltaId')
+}
+
+export function AuthorityDigest(value: unknown): AuthorityDigest {
+  return digestIdentity(value, 'LegionAuthorityDigest')
 }
 
 export function Fence(value: unknown): Fence {
@@ -186,6 +200,23 @@ export interface ArtifactRef {
 }
 
 export type EffectClass = 'read' | 'idempotent-write' | 'non-idempotent-write'
+
+
+export interface AuthorityProfileScope {
+  readonly members: readonly string[]
+  readonly tools: readonly string[]
+  readonly providers: readonly string[]
+  readonly models: readonly string[]
+  readonly routes: readonly string[]
+  readonly effectClasses: readonly EffectClass[]
+}
+
+export interface AuthorityEnvelope {
+  readonly profiles: Readonly<Record<string, AuthorityProfileScope>>
+  readonly maxDepth: number
+  readonly allowGoalRevision: boolean
+  readonly digest: AuthorityDigest
+}
 
 export interface OwnerFingerprint {
   readonly hostInstanceId: string
@@ -373,11 +404,32 @@ export interface DecisionRecord {
   readonly digest: ArtifactDigest
 }
 
-export interface ContinuationRecord {
+export interface ContinuationToken {
   readonly schemaVersion: 1
   readonly continuationId: ContinuationId
-  readonly status: 'active' | 'consumed'
+  readonly runId: RunId
+  readonly anchorSessionId: SessionId
+  readonly owner: OwnerFingerprint
+  readonly fence: Fence
   readonly planVersion: PlanVersion
+  readonly goalVersion: GoalVersion
+  readonly contextDigest?: ContextDigest
+  readonly environmentDigest: EnvironmentDigest
+  readonly expectedInputs: readonly ArtifactDigest[]
+  readonly limits: Readonly<Record<string, number>>
+  readonly authority: AuthorityEnvelope
+  readonly authorityDigest: AuthorityDigest
+  readonly issuedAt: number
+  readonly expiresAt?: number
   readonly digest: ArtifactDigest
-  readonly updatedAt: number
 }
+
+export type ContinuationInvalidationReason =
+  | 'expired' | 'stale-fence' | 'plan-changed' | 'goal-changed'
+  | 'context-changed' | 'environment-changed' | 'inputs-changed'
+  | 'limits-incompatible' | 'authority-incompatible' | 'owner-changed'
+
+export type ContinuationRecord =
+  | { readonly schemaVersion: 1; readonly continuationId: ContinuationId; readonly status: 'available'; readonly token: ContinuationToken; readonly updatedAt: number }
+  | { readonly schemaVersion: 1; readonly continuationId: ContinuationId; readonly status: 'consumed'; readonly token: ContinuationToken; readonly consumedAt: number; readonly consumingFence: Fence; readonly updatedAt: number }
+  | { readonly schemaVersion: 1; readonly continuationId: ContinuationId; readonly status: 'invalidated'; readonly token: ContinuationToken; readonly invalidatedAt: number; readonly reason: ContinuationInvalidationReason; readonly updatedAt: number }
