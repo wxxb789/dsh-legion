@@ -5,6 +5,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Config, materializeConfig } from './config.ts'
+import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
   assertCatalogUsable,
   compileCatalog,
@@ -210,6 +211,12 @@ export type {
   StrategyMemberFailure,
   TeamRunOutcome,
 } from './execution.ts'
+
+export * from './durable-run/contract.ts'
+export * from './durable-run/events.ts'
+export * from './durable-run/invariant.ts'
+export * from './durable-run/projection.ts'
+export * from './durable-run/replay.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -710,6 +717,7 @@ function profileResourceBase(ctx: Context, config: Config): string | undefined {
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  registerLegionRunProjection(ctx as unknown as HostProjectionContext)
   const resolvedConfig = materializeConfig(config)
   const resourceBase = profileResourceBase(ctx, resolvedConfig)
   const resources: ResourceSnapshot = resourceBase === undefined

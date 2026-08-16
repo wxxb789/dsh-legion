@@ -3,6 +3,7 @@ import { compileCatalog } from './compiler.ts'
 import { explainCatalog, renderExplainHuman, type ExplainViewV1 } from './explain.ts'
 import { LegionInputError, loadConfigFile, loadProviderSnapshotFile } from './input.ts'
 import { loadProfileResources } from './resources.ts'
+import { replayExportedSessionEvents, renderLegionRunHuman } from './durable-run/replay.ts'
 
 export const EXIT_OK = 0
 export const EXIT_DIAGNOSTICS = 1
@@ -26,9 +27,11 @@ type CliCommand =
       readonly providers?: string
       readonly json: boolean
     }
+  | { readonly kind: 'replay'; readonly input: string; readonly run: string; readonly json: boolean }
 
 const HELP = `dsh-legion doctor <config.yml|config.json> [--providers <snapshot.yml>] [--json]
 dsh-legion explain <config.yml|config.json> [--providers <snapshot.yml>] [--json]
+dsh-legion replay --input <session-events.jsonl> --run <run-id> [--json]
 
 The provider snapshot is an explicit fixture. No live DSH process, credentials,
 network, provider health, or model availability is queried.
@@ -41,6 +44,28 @@ function usage(message: string): never {
 function parseArgs(argv: readonly string[]): CliCommand {
   if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') return { kind: 'help' }
   const kind = argv[0]
+  if (kind === 'replay') {
+    let input: string | undefined
+    let run: string | undefined
+    let json = false
+    for (let index = 1; index < argv.length; index += 1) {
+      const arg = argv[index]
+      if (arg === '--json') {
+        json = true
+        continue
+      }
+      if (arg === '--input' || arg === '--run') {
+        const value = argv[++index]
+        if (value === undefined || value.startsWith('-')) usage(`${arg} requires a value`)
+        if (arg === '--input') input = value
+        else run = value
+        continue
+      }
+      usage(`unknown option "${String(arg)}"`)
+    }
+    if (input === undefined || run === undefined) usage('replay requires --input and --run')
+    return { kind: 'replay', input, run, json }
+  }
   if (kind !== 'doctor' && kind !== 'explain') usage(`unknown command "${String(kind)}"`)
   const config = argv[1]
   if (config === undefined || config.startsWith('-')) usage(`${kind} requires a config file`)
@@ -79,6 +104,11 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     command = parseArgs(argv)
     if (command.kind === 'help') {
       io.stdout.write(HELP)
+      return EXIT_OK
+    }
+    if (command.kind === 'replay') {
+      const view = replayExportedSessionEvents(await io.readTextFile(command.input), command.run)
+      io.stdout.write(command.json ? JSON.stringify(view, null, 2) + '\n' : renderLegionRunHuman(view))
       return EXIT_OK
     }
     const config = await loadConfigFile(command.config, io.readTextFile)

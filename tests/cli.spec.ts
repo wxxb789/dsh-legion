@@ -119,3 +119,70 @@ describe('dsh-legion CLI', () => {
     }
   })
 })
+
+describe('replay command', () => {
+  const runId = 'run-cli'
+  const record = {
+    schemaVersion: 1,
+    runId,
+    anchorSessionId: 'session-cli',
+    strategyName: 'synthetic',
+    strategyPlanDigest: `sha256:${'b'.repeat(64)}`,
+    catalogDigest: `sha256:${'c'.repeat(64)}`,
+    goalVersion: 1,
+    goal: {
+      version: 1,
+      statement: 'Replay the exported history.',
+      acceptance: [],
+      constraints: [],
+      nonGoals: [],
+      authorityDigest: `sha256:${'d'.repeat(64)}`,
+    },
+    currentPlanVersion: 1,
+    status: 'created',
+    environmentDigest: `sha256:${'a'.repeat(64)}`,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const source = JSON.stringify({
+    type: 'legion/run-state',
+    seq: 0,
+    time: 1,
+    data: {
+      schemaVersion: 1,
+      runId,
+      planVersion: 1,
+      correlationId: 'correlation-cli',
+      record,
+    },
+  })
+
+  it('renders JSON from an explicit exported event stream', async () => {
+    const state = io({ 'events.jsonl': source })
+    const code = await runCli(
+      ['replay', '--input', 'events.jsonl', '--run', runId, '--json'],
+      state.io,
+    )
+    expect(code).toBe(EXIT_OK)
+    expect(JSON.parse(state.stdout.join(''))).toMatchObject({
+      found: true,
+      run: { status: 'created' },
+    })
+  })
+
+  it('renders stable human output and rejects malformed input', async () => {
+    const human = io({ 'events.jsonl': source })
+    expect(await runCli(
+      ['replay', '--input', 'events.jsonl', '--run', runId],
+      human.io,
+    )).toBe(EXIT_OK)
+    expect(human.stdout.join('')).toContain('Durable Strategy Run run-cli')
+
+    const malformed = io({ 'bad.jsonl': '{' })
+    expect(await runCli(
+      ['replay', '--input', 'bad.jsonl', '--run', runId],
+      malformed.io,
+    )).toBe(EXIT_INPUT)
+    expect(malformed.stderr.join('')).toContain('line 1')
+  })
+})
