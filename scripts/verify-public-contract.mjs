@@ -62,6 +62,16 @@ const checks = [
     acceptedCommit: 'exactly-once-by-fence-generation',
     externalEffects: 'not-exactly-once',
   }],
+  ['mailStatuses', contract.mailStatuses, [
+    'queued', 'reserved', 'incorporated', 'acknowledged', 'discarded',
+  ]],
+  ['contextSlots', contract.contextSlots, legion.CONTEXT_SLOTS],
+  ['contextSharedPrefixSlots', contract.contextSharedPrefixSlots, [
+    'profile-policy', 'strategy-policy', 'shared-run',
+  ]],
+  ['contextFreshnessKinds', contract.contextFreshnessKinds, [
+    'timeless', 'fresh', 'expired',
+  ]],
   ['resultContracts', contract.resultContracts, legion.RESULT_CONTRACTS],
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],

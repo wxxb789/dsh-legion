@@ -6,11 +6,13 @@ import {
   ArtifactDigest,
   AttemptId,
   ContextDigest,
+  ContextGeneration,
   EnvironmentDigest,
   Fence,
   GoalVersion,
   ContinuationId,
   MailId,
+  ReservationId,
   PlanDigest,
   PlanVersion,
   RoutePlanDigest,
@@ -287,6 +289,127 @@ function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-sta
   }
 }
 
+
+function parseMailRecord(value: unknown): import('./contract.ts').MailRecord {
+  const source = record(value, 'mail record')
+  const status = choice(
+    source.status,
+    ['queued', 'reserved', 'incorporated', 'acknowledged', 'discarded'] as const,
+    'mail status',
+  )
+  const common = [
+    'schemaVersion', 'status', 'message', 'recipientGeneration', 'reclaimCount',
+    'updatedAt',
+  ]
+  const fields = status === 'reserved'
+    ? ['reservation']
+    : status === 'incorporated'
+      ? ['reservation', 'contextGeneration', 'contextManifestDigest',
+          'sharedPrefixDigest', 'receiptDigest', 'incorporatedAt']
+      : status === 'acknowledged'
+        ? ['reservation', 'contextGeneration', 'contextManifestDigest',
+            'sharedPrefixDigest', 'receiptDigest', 'incorporatedAt', 'acknowledgedAt']
+        : status === 'discarded' ? ['reason', 'discardedAt'] : []
+  assertKeys(source, [...common, ...fields], 'mail record')
+  if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid mail schemaVersion')
+
+  const messageSource = record(source.message, 'mail message')
+  assertKeys(messageSource, [
+    'mailId', 'runId', 'sender', 'recipientTaskId', 'kind', 'payload',
+    'idempotencyKey', 'createdAt', 'expiresAt',
+  ], 'mail message')
+  const senderSource = record(messageSource.sender, 'mail sender')
+  assertKeys(senderSource, ['kind', 'id'], 'mail sender')
+  const senderKind = choice(
+    senderSource.kind,
+    ['controller', 'task', 'user'] as const,
+    'mail sender kind',
+  )
+  if (!Array.isArray(messageSource.payload)) {
+    throw new Error('dsh-legion: mail payload must be an array')
+  }
+  const message = {
+    mailId: MailId(messageSource.mailId),
+    runId: RunId(messageSource.runId),
+    sender: senderKind === 'task'
+      ? { kind: senderKind, id: TaskId(senderSource.id) }
+      : { kind: senderKind, id: text(senderSource.id, 'mail sender id') },
+    recipientTaskId: TaskId(messageSource.recipientTaskId),
+    kind: choice(
+      messageSource.kind,
+      ['assignment', 'evidence', 'decision', 'steer', 'cancel'] as const,
+      'mail kind',
+    ),
+    payload: messageSource.payload.map(parseArtifact),
+    idempotencyKey: text(messageSource.idempotencyKey, 'idempotencyKey'),
+    createdAt: natural(messageSource.createdAt, 'createdAt'),
+    ...(messageSource.expiresAt === undefined
+      ? {}
+      : { expiresAt: natural(messageSource.expiresAt, 'expiresAt') }),
+  }
+  const base = {
+    schemaVersion: 1 as const,
+    message,
+    recipientGeneration: natural(source.recipientGeneration, 'recipientGeneration'),
+    reclaimCount: natural(source.reclaimCount, 'reclaimCount'),
+    updatedAt: natural(source.updatedAt, 'updatedAt'),
+  }
+  const reservation = () => {
+    const candidate = record(source.reservation, 'mail reservation')
+    assertKeys(
+      candidate,
+      ['reservationId', 'owner', 'fence', 'reservedAt', 'expiresAt'],
+      'mail reservation',
+    )
+    const reservedAt = natural(candidate.reservedAt, 'reservedAt')
+    const expiresAt = natural(candidate.expiresAt, 'expiresAt')
+    if (expiresAt <= reservedAt) throw new Error('dsh-legion: invalid mail reservation expiry')
+    return {
+      reservationId: ReservationId(candidate.reservationId),
+      owner: parseOwnerFingerprint(candidate.owner),
+      fence: Fence(candidate.fence),
+      reservedAt,
+      expiresAt,
+    }
+  }
+  const incorporated = () => {
+    const reserved = reservation()
+    const incorporatedAt = natural(source.incorporatedAt, 'incorporatedAt')
+    if (incorporatedAt < reserved.reservedAt) {
+      throw new Error('dsh-legion: mail incorporation precedes reservation')
+    }
+    return {
+      reservation: reserved,
+      contextGeneration: ContextGeneration(source.contextGeneration),
+      contextManifestDigest: ContextDigest(source.contextManifestDigest),
+      sharedPrefixDigest: ContextDigest(source.sharedPrefixDigest),
+      receiptDigest: ArtifactDigest(source.receiptDigest),
+      incorporatedAt,
+    }
+  }
+  if (status === 'queued') return { ...base, status }
+  if (status === 'reserved') return { ...base, status, reservation: reservation() }
+  if (status === 'incorporated') return { ...base, status, ...incorporated() }
+  if (status === 'acknowledged') {
+    const incorporation = incorporated()
+    const acknowledgedAt = natural(source.acknowledgedAt, 'acknowledgedAt')
+    if (acknowledgedAt < incorporation.incorporatedAt) {
+      throw new Error('dsh-legion: mail acknowledgement precedes incorporation')
+    }
+    return { ...base, status, ...incorporation, acknowledgedAt }
+  }
+  return {
+    ...base,
+    status,
+    reason: choice(
+      source.reason,
+      ['expired', 'recipient-terminal', 'superseded', 'policy'] as const,
+      'discard reason',
+    ),
+    discardedAt: natural(source.discardedAt, 'discardedAt'),
+  }
+}
+
 export function validateLegionEventData<Type extends LegionEventType>(
   type: Type,
   input: unknown,
@@ -298,7 +421,7 @@ export function validateLegionEventData<Type extends LegionEventType>(
     : type === 'legion/attempt-state'
       ? ['taskId', 'attemptId', 'generation', 'fence']
       : type === 'legion/mail-state'
-        ? ['taskId', 'mailId']
+        ? ['taskId', 'mailId', 'recipientGeneration', 'fence']
         : type === 'legion/continuation-state'
           ? ['continuationId']
           : []
@@ -339,21 +462,32 @@ export function validateLegionEventData<Type extends LegionEventType>(
       break
     }
     case 'legion/mail-state': {
-      const value = record(source.record, 'mail record')
-      assertKeys(value, ['schemaVersion', 'mailId', 'runId', 'taskId', 'status', 'payloadDigest', 'updatedAt'], 'mail record')
+      const mail = parseMailRecord(source.record)
       const mailId = MailId(source.mailId)
       const taskId = TaskId(source.taskId)
-      const mail = {
-        schemaVersion: 1 as const,
-        mailId: MailId(value.mailId),
-        runId: RunId(value.runId),
-        taskId: TaskId(value.taskId),
-        status: choice(value.status, ['queued', 'reserved', 'incorporated', 'acknowledged', 'reclaimed', 'discarded'] as const, 'mail status'),
-        payloadDigest: ArtifactDigest(value.payloadDigest),
-        updatedAt: natural(value.updatedAt, 'updatedAt'),
+      const recipientGeneration = natural(source.recipientGeneration, 'recipientGeneration')
+      const fence = source.fence === undefined ? undefined : Fence(source.fence)
+      const reservationFence = mail.status === 'reserved'
+        || mail.status === 'incorporated'
+        || mail.status === 'acknowledged'
+        ? mail.reservation.fence
+        : undefined
+      if (mail.message.mailId !== mailId
+        || mail.message.recipientTaskId !== taskId
+        || mail.message.runId !== runId
+        || mail.recipientGeneration !== recipientGeneration
+        || reservationFence !== undefined && reservationFence !== fence
+        || mail.status === 'queued' && mail.reclaimCount > 0 && fence === undefined) {
+        throw new Error('dsh-legion: mail header does not match record')
       }
-      if (mail.mailId !== mailId || mail.taskId !== taskId || mail.runId !== runId) throw new Error('dsh-legion: mail header does not match record')
-      data = { ...header, mailId, taskId, record: mail }
+      data = {
+        ...header,
+        mailId,
+        taskId,
+        recipientGeneration,
+        ...(fence === undefined ? {} : { fence }),
+        record: mail,
+      }
       break
     }
     case 'legion/milestone': {

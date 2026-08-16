@@ -40,8 +40,10 @@ export interface LegionTaskStateEvent extends LegionEventHeader {
 }
 
 export interface LegionMailStateEvent extends LegionEventHeader {
-  readonly mailId: MailRecord['mailId']
-  readonly taskId: MailRecord['taskId']
+  readonly mailId: MailRecord['message']['mailId']
+  readonly taskId: MailRecord['message']['recipientTaskId']
+  readonly recipientGeneration: number
+  readonly fence?: Fence
   readonly record: MailRecord
 }
 

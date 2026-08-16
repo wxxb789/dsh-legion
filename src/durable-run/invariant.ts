@@ -81,8 +81,26 @@ export function assertLegionTransition<Type extends LegionEventType>(
 
   if (type === 'legion/mail-state') {
     const record = (data as SessionEventMap['legion/mail-state']).record
-    if (current.tasks[record.taskId] === undefined) {
-      throw new Error('dsh-legion: mail task must exist')
+    const mailEvent = data as SessionEventMap['legion/mail-state']
+    const task = current.tasks[record.message.recipientTaskId]
+    if (task === undefined) throw new Error('dsh-legion: mail task must exist')
+    if (task.generation !== record.recipientGeneration
+      || mailEvent.recipientGeneration !== record.recipientGeneration) {
+      throw new Error('dsh-legion: mail recipient generation is stale')
+    }
+    if ((record.status === 'reserved'
+      || record.status === 'incorporated'
+      || record.status === 'acknowledged')
+      && mailEvent.fence !== record.reservation.fence) {
+      throw new Error('dsh-legion: mail fence is stale')
+    }
+    const existing = current.mail?.[record.message.mailId]
+    if (existing !== undefined) {
+      if (existing.message.idempotencyKey !== record.message.idempotencyKey) throw new Error('dsh-legion: mail identity cannot be rebound')
+      if ((existing.status === 'acknowledged' || existing.status === 'discarded') && JSON.stringify(existing) !== JSON.stringify(record)) throw new Error('dsh-legion: terminal mail cannot transition')
+      if (existing.status === 'incorporated' && record.status !== 'incorporated' && record.status !== 'acknowledged') throw new Error('dsh-legion: incorporated mail cannot regress')
+      if (existing.status === 'reserved' && record.status === 'queued' && record.reclaimCount !== existing.reclaimCount + 1) throw new Error('dsh-legion: reclaimed mail must increment reclaim count')
+      if (record.reclaimCount < existing.reclaimCount) throw new Error('dsh-legion: mail reclaim count cannot decrease')
     }
     return
   }

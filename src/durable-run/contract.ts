@@ -23,6 +23,8 @@ export type GoalVersion = Brand<number, 'LegionGoalVersion'>
 export type TaskId = Brand<string, 'LegionTaskId'>
 export type AttemptId = Brand<string, 'LegionAttemptId'>
 export type MailId = Brand<string, 'LegionMailId'>
+export type ReservationId = Brand<string, 'LegionReservationId'>
+export type ContextGeneration = Brand<number, 'LegionContextGeneration'>
 export type ContinuationId = Brand<string, 'LegionContinuationId'>
 export type Fence = Brand<number, 'LegionFence'>
 export type PlanDigest = Brand<`sha256:${string}`, 'LegionPlanDigest'>
@@ -85,6 +87,14 @@ export function AttemptId(value: unknown): AttemptId {
 
 export function MailId(value: unknown): MailId {
   return namedIdentity(value, 'LegionMailId')
+}
+
+export function ReservationId(value: unknown): ReservationId {
+  return namedIdentity(value, 'LegionReservationId')
+}
+
+export function ContextGeneration(value: unknown): ContextGeneration {
+  return positiveInteger(value, 'LegionContextGeneration')
 }
 
 export function ContinuationId(value: unknown): ContinuationId {
@@ -269,15 +279,83 @@ export function trustedRecord<Value>(value: Value): Readonly<Value> {
   return deepFreeze(deepCopy(value))
 }
 
-export interface MailRecord {
-  readonly schemaVersion: 1
+export type MailSender =
+  | { readonly kind: 'controller'; readonly id: string }
+  | { readonly kind: 'task'; readonly id: TaskId }
+  | { readonly kind: 'user'; readonly id: string }
+
+export type MailKind = 'assignment' | 'evidence' | 'decision' | 'steer' | 'cancel'
+
+export interface MailMessage {
   readonly mailId: MailId
   readonly runId: RunId
-  readonly taskId: TaskId
-  readonly status: 'queued' | 'reserved' | 'incorporated' | 'acknowledged' | 'reclaimed' | 'discarded'
-  readonly payloadDigest: ArtifactDigest
+  readonly sender: MailSender
+  readonly recipientTaskId: TaskId
+  readonly kind: MailKind
+  readonly payload: readonly ArtifactRef[]
+  readonly idempotencyKey: string
+  readonly createdAt: number
+  readonly expiresAt?: number
+}
+
+interface MailRecordBase {
+  readonly schemaVersion: 1
+  readonly message: MailMessage
+  readonly recipientGeneration: number
+  readonly reclaimCount: number
   readonly updatedAt: number
 }
+
+export interface QueuedMailRecord extends MailRecordBase {
+  readonly status: 'queued'
+}
+
+export interface MailReservation {
+  readonly reservationId: ReservationId
+  readonly owner: OwnerFingerprint
+  readonly fence: Fence
+  readonly reservedAt: number
+  readonly expiresAt: number
+}
+
+export interface ReservedMailRecord extends MailRecordBase {
+  readonly status: 'reserved'
+  readonly reservation: MailReservation
+}
+
+export interface IncorporatedMailRecord extends MailRecordBase {
+  readonly status: 'incorporated'
+  readonly reservation: MailReservation
+  readonly contextGeneration: ContextGeneration
+  readonly contextManifestDigest: ContextDigest
+  readonly sharedPrefixDigest: ContextDigest
+  readonly receiptDigest: ArtifactDigest
+  readonly incorporatedAt: number
+}
+
+export interface AcknowledgedMailRecord extends MailRecordBase {
+  readonly status: 'acknowledged'
+  readonly reservation: MailReservation
+  readonly contextGeneration: ContextGeneration
+  readonly contextManifestDigest: ContextDigest
+  readonly sharedPrefixDigest: ContextDigest
+  readonly receiptDigest: ArtifactDigest
+  readonly incorporatedAt: number
+  readonly acknowledgedAt: number
+}
+
+export interface DiscardedMailRecord extends MailRecordBase {
+  readonly status: 'discarded'
+  readonly reason: 'expired' | 'recipient-terminal' | 'superseded' | 'policy'
+  readonly discardedAt: number
+}
+
+export type MailRecord =
+  | QueuedMailRecord
+  | ReservedMailRecord
+  | IncorporatedMailRecord
+  | AcknowledgedMailRecord
+  | DiscardedMailRecord
 
 export interface MilestoneRecord {
   readonly schemaVersion: 1

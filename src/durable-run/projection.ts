@@ -14,7 +14,7 @@ import type {
 import { isLegionEvent } from './events.ts'
 
 export const LEGION_RUN_PROJECTION_KEY = 'legion-run'
-export const LEGION_RUN_PROJECTION_STATE_VERSION = 1
+export const LEGION_RUN_PROJECTION_STATE_VERSION = 2
 
 export interface ProjectedRun {
   readonly run?: RunRecord
@@ -80,7 +80,7 @@ export function applyLegionProjection(
       }
       break
     case 'legion/mail-state':
-      next = { ...previous, mail: { ...previous.mail, [event.data.record.mailId]: event.data.record } }
+      next = { ...previous, mail: { ...previous.mail, [event.data.record.message.mailId]: event.data.record } }
       break
     case 'legion/milestone':
       next = { ...previous, milestones: [...previous.milestones, event.data.record] }
@@ -131,6 +131,9 @@ export interface LegionRunProjectionView {
     readonly milestones: number
     readonly decisions: number
   }
+  readonly mailCounts: Readonly<Record<MailRecord['status'], number>>
+  readonly latestContextDigest?: import('./contract.ts').ContextDigest
+  readonly latestSharedPrefixDigest?: import('./contract.ts').ContextDigest
 }
 
 export function viewLegionRun(
@@ -143,6 +146,7 @@ export function viewLegionRun(
       runId,
       found: false,
       counts: { plans: 0, tasks: 0, attempts: 0, mail: 0, continuations: 0, milestones: 0, decisions: 0 },
+      mailCounts: { queued: 0, reserved: 0, incorporated: 0, acknowledged: 0, discarded: 0 },
     })
   }
 
@@ -150,6 +154,13 @@ export function viewLegionRun(
   const currentPlan = currentVersion === undefined
     ? undefined
     : projected.plans[String(currentVersion)]
+  const mail = Object.values(projected.mail)
+  const mailCounts = { queued: 0, reserved: 0, incorporated: 0, acknowledged: 0, discarded: 0 }
+  for (const item of mail) mailCounts[item.status] += 1
+  const latestContext = mail
+    .filter(item => item.status === 'incorporated' || item.status === 'acknowledged')
+    .sort((left, right) => right.updatedAt - left.updatedAt
+      || (left.message.mailId < right.message.mailId ? -1 : 1))[0]
   return deepFreeze({
     runId,
     found: true,
@@ -164,6 +175,8 @@ export function viewLegionRun(
       milestones: projected.milestones.length,
       decisions: projected.decisions.length,
     },
+    mailCounts,
+    ...(latestContext === undefined ? {} : { latestContextDigest: latestContext.contextManifestDigest, latestSharedPrefixDigest: latestContext.sharedPrefixDigest }),
   })
 }
 
