@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white)](package.json)
+[![Node.js](https://img.shields.io/badge/Node.js-%5E22.19.0%20%7C%20%3E%3D24.0.0-339933?logo=node.js&logoColor=white)](package.json)
 
 **dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它为 DSH 提供可配置的 AI Agent Profile、精确模型路由、声明式 Team 与 Strategy、结构化结果，以及有边界的 Subagent 委派能力，同时不会取代 DSH 自身的运行时。
 
@@ -34,7 +34,7 @@
 - **按任务类型路由。** 将提取、格式化和摘要交给快速模型，将架构设计、复杂调试交给能力更强的模型。
 - **执行独立审查。** 为 Reviewer 配置只读工具、独立 Persona，以及结构化的 `review-v1` 结果。
 - **构建多智能体流程。** 定义有边界的 Team，以及计划/执行/审查、研究 Fanout 等声明式 Strategy。
-- **控制成本与风险。** 限制深度、并发数、参与者、截止时间、输出大小、工具和可用路由。
+- **限制工作量与风险。** 限制深度、并发数、参与者、截止时间、输出大小、工具和可用路由。这些边界能够约束部分成本驱动因素，但 Legion 不提供总 Token 或费用准入上限。
 - **统一委派语义。** 即使底层模型或 Subagent 后端发生变化，也能继续使用稳定的 Profile 名称。
 - **运行前验证策略。** 使用显式 Provider 能力 Fixture 检查配置并解释最终生效的 Profile。
 - **无需 Fork 即可扩展。** 通过 Catalog Layer 添加、替换、禁用或恢复 Profile、Team 和 Strategy。
@@ -100,13 +100,13 @@ Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、�
 
 ### 从 GitHub 安装
 
-建议将不可变的 Commit 或已发布 Tag 安装到 `web` Profile：
+将不可变的 Commit SHA 安装到 `web` Profile：
 
 ~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-or-tag>
+dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 ~~~
 
-如果插件应安装到其他 DSH Host Profile，请替换 `web`。为了保证安装可复现，请优先使用 Commit SHA 或 Release Tag，而不是会移动的分支。
+如果插件应安装到其他 DSH Host Profile，请替换 `web`。当前尚未发布 Release Tag，因此请使用 Commit SHA，而不是会移动的分支。将来 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) 出现正式版本后，对应 Tag 也可作为不可变的安装版本。
 
 Git 依赖会执行 Legion 的 `prepare` 构建。pnpm 10+ 可能会拒绝第一次安装，并要求显式允许构建。请把 pnpm 输出的**完整 Key**加入 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`，然后重新执行安装：
 
@@ -153,10 +153,10 @@ dsh plugin --profile web add .
 
 ### 升级 GitHub 安装
 
-Commit 和 Tag 是不可变的。使用新的精确版本重新执行 Add：
+使用新的精确 Commit SHA 重新执行 Add。正式 Release 发布后，也可以改用较新的已发布 Release Tag：
 
 ~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-or-tag>
+dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
 ~~~
 
 对于 Registry 或移动引用安装，DSH 也会转发 pnpm 的 Update 命令：

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-22.19%2B%20%7C%2024%2B-339933?logo=node.js&logoColor=white)](package.json)
+[![Node.js](https://img.shields.io/badge/Node.js-%5E22.19.0%20%7C%20%3E%3D24.0.0-339933?logo=node.js&logoColor=white)](package.json)
 
 **dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It adds configurable AI agent Profiles, exact model routing, declarative Teams and Strategies, structured results, and bounded subagent delegation without replacing the DSH runtime.
 
@@ -34,7 +34,7 @@ Legion is useful when one AI coding agent should delegate different kinds of wor
 - **Route work by task type.** Send extraction or summaries to a fast model and architecture or debugging to a deeper model.
 - **Run independent reviews.** Give a reviewer read-only tools, a separate persona, and a structured `review-v1` result.
 - **Build multi-agent workflows.** Define bounded Teams and declarative plan/execute/review or research fanout Strategies.
-- **Control cost and risk.** Limit depth, concurrency, participants, deadlines, output size, tools, and eligible routes.
+- **Bound workload and risk.** Limit depth, concurrency, participants, deadlines, output size, tools, and eligible routes. These bounds constrain cost drivers, but Legion does not provide aggregate token or monetary-cost admission.
 - **Standardize delegation.** Keep semantic Profile names stable when the underlying model or backend changes.
 - **Validate policy before runtime.** Diagnose configuration against explicit provider capability fixtures.
 - **Customize without forking.** Add, replace, disable, or revive Profiles, Teams, and Strategies through Catalog Layers.
@@ -100,13 +100,13 @@ Legion intentionally does **not** own the agent loop, sessions, persistence, mod
 
 ### Install from GitHub
 
-Install an immutable commit or released tag into the `web` profile:
+Install an immutable commit SHA into the `web` profile:
 
 ~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-or-tag>
+dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 ~~~
 
-Replace `web` if Legion should be available in another DSH host profile. Prefer a commit SHA or release tag over a moving branch for reproducible installations.
+Replace `web` if Legion should be available in another DSH host profile. No release tag is published yet, so use a commit SHA rather than a moving branch. After a version appears on [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases), that release's tag is also an immutable installation spec.
 
 Git dependencies run Legion's `prepare` build. pnpm 10+ may reject the first install until the package is explicitly allowed. Add the **exact key printed by pnpm** to `$DSH_HOME/profiles/web/pnpm-workspace.yaml`, then repeat the install:
 
@@ -153,10 +153,10 @@ A copied preset is a versioned template. It does not automatically inherit later
 
 ### GitHub installation
 
-Pinned commits and tags are immutable. Re-add the package with the new exact revision:
+Re-add the package with the new exact commit SHA. After releases exist, a newer published release tag may be used instead:
 
 ~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-or-tag>
+dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
 ~~~
 
 For a registry or moving-ref installation, DSH also forwards pnpm's update command:
@@ -165,7 +165,11 @@ For a registry or moving-ref installation, DSH also forwards pnpm's update comma
 dsh plugin --profile web update dsh-legion
 ~~~
 
-Then review [CHANGELOG.md](CHANGELOG.md), compare your user-owned preset with the current example, and restart the affected DSH process. Presets are never overwritten automatically.
+After upgrading:
+
+1. Review [CHANGELOG.md](CHANGELOG.md).
+2. Compare your user-owned preset with the current example; Legion never overwrites presets automatically.
+3. Restart the affected DSH process. If the preset composition changed, start a new session.
 
 ### Local checkout
 
