@@ -24,7 +24,6 @@ export type TaskId = Brand<string, 'LegionTaskId'>
 export type AttemptId = Brand<string, 'LegionAttemptId'>
 export type MailId = Brand<string, 'LegionMailId'>
 export type ContinuationId = Brand<string, 'LegionContinuationId'>
-export type OwnerId = Brand<string, 'LegionOwnerId'>
 export type Fence = Brand<number, 'LegionFence'>
 export type PlanDigest = Brand<`sha256:${string}`, 'LegionPlanDigest'>
 export type ArtifactDigest = Brand<`sha256:${string}`, 'ArtifactDigest'>
@@ -92,10 +91,6 @@ export function ContinuationId(value: unknown): ContinuationId {
   return namedIdentity(value, 'LegionContinuationId')
 }
 
-export function OwnerId(value: unknown): OwnerId {
-  return namedIdentity(value, 'LegionOwnerId')
-}
-
 export function Fence(value: unknown): Fence {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error('dsh-legion: invalid fence')
@@ -153,7 +148,6 @@ export interface RunRecord {
   readonly currentPlanVersion: PlanVersion
   readonly status: RunStatus
   readonly currentMilestone?: string
-  readonly ownerId?: OwnerId
   readonly fence?: Fence
   readonly environmentDigest: EnvironmentDigest
   readonly contextDigest?: ContextDigest
@@ -181,6 +175,16 @@ export interface ArtifactRef {
   readonly byteLength: number
 }
 
+export type EffectClass = 'read' | 'idempotent-write' | 'non-idempotent-write'
+
+export interface OwnerFingerprint {
+  readonly hostInstanceId: string
+  readonly processBootId: string
+  readonly pluginGeneration: string
+  readonly anchorSessionId: string
+  readonly activationId: string
+}
+
 export interface ResultEnvelope {
   readonly schemaVersion: 1
   readonly taskId: TaskId
@@ -189,6 +193,9 @@ export interface ResultEnvelope {
   readonly fence: Fence
   readonly runId: RunId
   readonly planVersion: PlanVersion
+  readonly routePlanDigest: RoutePlanDigestType
+  readonly environmentDigest: EnvironmentDigest
+  readonly contextDigest?: ContextDigest
   readonly summary: string
   readonly artifacts: readonly ArtifactRef[]
   readonly evidence: readonly ArtifactRef[]
@@ -243,7 +250,9 @@ export interface AttemptRecord {
   readonly planVersion: PlanVersion
   readonly generation: number
   readonly fence: Fence
-  readonly ownerId: OwnerId
+  readonly owner: OwnerFingerprint
+  readonly effectClass: EffectClass
+  readonly idempotencyKey?: string
   readonly profile: ProfileName
   readonly routePlanDigest: RoutePlanDigestType
   readonly status: AttemptStatus

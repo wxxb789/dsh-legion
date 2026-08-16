@@ -45,6 +45,10 @@ export function assertLegionTransition<Type extends LegionEventType>(
     }
 
     assertVersionNotLower(current.run.currentPlanVersion, record.currentPlanVersion)
+    if (current.run.fence !== undefined && record.fence !== undefined
+      && record.fence < current.run.fence) {
+      throw new Error('dsh-legion: run fence cannot decrease')
+    }
     if (TERMINAL_RUN_STATUSES.has(current.run.status)
       && record.status !== current.run.status) {
       throw new Error('dsh-legion: terminal durable run cannot transition')
@@ -101,7 +105,25 @@ export function assertLegionTransition<Type extends LegionEventType>(
   }
   const existing = current.attempts[record.attemptId]
   if (existing !== undefined
-    && (existing.taskId !== record.taskId || existing.generation !== record.generation)) {
-    throw new Error('dsh-legion: attempt identity cannot be rebound')
+    && (existing.taskId !== record.taskId
+      || existing.planVersion !== record.planVersion
+      || existing.generation !== record.generation
+      || existing.fence !== record.fence
+      || existing.effectClass !== record.effectClass
+      || existing.idempotencyKey !== record.idempotencyKey
+      || JSON.stringify(existing.owner) !== JSON.stringify(record.owner))) {
+    throw new Error('dsh-legion: attempt safety identity cannot be rebound')
+  }
+  if (record.result !== undefined
+    && (record.result.runId !== data.runId
+      || record.result.taskId !== record.taskId
+      || record.result.attemptId !== record.attemptId
+      || record.result.planVersion !== record.planVersion
+      || record.result.generation !== record.generation
+      || record.result.fence !== record.fence
+      || record.result.routePlanDigest !== record.routePlanDigest
+      || record.result.environmentDigest !== record.environmentDigest
+      || record.result.contextDigest !== record.contextDigest)) {
+    throw new Error('dsh-legion: attempt result identity is stale')
   }
 }

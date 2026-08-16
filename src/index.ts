@@ -7,6 +7,10 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { Config, materializeConfig } from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
+  detectDurableCapabilities,
+  type DurableCapabilityContext,
+} from './durable-run/capabilities.ts'
+import {
   assertCatalogUsable,
   compileCatalog,
   compileDelegationPlan,
@@ -220,6 +224,12 @@ export * from './durable-run/projection.ts'
 export * from './durable-run/replay.ts'
 export * from './durable-run/graph.ts'
 export * from './durable-run/controller.ts'
+export * from './durable-run/host.ts'
+export * from './durable-run/capabilities.ts'
+export * from './durable-run/lease.ts'
+export * from './durable-run/recovery.ts'
+export * from './durable-run/result-acceptance.ts'
+export * from './durable-run/run-control.ts'
 
 export const name = 'dsh-legion'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -722,6 +732,14 @@ function profileResourceBase(ctx: Context, config: Config): string | undefined {
 export async function apply(ctx: Context, config: Config): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
   const resolvedConfig = materializeConfig(config)
+  const durableCapabilities = detectDurableCapabilities(
+    ctx as unknown as DurableCapabilityContext,
+  )
+  if (resolvedConfig.enableDurableRuns && !durableCapabilities.durableMutation) {
+    ctx.logger.warn(
+      `dsh-legion: durable runs disabled: ${durableCapabilities.diagnostics.join(', ')}`,
+    )
+  }
   const resourceBase = profileResourceBase(ctx, resolvedConfig)
   const resources: ResourceSnapshot = resourceBase === undefined
     ? EMPTY_RESOURCE_SNAPSHOT

@@ -62,9 +62,9 @@ Users can build their own Teams and orchestration Strategies. Legion ships a use
 
 Default Strategies ship as ordinary off-by-default data; automatic model exposure requires benchmarks showing measurable value over direct delegation.
 
-## v1.1 — Journal-native evolving workflows (Milestone 2: static durable DAG implemented)
+## v1.1 — Journal-native evolving workflows (Milestone 3: fenced recovery contracts implemented)
 
-V1.1 adds an opt-in, Session-anchored durable Strategy controller while preserving DSH ownership of physical execution and durability. The existing v1.0 ephemeral path remains unchanged and is the default. Milestones 1–2 provide the typed journal vocabulary, pure projection and replay, deterministic static Plan Graph compilation, and a bounded single-caller activation interpreter. General journal execution remains unavailable until Milestone 3 supplies mandatory Host coordination and fencing.
+V1.1 adds an opt-in, Session-anchored durable Strategy controller while preserving DSH ownership of physical execution and durability. The existing v1.0 ephemeral path remains unchanged and is the default. Milestones 1–3 provide the typed journal vocabulary, pure projection and replay, deterministic static Plan Graph compilation, a bounded activation interpreter, and public Host coordination, fencing, recovery, result-acceptance, and run-control contracts. The current DSH rc.6 composition does not supply atomic coordination, so unsafe journal mutation remains deliberately unavailable while read-only inspection and ephemeral execution remain usable.
 
 - [x] Accept ADRs 0015–0020 and update repository ownership and domain vocabulary.
 - [x] Authorize only a bounded interpreter for typed Legion DAG IR over plugin-owned events in the invoking DSH Session journal.
@@ -73,7 +73,7 @@ V1.1 adds an opt-in, Session-anchored durable Strategy controller while preservi
 - [x] Keep global admission Host-owned; without it, enforce only existing per-run limits and make no global-scale or aggregate token/cost claim.
 - [x] Implement journal event vocabulary, pure projection, replay, and bounded inspection.
 - [x] Implement opt-in static durable DAG execution while retaining ephemeral parity.
-- [ ] Implement leases, fencing, stale-result rejection, effect-aware recovery, and run controls.
+- [x] Implement public lease/fence Host contracts, fail-closed capability detection, stale-result rejection, deterministic effect-aware recovery, and safe programmatic run controls; production mutation remains capability-gated.
 - [ ] Implement journal-native mailbox delivery and ordered cache-stable Context Manifests.
 - [ ] Implement validated Plan Deltas, public Stair-step policy, and one-shot Continuations.
 - [ ] Complete deterministic protocol, compatibility, packaging, and release gates; defer large live-model scale certification.

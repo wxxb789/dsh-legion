@@ -11,7 +11,6 @@ import {
   GoalVersion,
   ContinuationId,
   MailId,
-  OwnerId,
   PlanDigest,
   PlanVersion,
   RoutePlanDigest,
@@ -112,7 +111,7 @@ function parseRunRecord(value: unknown): SessionEventMap['legion/run-state']['re
   const source = record(value, 'run record')
   assertKeys(source, [
     'schemaVersion', 'runId', 'anchorSessionId', 'strategyName', 'strategyPlanDigest', 'catalogDigest', 'goalVersion', 'goal',
-    'currentPlanVersion', 'status', 'currentMilestone', 'ownerId', 'fence', 'environmentDigest',
+    'currentPlanVersion', 'status', 'currentMilestone', 'fence', 'environmentDigest',
     'contextDigest', 'createdAt', 'updatedAt', 'terminalSummary',
   ], 'run record')
   if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid run record schemaVersion')
@@ -128,7 +127,6 @@ function parseRunRecord(value: unknown): SessionEventMap['legion/run-state']['re
     currentPlanVersion: PlanVersion(source.currentPlanVersion),
     status: choice(source.status, RUN_STATUSES, 'run status'),
     ...(source.currentMilestone === undefined ? {} : { currentMilestone: text(source.currentMilestone, 'currentMilestone') }),
-    ...(source.ownerId === undefined ? {} : { ownerId: OwnerId(source.ownerId) }),
     ...(source.fence === undefined ? {} : { fence: Fence(source.fence) }),
     environmentDigest: EnvironmentDigest(source.environmentDigest),
     ...(source.contextDigest === undefined ? {} : { contextDigest: ContextDigest(source.contextDigest) }),
@@ -194,12 +192,73 @@ function parseTaskRecord(value: unknown): SessionEventMap['legion/task-state']['
   }
 }
 
+function parseOwnerFingerprint(value: unknown) {
+  const source = record(value, 'owner fingerprint')
+  assertKeys(
+    source,
+    ['hostInstanceId', 'processBootId', 'pluginGeneration', 'anchorSessionId', 'activationId'],
+    'owner fingerprint',
+  )
+  return {
+    hostInstanceId: text(source.hostInstanceId, 'owner.hostInstanceId'),
+    processBootId: text(source.processBootId, 'owner.processBootId'),
+    pluginGeneration: text(source.pluginGeneration, 'owner.pluginGeneration'),
+    anchorSessionId: text(source.anchorSessionId, 'owner.anchorSessionId'),
+    activationId: text(source.activationId, 'owner.activationId'),
+  }
+}
+
+function parseResultEnvelope(
+  value: unknown,
+): NonNullable<SessionEventMap['legion/attempt-state']['record']['result']> {
+  const source = record(value, 'result envelope')
+  assertKeys(source, [
+    'schemaVersion', 'taskId', 'attemptId', 'generation', 'fence', 'runId',
+    'planVersion', 'routePlanDigest', 'environmentDigest', 'contextDigest',
+    'summary', 'artifacts', 'evidence', 'decisions', 'verification', 'openRisks',
+    'progress',
+  ], 'result envelope')
+  if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid result schemaVersion')
+  if (!Array.isArray(source.artifacts)
+    || !Array.isArray(source.evidence)
+    || !Array.isArray(source.decisions)
+    || !Array.isArray(source.verification)) {
+    throw new Error('dsh-legion: invalid result collections')
+  }
+  const progress = record(deepJson(source.progress), 'result progress')
+  return {
+    schemaVersion: 1,
+    taskId: TaskId(source.taskId),
+    attemptId: AttemptId(source.attemptId),
+    generation: natural(source.generation, 'result generation'),
+    fence: Fence(source.fence),
+    runId: RunId(source.runId),
+    planVersion: PlanVersion(source.planVersion),
+    routePlanDigest: RoutePlanDigest(text(source.routePlanDigest, 'result routePlanDigest')),
+    environmentDigest: EnvironmentDigest(source.environmentDigest),
+    ...(source.contextDigest === undefined ? {} : { contextDigest: ContextDigest(source.contextDigest) }),
+    summary: text(source.summary, 'result summary'),
+    artifacts: source.artifacts.map(parseArtifact),
+    evidence: source.evidence.map(parseArtifact),
+    decisions: source.decisions.map((item, index) =>
+      record(deepJson(item), `result decisions[${index}]`)),
+    verification: source.verification.map((item, index) =>
+      record(deepJson(item), `result verification[${index}]`)),
+    openRisks: stringList(source.openRisks, 'result openRisks'),
+    progress,
+  }
+}
+
 function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-state']['record'] {
   const source = record(value, 'attempt record')
-  assertKeys(source, ['schemaVersion', 'attemptId', 'taskId', 'planVersion', 'generation', 'fence', 'ownerId', 'profile', 'routePlanDigest', 'status', 'environmentDigest', 'contextDigest', 'childSessionIds', 'result', 'failure', 'updatedAt'], 'attempt record')
+  assertKeys(source, [
+    'schemaVersion', 'attemptId', 'taskId', 'planVersion', 'generation', 'fence',
+    'owner', 'effectClass', 'idempotencyKey', 'profile', 'routePlanDigest', 'status',
+    'environmentDigest', 'contextDigest', 'childSessionIds', 'result', 'failure',
+    'updatedAt',
+  ], 'attempt record')
   if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid attempt record schemaVersion')
   if (!Array.isArray(source.childSessionIds)) throw new Error('dsh-legion: childSessionIds must be an array')
-  if (source.result !== undefined) throw new Error('dsh-legion: result parsing is reserved until settlement implementation')
   return {
     schemaVersion: 1,
     attemptId: AttemptId(source.attemptId),
@@ -207,13 +266,22 @@ function parseAttemptRecord(value: unknown): SessionEventMap['legion/attempt-sta
     planVersion: PlanVersion(source.planVersion),
     generation: natural(source.generation, 'generation'),
     fence: Fence(source.fence),
-    ownerId: OwnerId(source.ownerId),
+    owner: parseOwnerFingerprint(source.owner),
+    effectClass: choice(
+      source.effectClass,
+      ['read', 'idempotent-write', 'non-idempotent-write'] as const,
+      'effectClass',
+    ),
+    ...(source.idempotencyKey === undefined
+      ? {}
+      : { idempotencyKey: text(source.idempotencyKey, 'idempotencyKey') }),
     profile: ProfileName(text(source.profile, 'profile')),
     routePlanDigest: RoutePlanDigest(text(source.routePlanDigest, 'routePlanDigest')),
     status: choice(source.status, ATTEMPT_STATUSES, 'attempt status'),
     environmentDigest: EnvironmentDigest(source.environmentDigest),
     ...(source.contextDigest === undefined ? {} : { contextDigest: ContextDigest(source.contextDigest) }),
     childSessionIds: source.childSessionIds.map((id, index) => SessionId(text(id, `childSessionIds[${index}]`))),
+    ...(source.result === undefined ? {} : { result: parseResultEnvelope(source.result) }),
     ...(source.failure === undefined ? {} : { failure: text(source.failure, 'failure') }),
     updatedAt: natural(source.updatedAt, 'updatedAt'),
   }
