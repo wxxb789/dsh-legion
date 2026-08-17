@@ -1,58 +1,33 @@
 {
-  "schemaVersion": "dsh-legion-public-contract-v1",
-  "packageMajor": 1,
-  "configVersion": 2,
-  "modelStrategyExposureDefault": false,
-  "qualityAdjudicationReceiptVersion": "legion-adjudication-receipt-v2",
-  "executionReceiptVersion": "legion-execution-receipt-v1",
-  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2",
-  "qualityAdjudicationReceiptFields": [
-    "schemaVersion",
-    "batchId",
-    "blinded",
-    "signerId",
-    "payload",
-    "signature"
+  "admissionScopes": [
+    "host-global-admitted",
+    "per-run-conservative"
   ],
-  "qualityAdjudicationPayloadFields": [
-    "campaignId",
-    "strategy",
-    "startedAt",
-    "endedAt",
-    "catalogDigest",
-    "executionCommit",
-    "deploymentHardBudget",
-    "casePackSha256",
-    "rubricSha256",
-    "thresholdsSha256",
-    "scoredRunsSha256"
+  "artifactContracts": [
+    "objective-v1",
+    "text",
+    "findings-v1",
+    "review-v1"
   ],
-  "executionReceiptFields": [
-    "schemaVersion",
-    "signerId",
-    "payload",
-    "signature"
+  "authorityOwners": {
+    "modelStrategyExposure": "deployment",
+    "childLifecycle": "dsh-subagent",
+    "sandboxApproval": "dsh-host",
+    "aggregateTokenCost": "unavailable-without-host-admission"
+  },
+  "authorityProfileFields": [
+    "members",
+    "tools",
+    "providers",
+    "models",
+    "routes",
+    "effectClasses"
   ],
-  "executionReceiptPayloadFields": [
-    "campaignId",
-    "executionCommit",
-    "casePackSha256",
-    "packCommitmentId",
-    "startedAt",
-    "endedAt",
-    "executionId",
-    "caseId",
-    "repeat",
-    "pairId",
-    "arm",
-    "order",
-    "exposure",
-    "status",
-    "artifact",
-    "provenance",
-    "usage",
-    "timing",
-    "infraReceipt"
+  "catalogLayerSemantics": [
+    "add-new-name",
+    "replace-same-name",
+    "disable-tombstone",
+    "revive-later"
   ],
   "compatibilityReceiptFields": [
     "schemaVersion",
@@ -70,32 +45,38 @@
     "durableDiagnostics",
     "status"
   ],
-  "heldOutPackTrustFields": [
-    "packId",
-    "packSha256",
-    "issuer",
-    "commitmentId",
-    "committedAt",
-    "unsealedAt",
-    "signature"
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2",
+  "configVersion": 2,
+  "contextFreshnessKinds": [
+    "timeless",
+    "fresh",
+    "expired"
   ],
-  "packageEntry": {
-    "main": "lib/index.js",
-    "types": "lib/index.d.ts",
-    "bin": {
-      "dsh-legion": "lib/bin.js"
-    },
-    "exports": {
-      ".": {
-        "types": "./lib/index.d.ts",
-        "default": "./lib/index.js"
-      },
-      "./contracts/v1.json": "./contracts/v1.json",
-      "./contracts/compatibility.json": "./contracts/compatibility.json",
-      "./contracts/journal-v1.json": "./contracts/journal-v1.json",
-      "./package.json": "./package.json"
-    }
-  },
+  "contextManifestSchemaVersion": 1,
+  "contextSharedPrefixSlots": [
+    "profile-policy",
+    "strategy-policy",
+    "shared-run"
+  ],
+  "contextSlots": [
+    "profile-policy",
+    "strategy-policy",
+    "shared-run",
+    "goal",
+    "task",
+    "evidence",
+    "mail"
+  ],
+  "continuationStates": [
+    "available",
+    "consumed",
+    "invalidated"
+  ],
+  "continuationStatuses": [
+    "available",
+    "consumed",
+    "invalidated"
+  ],
   "declarationExports": [
     "ARTIFACT_CONTRACTS",
     "ATTEMPT_STATUSES",
@@ -226,6 +207,8 @@
     "LEGION_RUN_COORDINATION_KEY",
     "LEGION_RUN_PROJECTION_KEY",
     "LEGION_RUN_PROJECTION_STATE_VERSION",
+    "LEGION_SETTINGS_NAMESPACE",
+    "LEGION_SETTINGS_SERVICE_KEY",
     "LeaseAcquireResult",
     "LeaseMutationResult",
     "LegionAttemptStateEvent",
@@ -345,11 +328,19 @@
     "RunRecord",
     "RunStatus",
     "RuntimeSnapshot",
+    "SETTINGS_DIAGNOSTIC_CODES",
     "STAIR_STEP_PAUSE_REASONS",
     "STRATEGY_LIMIT_FIELDS",
     "STRATEGY_STAGE_KINDS",
     "SanitizedRouteObservation",
     "SelectedRoutePlan",
+    "SettingsCapabilitySnapshot",
+    "SettingsDiagnosticCode",
+    "SettingsHostContext",
+    "SettingsProviderLike",
+    "SettingsRegisterOptionsLike",
+    "SettingsScopeLike",
+    "SettingsSectionHooks",
     "StairStepAdvanceDecision",
     "StairStepEvaluation",
     "StairStepPauseReason",
@@ -437,6 +428,7 @@
     "deriveRunMetrics",
     "deriveTaskReadiness",
     "detectDurableCapabilities",
+    "detectSettingsCapabilities",
     "dispatchKeyOf",
     "evaluateStairStepMilestone",
     "evolvePlanGraph",
@@ -449,6 +441,7 @@
     "foldLegionProjection",
     "groupDispatches",
     "inject",
+    "installSettingsSection",
     "invalidateContinuation",
     "isAuthoritySubset",
     "isLegionEvent",
@@ -493,6 +486,210 @@
     "validateContinuation",
     "viewLegionRun"
   ],
+  "dispatchCompatibilityTuple": [
+    "provider",
+    "model",
+    "toolsetDigest",
+    "profileDigest",
+    "sharedPrefixDigest"
+  ],
+  "durableCapabilityKeys": [
+    "sessions",
+    "sessionProjections",
+    "legionRunCoordination",
+    "legionGlobalAdmission",
+    "legionChildReceipts"
+  ],
+  "durableDeliverySemantics": {
+    "taskExecution": "at-least-once",
+    "acceptedCommit": "exactly-once-by-fence-generation",
+    "externalEffects": "not-exactly-once"
+  },
+  "durableDiagnostics": [
+    "LEGION_DURABLE_FLUSH_UNAVAILABLE",
+    "LEGION_SESSION_PROJECTION_UNAVAILABLE",
+    "LEGION_DURABLE_COORDINATION_UNAVAILABLE",
+    "LEGION_GLOBAL_ADMISSION_UNAVAILABLE",
+    "LEGION_DURABLE_CHILD_RECEIPT_UNAVAILABLE",
+    "LEGION_RECOVERY_EFFECT_AMBIGUOUS"
+  ],
+  "durableMandatoryCapabilities": [
+    "sessions.flush",
+    "sessionProjections",
+    "legionRunCoordination"
+  ],
+  "durableMutationAvailability": "capability-gated-fail-closed",
+  "durableRunPolicyFields": [
+    "maxStartsPerActivation",
+    "maxConcurrentTasks"
+  ],
+  "durableRunsDefault": false,
+  "environmentCapabilityKinds": [
+    "known-supported",
+    "known-unsupported",
+    "unknown"
+  ],
+  "environmentSnapshotSchemaVersion": 1,
+  "executionReceiptFields": [
+    "schemaVersion",
+    "signerId",
+    "payload",
+    "signature"
+  ],
+  "executionReceiptPayloadFields": [
+    "campaignId",
+    "executionCommit",
+    "casePackSha256",
+    "packCommitmentId",
+    "startedAt",
+    "endedAt",
+    "executionId",
+    "caseId",
+    "repeat",
+    "pairId",
+    "arm",
+    "order",
+    "exposure",
+    "status",
+    "artifact",
+    "provenance",
+    "usage",
+    "timing",
+    "infraReceipt"
+  ],
+  "executionReceiptVersion": "legion-execution-receipt-v1",
+  "heldOutPackTrustFields": [
+    "packId",
+    "packSha256",
+    "issuer",
+    "commitmentId",
+    "committedAt",
+    "unsealedAt",
+    "signature"
+  ],
+  "hostServicesShipped": [],
+  "journalContract": {
+    "schemaVersion": "dsh-legion-journal-contract-v1",
+    "path": "contracts/journal-v1.json",
+    "eventFamilies": 8,
+    "projectionKey": "legion-run",
+    "projectionStateVersion": 6
+  },
+  "journalEventKinds": [
+    "legion/run-state",
+    "legion/plan-state",
+    "legion/task-state",
+    "legion/attempt-state",
+    "legion/mail-state",
+    "legion/milestone",
+    "legion/decision",
+    "legion/continuation-state"
+  ],
+  "journalEventSchemaVersion": 1,
+  "mailStates": [
+    "queued",
+    "reserved",
+    "incorporated",
+    "acknowledged",
+    "discarded"
+  ],
+  "mailStatuses": [
+    "queued",
+    "reserved",
+    "incorporated",
+    "acknowledged",
+    "discarded"
+  ],
+  "milestoneNextDecisions": [
+    "advance",
+    "revise",
+    "pause",
+    "complete"
+  ],
+  "milestoneProgressKinds": [
+    "accepted-artifact",
+    "criterion-satisfied",
+    "risk-retired",
+    "uncertainty-reduced",
+    "blocked-path-rejected"
+  ],
+  "modelStrategyExposureDefault": false,
+  "packageEntry": {
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "bin": {
+      "dsh-legion": "lib/bin.js"
+    },
+    "exports": {
+      ".": {
+        "types": "./lib/index.d.ts",
+        "default": "./lib/index.js"
+      },
+      "./contracts/v1.json": "./contracts/v1.json",
+      "./contracts/compatibility.json": "./contracts/compatibility.json",
+      "./contracts/journal-v1.json": "./contracts/journal-v1.json",
+      "./package.json": "./package.json"
+    }
+  },
+  "packageMajor": 1,
+  "packageVersion": "1.2.0",
+  "parallelismScopes": [
+    "host-global-admitted",
+    "per-run-observed"
+  ],
+  "planDeltaOperationKinds": [
+    "add-node",
+    "add-edge",
+    "supersede-pending",
+    "narrow-limits"
+  ],
+  "planDeltaSchemaVersion": 1,
+  "profileRequestFields": [
+    "kind",
+    "profile",
+    "description",
+    "prompt",
+    "run_in_background"
+  ],
+  "profileRequiredFields": [
+    "description",
+    "prompt"
+  ],
+  "qualityAdjudicationPayloadFields": [
+    "campaignId",
+    "strategy",
+    "startedAt",
+    "endedAt",
+    "catalogDigest",
+    "executionCommit",
+    "deploymentHardBudget",
+    "casePackSha256",
+    "rubricSha256",
+    "thresholdsSha256",
+    "scoredRunsSha256"
+  ],
+  "qualityAdjudicationReceiptFields": [
+    "schemaVersion",
+    "batchId",
+    "blinded",
+    "signerId",
+    "payload",
+    "signature"
+  ],
+  "qualityAdjudicationReceiptVersion": "legion-adjudication-receipt-v2",
+  "reducerEnvelopeSchemaVersion": 1,
+  "resultContracts": [
+    "text",
+    "findings-v1",
+    "review-v1",
+    "plan-delta-v1"
+  ],
+  "runControlActions": [
+    "inspect",
+    "resume",
+    "cancel",
+    "steer"
+  ],
   "runtimeExports": [
     "ARTIFACT_CONTRACTS",
     "ATTEMPT_STATUSES",
@@ -528,6 +725,8 @@
     "LEGION_RUN_COORDINATION_KEY",
     "LEGION_RUN_PROJECTION_KEY",
     "LEGION_RUN_PROJECTION_STATE_VERSION",
+    "LEGION_SETTINGS_NAMESPACE",
+    "LEGION_SETTINGS_SERVICE_KEY",
     "LegionProfileSchema",
     "MailId",
     "MemberSlotName",
@@ -548,6 +747,7 @@
     "RoutePlanError",
     "RunCoordinationAdapter",
     "RunId",
+    "SETTINGS_DIAGNOSTIC_CODES",
     "STAIR_STEP_PAUSE_REASONS",
     "STRATEGY_LIMIT_FIELDS",
     "STRATEGY_STAGE_KINDS",
@@ -608,6 +808,7 @@
     "deriveRunMetrics",
     "deriveTaskReadiness",
     "detectDurableCapabilities",
+    "detectSettingsCapabilities",
     "dispatchKeyOf",
     "evaluateStairStepMilestone",
     "evolvePlanGraph",
@@ -620,6 +821,7 @@
     "foldLegionProjection",
     "groupDispatches",
     "inject",
+    "installSettingsSection",
     "invalidateContinuation",
     "isAuthoritySubset",
     "isLegionEvent",
@@ -664,45 +866,39 @@
     "validateContinuation",
     "viewLegionRun"
   ],
-  "resultContracts": [
-    "text",
-    "findings-v1",
-    "review-v1",
-    "plan-delta-v1"
+  "schemaVersion": "dsh-legion-public-contract-v1",
+  "sessionProjection": {
+    "key": "legion-run",
+    "stateVersion": 6
+  },
+  "settingsDiagnostics": [
+    "LEGION_SETTINGS_SERVICE_UNAVAILABLE",
+    "LEGION_SETTINGS_REGISTRATION_REJECTED"
   ],
-  "artifactContracts": [
-    "objective-v1",
-    "text",
-    "findings-v1",
-    "review-v1"
+  "settingsNamespace": "legion",
+  "settingsServiceKey": "settings",
+  "stairStepPauseReasons": [
+    "authority-expansion",
+    "irreversible-effect",
+    "high-cost-ambiguity",
+    "verification-failure",
+    "no-progress"
   ],
-  "strategyStageKinds": [
-    "delegate",
-    "fanout",
-    "synthesize"
+  "stairStepPolicyFields": [
+    "kind",
+    "plannerMember",
+    "verifierMember",
+    "advancement",
+    "maxMilestones",
+    "maxNoProgressMilestones",
+    "requireVisibleArtifact",
+    "pauseOn"
   ],
   "strategyLimitFields": [
     "maxAgents",
     "maxConcurrent",
     "deadlineMs",
     "maxOutputBytes"
-  ],
-  "teamRunOutcomes": [
-    "completed",
-    "degraded",
-    "cancelled",
-    "failed"
-  ],
-  "profileRequestFields": [
-    "kind",
-    "profile",
-    "description",
-    "prompt",
-    "run_in_background"
-  ],
-  "profileRequiredFields": [
-    "description",
-    "prompt"
   ],
   "strategyRequestFields": [
     "kind",
@@ -716,191 +912,18 @@
     "strategy",
     "objective"
   ],
-  "catalogLayerSemantics": [
-    "add-new-name",
-    "replace-same-name",
-    "disable-tombstone",
-    "revive-later"
-  ],
-  "authorityOwners": {
-    "modelStrategyExposure": "deployment",
-    "childLifecycle": "dsh-subagent",
-    "sandboxApproval": "dsh-host",
-    "aggregateTokenCost": "unavailable-without-host-admission"
-  },
-  "durableRunsDefault": false,
-  "durableRunPolicyFields": [
-    "maxStartsPerActivation",
-    "maxConcurrentTasks"
+  "strategyStageKinds": [
+    "delegate",
+    "fanout",
+    "synthesize"
   ],
   "strategyStageOptionalFields": [
     "after"
   ],
-  "journalEventSchemaVersion": 1,
-  "journalEventKinds": [
-    "legion/run-state",
-    "legion/plan-state",
-    "legion/task-state",
-    "legion/attempt-state",
-    "legion/mail-state",
-    "legion/milestone",
-    "legion/decision",
-    "legion/continuation-state"
-  ],
-  "sessionProjection": {
-    "key": "legion-run",
-    "stateVersion": 6
-  },
-  "durableCapabilityKeys": [
-    "sessions",
-    "sessionProjections",
-    "legionRunCoordination",
-    "legionGlobalAdmission",
-    "legionChildReceipts"
-  ],
-  "durableMandatoryCapabilities": [
-    "sessions.flush",
-    "sessionProjections",
-    "legionRunCoordination"
-  ],
-  "durableDiagnostics": [
-    "LEGION_DURABLE_FLUSH_UNAVAILABLE",
-    "LEGION_SESSION_PROJECTION_UNAVAILABLE",
-    "LEGION_DURABLE_COORDINATION_UNAVAILABLE",
-    "LEGION_GLOBAL_ADMISSION_UNAVAILABLE",
-    "LEGION_DURABLE_CHILD_RECEIPT_UNAVAILABLE",
-    "LEGION_RECOVERY_EFFECT_AMBIGUOUS"
-  ],
-  "durableDeliverySemantics": {
-    "taskExecution": "at-least-once",
-    "acceptedCommit": "exactly-once-by-fence-generation",
-    "externalEffects": "not-exactly-once"
-  },
-  "mailStatuses": [
-    "queued",
-    "reserved",
-    "incorporated",
-    "acknowledged",
-    "discarded"
-  ],
-  "contextSlots": [
-    "profile-policy",
-    "strategy-policy",
-    "shared-run",
-    "goal",
-    "task",
-    "evidence",
-    "mail"
-  ],
-  "contextSharedPrefixSlots": [
-    "profile-policy",
-    "strategy-policy",
-    "shared-run"
-  ],
-  "contextFreshnessKinds": [
-    "timeless",
-    "fresh",
-    "expired"
-  ],
-  "mailStates": [
-    "queued",
-    "reserved",
-    "incorporated",
-    "acknowledged",
-    "discarded"
-  ],
-  "contextManifestSchemaVersion": 1,
-  "continuationStates": [
-    "available",
-    "consumed",
-    "invalidated"
-  ],
-  "planDeltaSchemaVersion": 1,
-  "planDeltaOperationKinds": [
-    "add-node",
-    "add-edge",
-    "supersede-pending",
-    "narrow-limits"
-  ],
-  "continuationStatuses": [
-    "available",
-    "consumed",
-    "invalidated"
-  ],
-  "authorityProfileFields": [
-    "members",
-    "tools",
-    "providers",
-    "models",
-    "routes",
-    "effectClasses"
-  ],
-  "stairStepPolicyFields": [
-    "kind",
-    "plannerMember",
-    "verifierMember",
-    "advancement",
-    "maxMilestones",
-    "maxNoProgressMilestones",
-    "requireVisibleArtifact",
-    "pauseOn"
-  ],
-  "stairStepPauseReasons": [
-    "authority-expansion",
-    "irreversible-effect",
-    "high-cost-ambiguity",
-    "verification-failure",
-    "no-progress"
-  ],
-  "milestoneProgressKinds": [
-    "accepted-artifact",
-    "criterion-satisfied",
-    "risk-retired",
-    "uncertainty-reduced",
-    "blocked-path-rejected"
-  ],
-  "milestoneNextDecisions": [
-    "advance",
-    "revise",
-    "pause",
-    "complete"
-  ],
-  "environmentSnapshotSchemaVersion": 1,
-  "environmentCapabilityKinds": [
-    "known-supported",
-    "known-unsupported",
-    "unknown"
-  ],
-  "dispatchCompatibilityTuple": [
-    "provider",
-    "model",
-    "toolsetDigest",
-    "profileDigest",
-    "sharedPrefixDigest"
-  ],
-  "admissionScopes": [
-    "host-global-admitted",
-    "per-run-conservative"
-  ],
-  "reducerEnvelopeSchemaVersion": 1,
-  "parallelismScopes": [
-    "host-global-admitted",
-    "per-run-observed"
-  ],
-  "packageVersion": "1.1.0",
-  "journalContract": {
-    "schemaVersion": "dsh-legion-journal-contract-v1",
-    "path": "contracts/journal-v1.json",
-    "eventFamilies": 8,
-    "projectionKey": "legion-run",
-    "projectionStateVersion": 6
-  },
-  "runControlActions": [
-    "inspect",
-    "resume",
-    "cancel",
-    "steer"
-  ],
-  "hostServicesShipped": [],
-  "durableMutationAvailability": "capability-gated-fail-closed"
+  "teamRunOutcomes": [
+    "completed",
+    "degraded",
+    "cancelled",
+    "failed"
+  ]
 }

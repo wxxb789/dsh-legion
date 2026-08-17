@@ -30,7 +30,14 @@ const checks = [
     .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
     .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
   ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.0-rc.6'],
-  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.0-rc.6'],
+  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.0-rc.7'],
+  ['compatibilityPolicy.assessedDshVersions', compatibilityPolicy.assessedDshVersions, [
+    compatibilityPolicy.minimumDshVersion,
+    compatibilityPolicy.latestTestedDshVersion,
+  ]],
+  ['settingsNamespace', contract.settingsNamespace, legion.LEGION_SETTINGS_NAMESPACE],
+  ['settingsServiceKey', contract.settingsServiceKey, legion.LEGION_SETTINGS_SERVICE_KEY],
+  ['settingsDiagnostics', contract.settingsDiagnostics, legion.SETTINGS_DIAGNOSTIC_CODES],
   ['compatibilityPolicy.compatibilityReceiptVersion', compatibilityPolicy.compatibilityReceiptVersion, contract.compatibilityReceiptVersion],
   ['compatibilityPolicy.dshPackageClosure', compatibilityPolicy.dshPackageClosure, [...new Set(compatibilityPolicy.dshPackageClosure)].sort()],
   ['packageVersion', contract.packageVersion, manifest.version],

@@ -1,6 +1,6 @@
 {
   "name": "dsh-legion",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Multi-agent teams, model routing, and declarative orchestration for DeepSeek Harness",
   "type": "module",
   "main": "lib/index.js",
@@ -24,6 +24,7 @@
     "benchmarks",
     "contracts",
     "docs/public-contract-v1.md",
+    "docs/settings.md",
     "docs/durable-runs.md",
     "docs/evolving-dag.md",
     "docs/context-manifest.md",

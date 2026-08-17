@@ -4,7 +4,7 @@ import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/ds
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { Config, materializeConfig } from './config.ts'
+import { Config, materializeConfig, type MaterializedConfig } from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
   assertDurableMutationAvailable,
@@ -35,6 +35,14 @@ import {
 import type { StrategyLimits } from './orchestration-contract.ts'
 import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
+import {
+  LEGION_SETTINGS_NAMESPACE,
+  detectSettingsCapabilities,
+  installSettingsSection,
+  type SettingsCapabilitySnapshot,
+  type SettingsDiagnosticCode,
+  type SettingsHostContext,
+} from './settings.ts'
 
 export {
   CURRENT_CONFIG_VERSION,
@@ -211,6 +219,22 @@ export type {
   StrategyCompileResult,
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
+export {
+  LEGION_SETTINGS_NAMESPACE,
+  LEGION_SETTINGS_SERVICE_KEY,
+  SETTINGS_DIAGNOSTIC_CODES,
+  detectSettingsCapabilities,
+  installSettingsSection,
+} from './settings.ts'
+export type {
+  SettingsCapabilitySnapshot,
+  SettingsDiagnosticCode,
+  SettingsHostContext,
+  SettingsProviderLike,
+  SettingsRegisterOptionsLike,
+  SettingsScopeLike,
+  SettingsSectionHooks,
+} from './settings.ts'
 export {
   TEAM_RUN_OUTCOMES,
   createStrategyExecutionSnapshot,
@@ -805,34 +829,108 @@ function profileResourceBase(ctx: Context, config: Config): string | undefined {
   return fileURLToPath(url)
 }
 
+/**
+ * One fully materialized configuration input to a published Tool generation.
+ * Config and prompt-fragment resources move together because a Profile's
+ * fragments are named by the same document that names the Profile: publishing
+ * one without the other would show a catalog whose prompts belong to a
+ * different revision.
+ */
+interface ConfigGeneration {
+  readonly config: MaterializedConfig
+  readonly resources: ResourceSnapshot
+}
+
 export async function apply(ctx: Context, config: Config): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
-  const resolvedConfig = materializeConfig(config)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,
   )
-  if (resolvedConfig.enableDurableRuns && !durableCapabilities.durableMutation) {
+  const settingsCapabilities: SettingsCapabilitySnapshot = detectSettingsCapabilities(
+    ctx as unknown as SettingsHostContext,
+  )
+
+  // The composition entry is the authoritative source until a settings service
+  // attaches, and becomes authoritative again the moment one detaches.
+  let configSource: () => Config = () => config
+  let warnedDurableGap = false
+  // These guards are read by `republish`, which the settings attach can call
+  // before the publication state below exists, so they are bound first.
+  let republishing = false
+  let republishPending = false
+  // Republication is armed only once the first generation is published: the
+  // initial materialization already reads through the attached settings scope,
+  // so an attach-time notification has nothing left to re-derive.
+  let published = false
+  let stopped = false
+
+  const materializeGeneration = async (authored: Config): Promise<ConfigGeneration> => {
+    const resolved = materializeConfig(authored)
+    const resourceBase = profileResourceBase(ctx, resolved)
+    const resources: ResourceSnapshot = resourceBase === undefined
+      ? EMPTY_RESOURCE_SNAPSHOT
+      : await loadProfileResources(resolved, { baseDirectory: resourceBase })
+    return { config: resolved, resources }
+  }
+
+  const announceDurableGap = (resolved: MaterializedConfig): void => {
+    const gap = resolved.enableDurableRuns && !durableCapabilities.durableMutation
+    if (!gap || warnedDurableGap) {
+      warnedDurableGap = gap
+      return
+    }
+    warnedDurableGap = true
     ctx.logger.warn(
       `dsh-legion: durable runs disabled: ${durableCapabilities.diagnostics.join(', ')}`,
     )
   }
-  const resourceBase = profileResourceBase(ctx, resolvedConfig)
-  const resources: ResourceSnapshot = resourceBase === undefined
-    ? EMPTY_RESOURCE_SNAPSHOT
-    : await loadProfileResources(resolvedConfig, { baseDirectory: resourceBase })
+
+  // Registering the namespace can only widen where configuration comes from, so
+  // it happens before the first generation is materialized: the initial publish
+  // then already reflects a stored user section instead of publishing the entry
+  // and immediately republishing over it.
+  if (settingsCapabilities.liveReconfiguration) {
+    await installSettingsSection(
+      ctx as unknown as SettingsHostContext,
+      LEGION_SETTINGS_NAMESPACE,
+      Config,
+      config,
+      {
+        setSource: (current) => { configSource = current },
+        onChange: () => { republish() },
+        // Constraints the schema cannot express refuse the write, not the next
+        // use: an unpublishable section is rejected while the caller is still
+        // there to read why.
+        validate: (value) => { materializeConfig(value) },
+        onError: (error) => {
+          ctx.logger.warn(
+            `dsh-legion: ${'LEGION_SETTINGS_REGISTRATION_REJECTED' satisfies SettingsDiagnosticCode}`
+            + ': using the composition entry',
+          )
+          ctx.logger.warn(error)
+        },
+      },
+    )
+  }
+
+  let generation = await materializeGeneration(configSource())
   ctx.fiber.assertActive()
+  announceDurableGap(generation.config)
   let activeSnapshot: StrategyExecutionSnapshot | undefined
   let activeDefinition: ToolDefinition | undefined
   let disposeTool: (() => void) | undefined
   let refreshing = false
   let registrationFailed = false
 
+  let publishedToolName: string | undefined
+
   const refresh = (): void => {
     if (refreshing) return
     refreshing = true
     registrationFailed = false
     try {
-      const nextProfiles = compileCatalog(resolvedConfig, runtimeSnapshot(ctx, resolvedConfig), resources)
+      const { config: resolved, resources } = generation
+      const nextProfiles = compileCatalog(resolved, runtimeSnapshot(ctx, resolved), resources)
       assertCatalogUsable(nextProfiles)
       const nextOrchestration = compileOrchestrationCatalog(nextProfiles)
       assertOrchestrationCatalogUsable(nextOrchestration)
@@ -840,14 +938,22 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const nextDefinition = Object.keys(nextProfiles.activeProfiles).length === 0
         ? undefined
         : createToolDefinition(ctx, nextSnapshot, {
-            enabled: resolvedConfig.enableDurableRuns,
+            enabled: resolved.enableDurableRuns,
             capabilities: durableCapabilities,
           })
+      // A renamed tool cannot be swapped in place: the Host keys registrations
+      // by name, so the old name has to be withdrawn before the new one exists.
+      if (disposeTool !== undefined && publishedToolName !== nextProfiles.toolName) {
+        disposeTool()
+        disposeTool = undefined
+        publishedToolName = undefined
+      }
       if (nextDefinition === undefined) {
         activeSnapshot = nextSnapshot
         activeDefinition = undefined
         disposeTool?.()
         disposeTool = undefined
+        publishedToolName = undefined
       } else if (disposeTool === undefined) {
         const previousSnapshot = activeSnapshot
         activeSnapshot = nextSnapshot
@@ -860,6 +966,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
               return activeDefinition
             },
           ))
+          publishedToolName = nextProfiles.toolName
         } catch (error: unknown) {
           registrationFailed = true
           activeSnapshot = previousSnapshot
@@ -876,25 +983,62 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }
   }
 
+  /**
+   * Serialize configuration-sourced republication. Loading prompt fragments is
+   * asynchronous, so two commits landing close together would otherwise race to
+   * install their generation; the loser would win by finishing last. Coalescing
+   * to one in-flight pass and one pending follow-up keeps the last committed
+   * configuration the one that gets published.
+   */
+  function republish(): void {
+    if (!published || stopped) return
+    if (republishing) {
+      republishPending = true
+      return
+    }
+    republishing = true
+    void (async () => {
+      try {
+        do {
+          republishPending = false
+          const next = await materializeGeneration(configSource())
+          if (stopped) return
+          generation = next
+          announceDurableGap(next.config)
+          refresh()
+        } while (republishPending)
+      } catch (error: unknown) {
+        // The last published generation is still a working catalog, so a bad
+        // reload degrades to staleness rather than to no delegation surface.
+        ctx.logger.warn('dsh-legion: configuration republication failed; keeping the published generation')
+        ctx.logger.warn(error)
+      } finally {
+        republishing = false
+      }
+    })()
+  }
+
   ctx.on('subagent/provider-added', (provider) => {
-    if (Object.values(resolvedConfig.profiles).some(profile => profile.subagentProvider === provider.name)) refresh()
+    if (Object.values(generation.config.profiles).some(profile => profile.subagentProvider === provider.name)) refresh()
   })
   ctx.on('subagent/provider-removed', (providerName) => {
-    if (Object.values(resolvedConfig.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
+    if (Object.values(generation.config.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
   })
   ctx.on('llm/adapters-updated', refresh)
   ctx.on('tools/change', () => {
     if (registrationFailed && !refreshing) refresh()
   })
   ctx.effect(() => () => {
+    stopped = true
     disposeTool?.()
     disposeTool = undefined
+    publishedToolName = undefined
     activeDefinition = undefined
     activeSnapshot = undefined
   }, 'dsh-legion.activeTool()')
 
   ctx.systemPrompt.section({
-    name: `tool:${resolvedConfig.toolName}`,
+    name: `tool:${generation.config.toolName}`,
     order: PROMPT_ORDER,
     text: () => {
       if (activeSnapshot === undefined
@@ -914,4 +1058,5 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
   })
   refresh()
+  published = true
 }

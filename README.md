@@ -56,6 +56,7 @@ Legion is for developers and deployment owners who already use DSH and want conf
 | Catalog customization | Layer, replace, disable, and restore user or third-party catalog entries. |
 | Prompt Fragments | Load confined, immutable UTF-8 prompt resources from deployment-owned roots. |
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
+| Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
 ## How it works
@@ -265,6 +266,8 @@ A minimal agent-preset row:
 ~~~
 
 Use valid provider and model IDs for your deployment. See the [complete preset fragment](examples/legion.agent.cordis.fragment.yml) and [standalone configuration example](examples/legion.config.yml).
+
+When the Host mounts a settings provider (DSH 0.1.0-rc.7 serves every registered namespace), Legion also registers this same schema as the `legion` settings namespace: the preset row above becomes the base layer, a stored user section overrides individual fields, and a commit republishes the tool without restarting DSH. Nothing changes in a composition without a settings provider. See [live reconfiguration](docs/settings.md).
 
 ### Top-level fields
 

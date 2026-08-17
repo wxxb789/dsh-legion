@@ -82,6 +82,16 @@ V1.1 adds an opt-in, Session-anchored durable Strategy controller while preservi
 
 V1.1 non-goals remain a second journal/WAL/database/task or mailbox store, a generic scheduler/workflow runtime, a process-global run registry or daemon, exactly-once external side effects, arbitrary model-written code, captured stacks, and silent authority expansion.
 
+## v1.2 — Host-sourced live configuration
+
+Legion keeps one configuration vocabulary. The DSH settings service, which from 0.1.0-rc.7 serves every registered namespace instead of an allowlist, becomes an additional *source* for the existing `Config` schema rather than a second configuration system.
+
+- [x] Register the `legion` namespace structurally, with no peer dependency on `@deepseek-ai/dsh-settings` and no behaviour change when no provider is mounted.
+- [x] Layer the composition entry under the stored user section and restore it when the provider detaches.
+- [x] Widen a published generation's inputs to configuration, prompt-fragment resources, and runtime facts, with serialized last-commit-wins republication.
+- [x] Degrade a rejected registration or unpublishable commit to the last publishable generation instead of withdrawing the delegation surface.
+- [ ] Ship the browser settings card once DSH publishes the `clientBundle` preset; today a served namespace with no card renders nothing.
+
 ## Type-system gates
 
 - [x] Distinct authored Config/Spec, materialized catalog, Effective Profile/Team, and Compiled Plan types at catalog boundaries.
@@ -99,6 +109,7 @@ V1.1 non-goals remain a second journal/WAL/database/task or mailbox store, a gen
 
 ## Upstream DSH proposals
 
+- Published `clientBundle` preset so a third-party settings card need not reproduce the loader artifact format, staging, and revision fencing.
 - Child reasoning-effort override at the AgentOptions/request seam.
 - Per-child named preset composition with durable resume semantics.
 - Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling profile-local DSH Skill registrations.

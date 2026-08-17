@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-17
+
+### Added
+
+- Optional live reconfiguration through the DSH settings service: Legion registers the `legion` namespace against its existing `Config` schema, layering the composition entry under the stored user section, and republishes its tool generation on commit.
+- Structural `detectSettingsCapabilities` and `installSettingsSection` seams that take no peer dependency on `@deepseek-ai/dsh-settings`, so a composition without a settings provider runs none of the wiring and keeps its entry configuration verbatim.
+- ADR 0021 and `docs/settings.md` covering layer resolution, failure behaviour, and the deferred browser card.
+
+### Changed
+
+- A published generation is now derived from configuration, prompt-fragment resources, and runtime facts together, instead of runtime facts alone; reloads are serialized last-commit-wins and a failed reload keeps the last publishable generation registered.
+- A committed `toolName` change withdraws the previous registration before registering the new name, because the Host keys tool registrations by name.
+- Compatibility policy records DSH 0.1.0-rc.7 as the latest tested version, and the packed `latest-tested` matrix channel targets it. DSH 0.1.0-rc.7 changes no type Legion imports; durable mutation stays fail-closed because no published DSH release provides atomic run coordination.
+
 ## [1.1.0] - 2026-08-16
 
 ### Added
