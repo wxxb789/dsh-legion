@@ -28,6 +28,12 @@ Republication is serialized and last-commit-wins. Two commits landing together p
 | The settings provider detaches | The composition entry becomes the source again and Legion republishes from it. |
 | Legion's own fiber unloads | Republication stops; no generation is rebuilt against a disposing fiber. |
 
+## Why serving this namespace is safe
+
+DSH does not yet refuse to serve a namespace whose secrets it cannot prove redactable, and a serialized schema can carry secret defaults. That gap does not reach Legion: the `Config` schema declares no `role('secret')` field and holds no credential. It names providers, models, tools, personas, and prompt-fragment roots — the same policy data the `cordis.yml` entry already commits to the repository. Credentials stay in DSH's own `credentials` domain, which Legion never reads.
+
+Keep it that way. A future field that would carry a secret belongs behind a credential reference, not in this section.
+
 ## Renaming `toolName`
 
 A committed `toolName` change withdraws the old registration and registers the new one, because the Host keys tool registrations by name. The system-prompt section keeps the name it was first registered under.
