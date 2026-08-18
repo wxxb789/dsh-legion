@@ -544,7 +544,7 @@ pnpm run check
 
 Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式启用后，Strategy caller 通过 `execution: { durability: 'journal' }` 选择 journal mode；省略该字段仍走 ephemeral executor。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 6。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
 
-本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。已发布 DSH 0.1.0-rc.6 尚无 production durable mutation 所需的 projection/coordination service；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
+本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。Legion 目前也尚未提供统一的 durable Strategy activation adapter，因此模型侧发起的 `execution: { durability: 'journal' }` 请求在任何 Host 上都会以 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE` fail closed，与 Host 能力无关。已发布 DSH 0.1.0-rc.6 尚无 production durable mutation 所需的 projection/coordination service；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
 
 ## 相关项目
 
