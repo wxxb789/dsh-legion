@@ -112,6 +112,26 @@ export function assertDurableMutationAvailable(
   }
 }
 
+/**
+ * Journal activation needs one more thing than Host capabilities: a durable
+ * Strategy activation adapter that binds this package's pure controller logic
+ * and structural Host ports to a running Session. The package ships ports and
+ * pure logic only, so no build binds one yet. Until that changes, journal mode
+ * cannot be activated on any Host and must never be advertised to a model.
+ */
+const DURABLE_ACTIVATION_ADAPTER: 'unbound' | 'bound' = 'unbound'
+
+/**
+ * Whether a journal Strategy Run could actually start here. Exposure decisions
+ * must use this, not `durableMutation`, so a capable Host never advertises a
+ * request that is guaranteed to fail closed.
+ */
+export function durableActivationAvailable(
+  capabilities: DurableCapabilitySnapshot,
+): boolean {
+  return DURABLE_ACTIVATION_ADAPTER === 'bound' && capabilities.durableMutation
+}
+
 export function compileDurableCapabilities(
   services: DurableHostServices,
 ): DurableCapabilitySnapshot {

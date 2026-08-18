@@ -1181,6 +1181,10 @@ describe('dsh-legion', () => {
       },
     }, [provider('spawn', { onStart() { starts += 1 } })])
     try {
+      expect(legion.durableActivationAvailable(
+        legion.detectDurableCapabilities(ctx as never),
+      )).toBe(false)
+      expect(Object.keys(legionParameterProperties(ctx))).not.toContain('execution')
       const result = await execute(ctx, {
         profile: 'quick',
         description: 'Ephemeral fallback.',

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Journal Strategy execution is now exposed on one condition instead of two independent ones: `durableActivationAvailable` gates the model-facing `execution` parameter on a bound durable Strategy activation adapter, not on Host capabilities alone. No build binds an adapter yet, so the parameter stays out of the published schema on every Host rather than advertising a request that always fails closed, and the strategy branch of the parameter schema now carries `execution` whenever it is exposed instead of silently dropping it.
+- `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE` states that this build binds no activation adapter, instead of attributing the gap to the Host.
+
 ## [1.2.0] - 2026-08-17
 
 ### Added

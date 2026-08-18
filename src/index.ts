@@ -9,6 +9,7 @@ import { registerLegionRunProjection, type HostProjectionContext } from './durab
 import {
   assertDurableMutationAvailable,
   detectDurableCapabilities,
+  durableActivationAvailable,
   type DurableCapabilityContext,
   type DurableCapabilitySnapshot,
 } from './durable-run/capabilities.ts'
@@ -552,6 +553,8 @@ function createToolDefinition(
         .sort()
     : []
   const hasStrategySurface = strategyNames.length > 0
+  const durableExecutionExposed = durable.enabled
+    && durableActivationAvailable(durable.capabilities)
   const profileRequired = catalog.defaultProfile === undefined && !hasStrategySurface
   const profileDescription = catalog.defaultProfile === undefined
     ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
@@ -603,10 +606,10 @@ function createToolDefinition(
           type: 'json' as const,
           description: 'Optional positive-integer narrowing limits: maxAgents, maxConcurrent, deadlineMs, maxOutputBytes.',
         },
-        ...durable.enabled ? {
+        ...durableExecutionExposed ? {
           execution: {
             type: 'json' as const,
-            description: 'Optional { durability: ephemeral | journal, advancement?: continuous | checkpoint }. Journal mode fails closed unless mandatory Host capabilities exist.',
+            description: 'Optional { durability: ephemeral | journal, advancement?: continuous | checkpoint }. Omission runs the ephemeral executor.',
           },
         } : {},
       } : {},
@@ -703,7 +706,7 @@ function createToolDefinition(
           assertDurableMutationAvailable(durable.capabilities)
           throw new Error(
             'dsh-legion: LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE: '
-            + 'the current DSH Host exposes no unified durable Strategy activation adapter',
+            + 'this build binds no durable Strategy activation adapter, so journal mode cannot start',
           )
         }
         const outcome = await executeStrategyPlan(ctx, snapshot, compiled.plan, parent, exec.signal)
@@ -782,8 +785,8 @@ function createToolDefinition(
   )
   profileProperties.kind = { type: 'string', const: 'profile' }
   const strategyProperties = Object.fromEntries(
-    ['kind', 'strategy', 'objective']
-      .map(key => [key, flat.properties[key]]),
+    ['kind', 'strategy', 'objective', 'execution']
+      .flatMap(key => flat.properties[key] === undefined ? [] : [[key, flat.properties[key]]]),
   )
   strategyProperties.kind = { type: 'string', const: 'strategy' }
   strategyProperties.limits = {
