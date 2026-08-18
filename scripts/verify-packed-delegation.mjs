@@ -10,6 +10,10 @@ import { trustedTempRoot } from './trusted-temp-root.mjs'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
 const publicContract = JSON.parse(await readFile(join(projectRoot, 'contracts', 'v1.json'), 'utf8'))
+const compatibilityPolicy = JSON.parse(await readFile(
+  join(projectRoot, 'contracts', 'compatibility.json'),
+  'utf8',
+))
 const dshVersionSpec = process.env.DSH_VERSION ?? '0.1.0-rc.6'
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
@@ -111,10 +115,21 @@ try {
     await copyFile(resolve(suppliedTarball), tarball)
   }
 
+  const dshVersion = resolveDshVersion(dshVersionSpec)
+  process.stdout.write(`testing packed delegation against DSH ${dshVersion}\n`)
+  // Pinning only the direct dependencies is not enough to hold one generation.
+  // Each DSH package depends on its siblings through a caret range, so as soon
+  // as a newer prerelease exists on the registry every transitive edge slides
+  // forward and the minimum channel silently installs a mixed closure. The
+  // declared package closure is exactly the set that has to be held down.
+  const overrides = Object.fromEntries(
+    compatibilityPolicy.dshPackageClosure.map(name => [`@deepseek-ai/${name}`, dshVersion]),
+  )
   await writeFile(join(consumerDir, 'package.json'), JSON.stringify({
     name: 'dsh-legion-packed-delegation-consumer',
     private: true,
     type: 'module',
+    pnpm: { overrides },
   }, null, 2) + '\n')
   await writeFile(join(consumerDir, 'pnpm-workspace.yaml'), [
     "packages:",
@@ -125,8 +140,6 @@ try {
     '',
   ].join('\n'))
 
-  const dshVersion = resolveDshVersion(dshVersionSpec)
-  process.stdout.write(`testing packed delegation against DSH ${dshVersion}\n`)
   const dshPackages = [
     '@deepseek-ai/dsh-agent',
     '@deepseek-ai/dsh-agent-loop',
