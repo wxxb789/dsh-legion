@@ -12,6 +12,16 @@ Work directly on `main`. Do not create a feature branch, worktree, pull request,
 
 Use force-push only when the human explicitly requests history rewriting. A successful push and green CI are the completion criteria for one rapid-development increment.
 
+## Reuse before building
+
+Search the DeepSeek Harness packages before implementing any capability Legion does not already own. The DSH checkout's `packages/` tree carries a one-line description for every package; read those first, then read the candidate's source. Prefer an official package over a hand-rolled equivalent even when the hand-rolled version looks smaller, and state in the commit body which package you reused or why none fit.
+
+Take the first option that works, in this order: an existing `ctx.*` service seam; an official DSH utility package; a companion package that mounts a service DSH does not own; new code inside Legion. Reaching the last option for anything a Host normally owns is a design smell — re-search before writing it.
+
+Verify a primitive's guarantee in its source, never in its prose. Descriptions state intent; only the implementation states scope. Two findings worth remembering: `ctx.fs` version-guarded writes are serialized by a per-process lock map, so `replaceIfVersion` is not a cross-process compare-and-set while `createIfAbsent` is; and `@deepseek-ai/dsh-atomic-write` offers cross-process `withFileLock` but documents itself as atomic and not durable, so a caller needing crash durability must add its own barrier.
+
+Never invent a Host service Legion could obtain, and never grow the Legion plugin to cover one. Mount it as a separate package, and keep Legion failing closed while it is absent.
+
 ## Architecture
 
 Before changing routing policy, profile configuration, result contracts, or DSH lifecycle integration, read `docs/roadmap.md` and the applicable ADR under `docs/adr/`.
