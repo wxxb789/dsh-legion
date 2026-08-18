@@ -220,6 +220,23 @@ export type {
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
 export {
+  ACP_CATALOG_LAYER_ID,
+  ACP_ENTRYPOINT_PROVENANCE,
+  ACP_PROVIDER_PLUGIN,
+  AcpCatalogError,
+  acpCatalogLayer,
+  acpMountRows,
+  acpProfile,
+  assertAcpProfileCompatible,
+  defineAcpAgent,
+} from './acp-catalog.ts'
+export type {
+  AcpAgentSpec,
+  AcpCatalogOptions,
+  AcpEntrypointProvenance,
+  AcpMountRow,
+} from './acp-catalog.ts'
+export {
   LEGION_SETTINGS_NAMESPACE,
   LEGION_SETTINGS_SERVICE_KEY,
   SETTINGS_DIAGNOSTIC_CODES,

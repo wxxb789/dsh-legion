@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Optional live reconfiguration through the DSH settings service: Legion registers the `legion` namespace against its existing `Config` schema, layering the composition entry under the stored user section, and republishes its tool generation on commit.
 - Structural `detectSettingsCapabilities` and `installSettingsSection` seams that take no peer dependency on `@deepseek-ai/dsh-settings`, so a composition without a settings provider runs none of the wiring and keeps its entry configuration verbatim.
 - ADR 0021 and `docs/settings.md` covering layer resolution, failure behaviour, and the deferred browser card.
+- Optional ACP delegation catalog: `defineAcpAgent`, `acpProfile`, `acpCatalogLayer`, `acpMountRows`, and `assertAcpProfileCompatible` turn any ACP-speaking CLI mounted through `@deepseek-ai/dsh-subagent-acp` into a Legion Profile, generating the Profile and its composition row from one descriptor so `subagentProvider` cannot drift from `providerName`.
+- ACP Profiles fix every constraint an out-of-process child cannot honor (provider-managed depth, foreground-only, `text` result, no persona/toolFilter/routes) and report an unestablished entrypoint explicitly instead of shipping a guessed spawn command.
 
 ### Changed
 
