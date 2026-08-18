@@ -14,7 +14,13 @@
 
 **dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它为 DSH 提供可配置的 AI Agent Profile、精确模型路由、声明式 Team 与 Strategy、结构化结果，以及有边界的 Subagent 委派能力，同时不会取代 DSH 自身的运行时。
 
-你可以让一个 DSH Agent 只面对 `quick`、`deep`、`review` 这类语义清晰的委派接口；每个选择背后的模型、后端、工具、Persona、限制和输出契约，则由部署者统一控制。
+## TL;DR
+
+- **它是什么。** 一个面向 DeepSeek Harness 的多智能体委派策略插件，而不是独立的智能体框架。
+- **它带来什么。** 一个模型可见的 `legion` 工具，其选项是 `quick`、`deep`、`review` 这类语义化 Profile；每个 Profile 背后是部署者掌控的模型路由、Subagent 后端、Persona、工具过滤、深度与结果契约。
+- **好处在哪。** 协调 Agent 选择的是意图而不是模型 ID；Prompt 永远无法放宽 Profile 背后的策略；把 `deep` 换成另一个模型，不需要改任何 Prompt。
+- **成本多少。** 用户自有 Agent Preset 里的一行配置。不引入额外的 Scheduler、Session Store、数据库或 Agent 运行时。
+- **适合谁。** 已经在运行 DSH、希望多智能体委派可审查、可复用的开发者与部署者。
 
 > **重要：** Legion 是 DSH 插件，不是独立的智能体框架或应用。Agent、Session、模型适配器、Subagent 运行时、沙箱、审批机制和 Web GUI 均由兼容版本的 DeepSeek Harness 提供。
 
@@ -22,7 +28,7 @@
 
 ~~~bash
 # 1. 将插件安装到某个 DSH Host Profile（追加 #<commit-sha> 可锁定具体版本）
-dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
+dsh plugin --profile web add github:wxxb789/dsh-legion
 
 # 2. 把 Legion 配置行复制到用户自有的 Agent Preset，然后开启一个新 Session
 #    模板：examples/legion.agent.cordis.fragment.yml
@@ -35,10 +41,12 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 
 ## 目录
 
+- [TL;DR](#tldr)
 - [快速开始](#快速开始)
 - [这个项目有什么用？](#这个项目有什么用)
 - [主要能力](#主要能力)
 - [工作原理](#工作原理)
+  - [底层机制：从工具调用到子智能体](#底层机制从工具调用到子智能体)
 - [安装](#安装)
 - [创建 Legion Agent Preset](#创建-legion-agent-preset)
 - [升级](#升级)
@@ -114,6 +122,28 @@ Catalog Layers
 协调 Agent 只选择语义化 Profile；Prompt 无法改变该 Profile 背后由部署者控制的模型、工具、Persona、深度或结果策略。
 
 Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、沙箱、审批、Subagent Registry 或 Web GUI。它只使用 DSH 的公开 `ctx.subagents`、`ctx.tools` 和 `ctx.systemPrompt` 接口，从而确保运行时和生命周期只有一个所有者。
+
+### 底层机制：从工具调用到子智能体
+
+**激活阶段**，即 DSH 在 Cordis Fiber 上挂载插件时：
+
+1. Legion 用严格 Schema 校验配置，文档中任意位置出现未知字段都会被拒绝。
+2. Catalog Layer 按顺序合并：后面的层按名称替换前面的条目，Tombstone 可禁用继承来的条目，而之后任何同名定义都会将其恢复。
+3. Profile 引用的 Prompt Fragment 只读取一次，受每个 Profile 的字节预算约束，并以带内容 Digest 的不可变快照形式固定下来。
+4. Legion 观察 Host 当前注册了哪些 Subagent 后端与哪些 LLM 适配器。
+5. 每个 Profile 基于该观察结果编译；只有当其配置的后端确实能满足该 Profile 的策略——执行模式、工具过滤、Persona、深度与结构化输出——它才会成为**活跃 Profile**。
+6. 委派工具随之发布，其参数 Schema 由活跃 Profile 推导而来，同时向 System Prompt 贡献一份对应的路由表。
+7. 如果没有任何活跃 Profile，工具会被撤销，提示内容渲染为空。后端或适配器发生变化时，整个流程会重新执行。
+
+**单次委派**，即从协调 Agent 发起工具调用到拿到结果之间：
+
+8. 参数完成校验，并解析为**恰好一个** Profile：调用中指定的那个，或配置的 `defaultProfile`。
+9. 如果该 Profile 声明了 `routes`，Legion 会读取每个候选的精确模型元数据，并选中你所写顺序中第一个不与静态事实冲突的候选。
+10. 参与判断的只有静态事实，例如上下文窗口与输出预算。元数据读不到的候选仍然可选；只有当所有候选都被明确排除时，调用才会失败。
+11. Legion 通过 Host 的 Subagent API **只启动一个**子智能体，并施加该 Profile 的固定策略；当该子智能体或其 Provider 失败时，绝不重试、也不切换路由。
+12. 后台调用会立即返回可续接的子智能体 ID；前台调用则等待结果，按契约重新校验结构化结果，并重建为全新的纯数据后返回。
+
+这套设计带来两个值得明说的性质。编译后的 Team / Strategy IR 是深度冻结且 detached 的：它不持有你配置对象的任何引用，也不携带函数。编译后的 Strategy Plan 还会按对象身份记录在进程级 Registry 中，因此执行阶段只接受由本进程编译出的 Plan——即便内容与 Digest 完全一致，重建或反序列化得到的副本同样会被拒绝。
 
 ## 安装
 
@@ -313,7 +343,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
-| `configVersion` | `2` | 当前配置契约；旧版 v1 输入会迁移到 v2。 |
+| `configVersion` | `2` | 当前配置契约。省略该字段或写 `1` 都会被接受并归一化为 `2`；但 v1 文档一旦使用 `catalogLayers`、`teams`、`strategies`、`enableStrategies` 或 Durable Run，会在激活时被拒绝，而不是自动升级。 |
 | `toolName` | `legion` | 暴露给模型的工具名称。 |
 | `profiles` | 必填 | 语义化 Profile Map。 |
 | `defaultProfile` | 无 | 调用未指定 `profile` 时使用的 Profile。 |
@@ -449,6 +479,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 - 进程内子智能体继承父级命名 DSH Agent Preset；Profile 仍可改变 Model、Persona、Tool、Backend 和限制。
 - GUI 设置卡片只编辑四个标量策略；Profile、Team、Strategy 与 Catalog Layer 仍由配置文档管理。
 - 卡片的浏览器半侧是手工复刻 DSH 尚未发布的客户端 Bundle 格式，上游若变更该格式，失败会发生在加载期而不是构建期。
+- Profile 的 `result` Schema 目前仍接受 `plan-delta-v1`，但该契约是为 Durable Run 的 Plan 提案设计的，并非普通委派用途。在它被显式收口或正式公开之前，请视为 Profile 不支持该取值。
 - 不支持在缺少兼容 DSH Peer 的环境中直接运行裸 Package。
 
 ## 常见问题
@@ -479,7 +510,7 @@ LangGraph、CrewAI、AutoGen 这类框架都自带运行时、状态模型和进
 
 ### 为什么 Legion 工具会消失？
 
-只有 Subagent Provider 已注册的 Profile 才会被发布。如果没有可用 Profile，工具和提示会暂时消失，并在 Provider 恢复后重新出现。还应确认 Legion 安装在正确的 DSH Host Profile 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
+只有当 Profile 配置的后端确实能满足该 Profile 的策略时，它才会被发布：包括它默认使用的执行模式，以及工具过滤、Persona、深度和结构化输出。Subagent Provider 未注册会使其失活；已注册但能力不足的后端同样会——例如该后端无法提供 `findings-v1` Profile 所需的结构化输出。如果没有任何 Profile 满足条件，工具会被撤销、提示渲染为空；缺失的能力出现后二者都会恢复。还应确认 Legion 安装在正确的 DSH Host Profile 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
 
 ### 可以直接编辑 DSH 自带的 `standard` Preset 吗？
 
