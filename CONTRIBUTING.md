@@ -2,6 +2,14 @@
 
 Thank you for helping improve dsh-legion.
 
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Reporting issues
+
+- Bugs and feature requests use the [issue forms](https://github.com/wxxb789/dsh-legion/issues/new/choose); they collect the DSH version, host profile, and configuration needed to reproduce a routing or delegation problem.
+- Problems in the Agent, Session, subagent, sandbox, approval, model adapter, or Web GUI belong to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), not to Legion.
+- Report suspected vulnerabilities privately through a [security advisory](https://github.com/wxxb789/dsh-legion/security/advisories/new), never in a public issue. See [SECURITY.md](SECURITY.md).
+
 ## Development setup
 
 1. Install Node `^22.19.0 || >=24` and pnpm.

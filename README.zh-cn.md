@@ -2,9 +2,15 @@
 
 [English](README.md) · **简体中文**
 
+<p align="center">
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion：面向 DeepSeek Harness 的多智能体团队、模型路由与声明式编排插件" width="840"></a>
+</p>
+
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%5E22.19.0%20%7C%20%3E%3D24.0.0-339933?logo=node.js&logoColor=white)](package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
+[![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
 **dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它为 DSH 提供可配置的 AI Agent Profile、精确模型路由、声明式 Team 与 Strategy、结构化结果，以及有边界的 Subagent 委派能力，同时不会取代 DSH 自身的运行时。
 
@@ -12,8 +18,24 @@
 
 > **重要：** Legion 是 DSH 插件，不是独立的智能体框架或应用。Agent、Session、模型适配器、Subagent 运行时、沙箱、审批机制和 Web GUI 均由兼容版本的 DeepSeek Harness 提供。
 
+## 快速开始
+
+~~~bash
+# 1. 将插件安装到某个 DSH Host Profile，并固定到不可变的 commit SHA
+dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
+
+# 2. 把 Legion 配置行复制到用户自有的 Agent Preset，然后开启一个新 Session
+#    模板：examples/legion.agent.cordis.fragment.yml
+
+# 3. 在正式依赖它之前，先验证路由策略
+dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixture.yml
+~~~
+
+协调 Agent 随后只会看到一个 `legion` 工具，其 `profile` 取值就是你自己的语义化委派选项。详细步骤参见[安装](#安装)与[创建 Legion Agent Preset](#创建-legion-agent-preset)。
+
 ## 目录
 
+- [快速开始](#快速开始)
 - [这个项目有什么用？](#这个项目有什么用)
 - [主要能力](#主要能力)
 - [工作原理](#工作原理)
@@ -26,6 +48,8 @@
 - [Doctor 与 Explain](#doctor-与-explain)
 - [状态与限制](#状态与限制)
 - [常见问题](#常见问题)
+- [Durable Strategy Run（v1.1，显式启用）](#durable-strategy-runv11显式启用)
+- [相关项目](#相关项目)
 
 ## 这个项目有什么用？
 
@@ -421,6 +445,18 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 不是。它是 DeepSeek Harness 的多智能体策略与委派插件，DSH 仍然是运行时和生命周期所有者。
 
+### 它与独立的多智能体框架有什么区别？
+
+LangGraph、CrewAI、AutoGen 这类框架都自带运行时、状态模型和进程生命周期，采用它们等于在现有 Agent 旁边再引入一个编排器。Legion 完全不引入运行时：它只是你已经在运行的 DSH 部署上的声明式委派策略，并编译为原生 DSH Subagent。如果你没有在使用 DSH，Legion 就不是合适的工具。
+
+### 它可以路由到哪些 LLM Provider 和 Model？
+
+任何由你的 DSH 部署注册为适配器的 Provider 与精确 Model，都以普通配置形式命名使用。Legion 不内置 Provider 列表、凭据或价格：它只按顺序针对已知静态能力事实检查 Route Candidate，并启动一个子智能体。
+
+### 可以委派给 Codex、Claude Code 或 GitHub Copilot CLI 吗？
+
+可以，通过 DSH 的 ACP 后端。Legion 提供可选 Catalog Layer，内含面向 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode 的 Profile。参见 [ACP 委派](docs/acp-delegation.md)。
+
 ### Legion 会自动选择最便宜或最健康的模型吗？
 
 不会。它只会按照顺序，根据已知静态事实检查 Route。它不声称知道实时健康、价格、认证、Quota 或延迟，也不会在失败后自动重放。
@@ -461,12 +497,21 @@ pnpm run check
 
 欢迎通过 [GitHub Issues](https://github.com/wxxb789/dsh-legion/issues) 反馈问题或参与贡献。
 
-## 许可证
-
-[MIT](LICENSE)
-
 ## Durable Strategy Run（v1.1，显式启用）
 
 Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式启用后，Strategy caller 通过 `execution: { durability: 'journal' }` 选择 journal mode；省略该字段仍走 ephemeral executor。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 6。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
 
 本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。已发布 DSH 0.1.0-rc.6 尚无 production durable mutation 所需的 projection/coordination service；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
+
+## 相关项目
+
+- [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) —— 开源智能体 Harness，Legion 所依托的 Agent、Session、模型适配器、Subagent 运行时、沙箱、审批机制和 Web GUI 都由它提供。
+- [Cordis](https://github.com/cordiverse/cordis) —— DSH 所基于的插件与服务框架；Legion 通过普通 Cordis Fiber 注册。
+- [Agent Client Protocol](https://agentclientprotocol.com) —— DSH ACP 后端所使用的协议，Legion 的可选外部 Agent Profile 依赖它。
+- [`dsh-plugin` 主题](https://github.com/topics/dsh-plugin) —— 发现更多 DeepSeek Harness 插件。
+
+如果 dsh-legion 帮你节省了工作量，为仓库点个 Star 可以帮助更多 DSH 用户找到它。
+
+## 许可证
+
+[MIT](LICENSE)

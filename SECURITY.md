@@ -29,6 +29,7 @@ Route preflight observes only DSH adapter registration and adapter-owned exact-m
 Model Strategy exposure is separate deployment authority and defaults off; catalog presence alone does not make a Strategy model-callable. Catalog Layers can replace deployment policy but cannot widen Host authority: DSH remains the final owner of providers, routes, tools, depth, sandbox, approval, workflow, goal, and cancellation. Strategy invocation limits may only narrow compiled limits. Team/Strategy IR contains no live Agent, Session, Service, or runtime handle. The direct execution adapter accepts only a digest-validated compiled plan, forwards cancellation to every child, and never retries or switches Profiles after failure.
 
 Release dependencies are frozen by the committed lockfile. Tag builds publish the tested tarball with npm provenance, a GitHub build attestation, an SPDX SBOM, and SHA-256 checksums. Verify the package's registry provenance and release checksum before installing it in a privileged DSH profile.
+
 ## Durable execution security
 
 DSH remains the sole owner of the Session journal, persistence, projection cache, child lifecycle, sandbox, approval, and Host coordination. Legion durable mutation is opt-in and requires flush, projection registration, and atomic lease/fence coordination. Missing mandatory services fail closed before mutation. The package publishes structural Host ports but no Host service implementations.

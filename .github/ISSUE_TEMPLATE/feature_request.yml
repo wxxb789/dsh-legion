@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose a new dsh-legion capability, configuration surface, or contract.
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Legion is customization-first and keeps a small public surface. Please describe the
+        problem before the solution, and remember the documented design rule in
+        CONTRIBUTING.md: new public configuration must serve at least two concrete
+        profiles or use cases.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing open and closed issues and did not find a duplicate.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and use case
+      description: What are you trying to accomplish, and why is it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed configuration or contract surface
+      description: Sketch the Profile, Team, Strategy, catalog, or result-contract shape you have in mind.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: insufficient
+    attributes:
+      label: Which existing capability is insufficient
+      description: Name the Profile, Team, Strategy, routing, or catalog feature you tried and explain where it falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: two-use-cases
+    attributes:
+      label: Two concrete use cases
+      description: CONTRIBUTING.md requires that new public configuration serve at least two concrete profiles or use cases. List them.
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other designs, workarounds, or DSH-side solutions you evaluated and why you rejected them.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+    validations:
+      required: false

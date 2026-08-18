@@ -2,15 +2,36 @@
 
 **English** · [简体中文](README.zh-cn.md)
 
+<p align="center">
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion: multi-agent teams, model routing, and declarative orchestration for DeepSeek Harness" width="840"></a>
+</p>
+
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%5E22.19.0%20%7C%20%3E%3D24.0.0-339933?logo=node.js&logoColor=white)](package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
+[![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
 **dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It adds configurable AI agent Profiles, exact model routing, declarative Teams and Strategies, structured results, and bounded subagent delegation without replacing the DSH runtime.
 
 Give one DSH agent a small, meaningful delegation interface—such as `quick`, `deep`, and `review`—while the deployment owner controls the model, backend, tools, persona, limits, and output contract behind each choice.
 
 > **Important:** Legion is a DSH plugin, not a standalone agent framework or application. DeepSeek Harness supplies the Agent, Session, model adapters, subagent runtime, sandbox, approvals, and Web GUI.
+
+## Quick start
+
+~~~bash
+# 1. Install the plugin into a DSH host profile, pinned to an immutable commit SHA
+dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
+
+# 2. Copy the Legion row into a user-owned agent preset, then start a NEW session
+#    template: examples/legion.agent.cordis.fragment.yml
+
+# 3. Validate the routing policy before you depend on it
+dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixture.yml
+~~~
+
+The coordinator now sees one `legion` tool whose `profile` values are your semantic delegation choices. Step-by-step instructions are in [Install](#install) and [Set up a Legion agent preset](#set-up-a-legion-agent-preset).
 
 ## Contents
 
@@ -26,6 +47,8 @@ Give one DSH agent a small, meaningful delegation interface—such as `quick`, `
 - [Doctor and explain](#doctor-and-explain)
 - [Status and limitations](#status-and-limitations)
 - [FAQ](#faq)
+- [Durable Strategy Runs](#durable-strategy-runs-v11-opt-in)
+- [Related projects](#related-projects)
 
 ## What is dsh-legion used for?
 
@@ -419,6 +442,18 @@ Known limitations:
 
 No. It is a DeepSeek Harness plugin for multi-agent policy and delegation. DSH remains the runtime and lifecycle owner.
 
+### How does it compare with standalone multi-agent frameworks?
+
+Frameworks such as LangGraph, CrewAI, or AutoGen ship their own runtime, state model, and process lifecycle, so adopting one adds a second orchestrator beside your agent. Legion adds no runtime at all: it is declarative delegation policy for a DSH deployment you already run, compiled to native DSH subagents. If you are not running DSH, Legion is not the right tool.
+
+### Which LLM providers and models can it route to?
+
+Any provider and exact model that your DSH deployment registers as an adapter, named as ordinary configuration. Legion never embeds a provider list, credentials, or pricing: it checks ordered Route Candidates against known static capability facts and starts one child.
+
+### Can it delegate to Codex, Claude Code, or GitHub Copilot CLI?
+
+Yes, through DSH's ACP backend. Legion ships an optional catalog layer with Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode. See [ACP delegation](docs/acp-delegation.md).
+
 ### Does Legion automatically choose the cheapest or healthiest model?
 
 No. It checks ordered routes against known static facts. It does not claim live health, price, authentication, quota, or latency, and does not replay after failure.
@@ -459,12 +494,21 @@ Useful references:
 
 Issues and contributions are welcome through the [GitHub issue tracker](https://github.com/wxxb789/dsh-legion/issues).
 
-## License
-
-[MIT](LICENSE)
-
 ## Durable Strategy Runs (v1.1, opt-in)
 
 Durable runs are disabled by default and preserve v1.0 ephemeral behavior. When enabled by deployment, a Strategy caller explicitly selects journal mode with `execution: { durability: 'journal' }`; omission remains ephemeral. They use eight typed events in the invoking DSH Session journal and projection key `legion-run` at state version 6. Run control supports bounded read-only `inspect`, one-activation `resume`, flushed `cancel`, and validated proposal-only `steer`. Task delivery is at least once; matching fence and generation permit exactly one accepted commit, not exactly-once external effects. Mail is reserved, incorporated, durably flushed when required, then acknowledged; expired reservations are reclaimable.
 
 This package does not ship DSH persistence, projection, atomic coordination, global admission, or child-receipt Host services. Published DSH 0.1.0-rc.6 lacks the projection and coordination services required for production durable mutation. Enabling durable runs there produces stable capability diagnostics and fails closed before mutation; pure contracts, validation, replay, and inspection remain usable. See [Durable Strategy Runs](docs/durable-runs.md) and [Journal Contract v1](docs/journal-contract-v1.md).
+
+## Related projects
+
+- [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) — the open-source agent harness that owns the Agent, Session, model adapters, subagent runtime, sandbox, approvals, and Web GUI that Legion plugs into.
+- [Cordis](https://github.com/cordiverse/cordis) — the plugin and service framework DSH is built on; Legion registers through ordinary Cordis fibers.
+- [Agent Client Protocol](https://agentclientprotocol.com) — the protocol behind DSH's ACP backend, used by Legion's optional external-agent Profiles.
+- [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) — discover more DeepSeek Harness plugins.
+
+If dsh-legion saves you work, starring the repository helps other DSH users find it.
+
+## License
+
+[MIT](LICENSE)

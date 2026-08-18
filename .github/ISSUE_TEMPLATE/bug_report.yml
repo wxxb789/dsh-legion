@@ -1,0 +1,107 @@
+name: Bug report
+description: Report incorrect or unexpected dsh-legion behavior inside DeepSeek Harness.
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. dsh-legion is a DeepSeek Harness plugin, so please
+        confirm the problem is in Legion policy, routing, or diagnostics rather than in
+        the DSH runtime itself. Redact API keys, tokens, and private paths.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing open and closed issues and did not find a duplicate.
+          required: true
+        - label: I removed credentials and private absolute paths from everything I pasted below.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the actual behavior, including any error message or stack trace.
+      placeholder: Delegating to the "deep" profile fails with ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Describe the behavior you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal, ordered steps that reproduce the problem.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: legion-version
+    attributes:
+      label: dsh-legion version or commit SHA
+      placeholder: 1.0.0 or 0a1b2c3
+    validations:
+      required: true
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness version
+      description: Supported peer range is >=0.1.0-rc.6 <0.2.0.
+      placeholder: 0.1.0-rc.6
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Required range is ^22.19.0 || >=24.0.0.
+      placeholder: v22.19.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 24H2 / macOS 15.1 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: host-profile
+    attributes:
+      label: Host profile and agent preset
+      description: Which DSH host profile and which Legion-enabled agent preset were active.
+      placeholder: default host profile, "legion-review" agent preset
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant Legion configuration (redacted)
+      description: The smallest part of your Legion configuration that reproduces the issue.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: "`dsh-legion doctor` / `dsh-legion explain` output"
+      description: Paste the relevant diagnostics output when the issue involves routing, capabilities, or catalog resolution.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Anything else that helps, such as recent upgrades or related issues.
+    validations:
+      required: false

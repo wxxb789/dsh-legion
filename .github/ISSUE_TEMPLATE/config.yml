@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: DeepSeek Harness runtime problem
+    url: https://github.com/deepseek-ai/deepseek-harness
+    about: Report Agent, Session, subagent, sandbox, approval, model adapter, or Web GUI issues in the DSH runtime instead of here.
+  - name: DeepSeek Harness Discussions
+    url: https://github.com/deepseek-ai/deepseek-harness/discussions
+    about: Ask general DSH usage and configuration questions in the upstream discussion forum.
+  - name: Report a security vulnerability
+    url: https://github.com/wxxb789/dsh-legion/security/advisories/new
+    about: Disclose suspected dsh-legion vulnerabilities privately through a GitHub security advisory, not a public issue.
