@@ -28,6 +28,7 @@
     "contracts",
     "docs/public-contract-v1.md",
     "docs/acp-delegation.md",
+    "docs/settings-card.md",
     "docs/settings.md",
     "docs/durable-runs.md",
     "docs/evolving-dag.md",
