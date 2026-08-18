@@ -129,14 +129,18 @@ try {
     name: 'dsh-legion-packed-delegation-consumer',
     private: true,
     type: 'module',
-    pnpm: { overrides },
   }, null, 2) + '\n')
+  // pnpm 11 no longer reads the "pnpm" field in package.json, so overrides
+  // belong here or they are silently ignored.
   await writeFile(join(consumerDir, 'pnpm-workspace.yaml'), [
     "packages:",
     "  - '.'",
     '',
     'allowBuilds:',
     '  koffi: true',
+    '',
+    'overrides:',
+    ...Object.entries(overrides).map(([name, version]) => `  '${name}': '${version}'`),
     '',
   ].join('\n'))
 
