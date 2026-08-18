@@ -220,6 +220,7 @@ export type {
 } from './orchestration.ts'
 export { DEFAULT_CATALOG_LAYER } from './default-catalog.ts'
 export {
+  ACP_AGENT_CATALOG,
   ACP_CATALOG_LAYER_ID,
   ACP_ENTRYPOINT_PROVENANCE,
   ACP_PROVIDER_PLUGIN,
@@ -229,6 +230,7 @@ export {
   acpProfile,
   assertAcpProfileCompatible,
   defineAcpAgent,
+  renderAcpFragment,
 } from './acp-catalog.ts'
 export type {
   AcpAgentSpec,

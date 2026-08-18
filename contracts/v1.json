@@ -1,7 +1,19 @@
 {
   "acpCatalogLayerId": "legion-acp-v1",
+  "acpCuratedAgents": [
+    "claude-code",
+    "codex",
+    "github-copilot",
+    "grok-build",
+    "hermes",
+    "kimi-code",
+    "oh-my-pi",
+    "pi",
+    "zcode"
+  ],
   "acpEntrypointProvenance": [
     "verified",
+    "deployment-specific",
     "unverified"
   ],
   "acpProviderPlugin": "@deepseek-ai/dsh-subagent-acp",
@@ -84,6 +96,7 @@
     "invalidated"
   ],
   "declarationExports": [
+    "ACP_AGENT_CATALOG",
     "ACP_CATALOG_LAYER_ID",
     "ACP_ENTRYPOINT_PROVENANCE",
     "ACP_PROVIDER_PLUGIN",
@@ -491,6 +504,7 @@
     "promptContentDigest",
     "propagateContextEvidence",
     "registerLegionRunProjection",
+    "renderAcpFragment",
     "renderExplainHuman",
     "renderLegionRunHuman",
     "renderOrchestrationGuidance",
@@ -710,6 +724,7 @@
     "steer"
   ],
   "runtimeExports": [
+    "ACP_AGENT_CATALOG",
     "ACP_CATALOG_LAYER_ID",
     "ACP_ENTRYPOINT_PROVENANCE",
     "ACP_PROVIDER_PLUGIN",
@@ -880,6 +895,7 @@
     "promptContentDigest",
     "propagateContextEvidence",
     "registerLegionRunProjection",
+    "renderAcpFragment",
     "renderExplainHuman",
     "renderLegionRunHuman",
     "renderOrchestrationGuidance",

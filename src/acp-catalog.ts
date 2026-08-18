@@ -25,6 +25,7 @@
  * produces the owned, deeply frozen catalog. Descriptors and mount rows are
  * outputs and stay frozen.
  */
+import yaml from 'js-yaml'
 import type { LegionProfile } from './config.ts'
 import type { CatalogLayer } from './orchestration-contract.ts'
 import { ORCHESTRATION_NAME } from './orchestration-contract.ts'
@@ -39,13 +40,20 @@ export const ACP_CATALOG_LAYER_ID = 'legion-acp-v1'
 /**
  * How well an entry's ACP entrypoint is known.
  *
- * `verified` means the spawn command was read off the agent's own
- * documentation or repository. `unverified` means Legion could not establish
- * the entrypoint from an authoritative source, so the entry ships as a named
- * placeholder a deployment must complete before use. Shipping a guessed
- * command would fail at spawn time with an opaque ENOENT.
+ * `verified` — a portable spawn command read off the agent's own
+ * documentation or repository. This is the only state that yields a
+ * composition row.
+ *
+ * `deployment-specific` — the agent really does speak ACP, but its entrypoint
+ * depends on something only the deployment knows, such as an absolute path to
+ * a locally built adapter. The Profile ships so the agent is nameable and
+ * documentable; the mount row is the deployment's to write.
+ *
+ * `unverified` — no authoritative source established an entrypoint. Shipping
+ * a guessed command would fail at spawn time as an opaque ENOENT, so nothing
+ * is emitted.
  */
-export const ACP_ENTRYPOINT_PROVENANCE = ['verified', 'unverified'] as const
+export const ACP_ENTRYPOINT_PROVENANCE = ['verified', 'deployment-specific', 'unverified'] as const
 
 export type AcpEntrypointProvenance = typeof ACP_ENTRYPOINT_PROVENANCE[number]
 
@@ -60,11 +68,18 @@ export interface AcpAgentSpec {
   readonly title: string
   /** Coordinator-facing routing description for the generated Profile. */
   readonly description: string
-  /** Executable the ACP backend spawns, or undefined for an unverified entry. */
+  /**
+   * Executable the ACP backend spawns. Present only for a `verified` entry;
+   * the other states have no portable command to spawn.
+   */
   readonly command?: string
   /** Arguments passed to {@link command}. */
   readonly args?: readonly string[]
-  /** Environment variable carrying this agent's credential, when it needs one. */
+  /**
+   * Environment variable carrying this agent's credential. Set only where the
+   * agent's own ACP documentation names one — an env var inferred from a
+   * vendor's general convention is prose, not configuration.
+   */
   readonly credentialEnv?: string
   /** Where the ACP entrypoint is documented. */
   readonly reference?: string
@@ -137,6 +152,11 @@ export function defineAcpAgent(spec: AcpAgentSpec): AcpAgentSpec {
   }
   if (spec.entrypoint === 'verified' && (spec.command === undefined || spec.command.length === 0)) {
     throw new AcpCatalogError(`ACP agent "${spec.id}" is marked verified but declares no command`)
+  }
+  if (spec.entrypoint !== 'verified' && spec.command !== undefined) {
+    throw new AcpCatalogError(
+      `ACP agent "${spec.id}" declares a command but is not marked verified; an entry that ships a command must be verified`,
+    )
   }
   return deepFreeze({ ...spec, args: [...spec.args ?? []] })
 }
@@ -219,10 +239,159 @@ export function acpCatalogLayer(
 }
 
 /**
+ * Render a copy-pasteable composition fragment for a set of ACP agents: the
+ * DSH provider rows and the Legion catalog layer, in one document, generated
+ * from the same descriptors so the two halves cannot disagree.
+ * @param agents - the agents to document.
+ * @param options - layer id and permission policy.
+ * @returns the YAML fragment.
+ */
+export function renderAcpFragment(
+  agents: readonly AcpAgentSpec[],
+  options: AcpCatalogOptions = {},
+): string {
+  const rows = acpMountRows(agents, options)
+  const layer = acpCatalogLayer(agents, options)
+  const incomplete = agents.filter(agent => agent.entrypoint !== 'verified')
+  const header = [
+    '# Optional ACP delegation. Generated from the ACP agent catalog — do not edit by hand.',
+    '#',
+    '# acpProviderRows mounts one DSH ACP backend per external agent. Those rows',
+    "# belong in the DSH agent preset that already mounts dsh-legion, NOT in Legion",
+    '# config: registering a ctx.subagents provider is DSH\'s job, not Legion\'s.',
+    '#',
+    '# legionCatalogLayer gives each registered provider a Profile. Append it to',
+    '# Legion\'s catalogLayers; it requires configVersion 2. A Profile whose provider',
+    '# is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,',
+    '# never a hard failure, so you can adopt these one at a time.',
+    '#',
+    '# Each agent must be installed and authenticated separately. Each runs in its',
+    '# own process with its own model, credentials, and tools; none of them inherit',
+    '# this conversation. permission: reject declines the child\'s own permission',
+    '# prompts — raise it deliberately, per agent, once you trust the delegation.',
+    ...incomplete.length === 0 ? [] : [
+      '#',
+      `# No portable spawn command exists for: ${incomplete.map(agent => agent.id).join(', ')}.`,
+      '# Mount those yourself with @deepseek-ai/dsh-subagent-acp, using a providerName',
+      '# equal to the Profile name.',
+    ],
+    '',
+  ].join('\n')
+  const body = yaml.dump({ acpProviderRows: rows, legionCatalogLayer: layer }, {
+    noRefs: true,
+    lineWidth: 100,
+    sortKeys: false,
+  })
+  return `${header}${body}`
+}
+
+/**
+ * Curated external agents with an established ACP entrypoint.
+ *
+ * Every command here was read off the agent's own documentation or repository
+ * and independently re-checked against the npm registry. Two findings shaped
+ * the table and are recorded so they are not silently "fixed" back:
+ *
+ * - Claude Code's adapter moved: `@zed-industries/claude-code-acp` is
+ *   deprecated and renamed to `@agentclientprotocol/claude-agent-acp`.
+ * - The Zed registry entry for Grok pins `@xai-official/grok@1.0.4`, a version
+ *   that does not exist on npm (latest is 1.0.1). The installed `grok` binary
+ *   is used instead, which is both authoritative and pin-free.
+ *
+ * This is ordinary data. A deployment can extend, replace, or ignore it.
+ */
+export const ACP_AGENT_CATALOG: readonly AcpAgentSpec[] = Object.freeze([
+  defineAcpAgent({
+    id: 'codex',
+    title: 'OpenAI Codex CLI',
+    description: 'Delegate to OpenAI Codex in its own workspace process.',
+    command: 'npx',
+    args: ['-y', '@agentclientprotocol/codex-acp'],
+    credentialEnv: 'CODEX_API_KEY',
+    reference: 'https://github.com/agentclientprotocol/codex-acp',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'claude-code',
+    title: 'Anthropic Claude Code',
+    description: 'Delegate to Claude Code in its own workspace process.',
+    command: 'npx',
+    args: ['-y', '@agentclientprotocol/claude-agent-acp'],
+    reference: 'https://github.com/zed-industries/claude-agent-acp',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'oh-my-pi',
+    title: 'oh-my-pi',
+    description: 'Delegate to the oh-my-pi coding agent in its own workspace process.',
+    command: 'omp',
+    args: ['acp'],
+    reference: 'https://github.com/can1357/oh-my-pi',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'kimi-code',
+    title: 'Moonshot Kimi Code CLI',
+    description: 'Delegate to Kimi Code in its own workspace process.',
+    command: 'kimi',
+    args: ['acp'],
+    reference: 'https://www.kimi.com/code/docs/en/kimi-code-cli/reference/kimi-acp.html',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'zcode',
+    title: 'ZCode',
+    description: 'Delegate to ZCode in its own workspace process.',
+    // ZCode itself speaks its own app-server protocol; the ACP bridge is a
+    // third-party adapter run from a locally built absolute path, so there is
+    // no portable command to ship.
+    reference: 'https://github.com/william0wang/zcode-acp',
+    entrypoint: 'deployment-specific',
+  }),
+  defineAcpAgent({
+    id: 'grok-build',
+    title: 'xAI Grok Build',
+    description: 'Delegate to xAI Grok Build in its own workspace process.',
+    command: 'grok',
+    args: ['agent', 'stdio'],
+    reference: 'https://docs.x.ai/build/cli/reference',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'pi',
+    title: 'Pi Coding Agent',
+    description: 'Delegate to the Pi coding agent in its own workspace process.',
+    command: 'npx',
+    args: ['-y', 'pi-acp'],
+    reference: 'https://github.com/svkozak/pi-acp',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'github-copilot',
+    title: 'GitHub Copilot CLI',
+    description: 'Delegate to GitHub Copilot CLI in its own workspace process.',
+    // The GitHub CLI (`gh`) does not speak ACP; the Copilot CLI (`copilot`) does.
+    command: 'copilot',
+    args: ['--acp'],
+    reference: 'https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server',
+    entrypoint: 'verified',
+  }),
+  defineAcpAgent({
+    id: 'hermes',
+    title: 'Nous Research Hermes Agent',
+    description: 'Delegate to the Hermes agent in its own workspace process.',
+    command: 'hermes',
+    args: ['acp'],
+    reference: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/acp',
+    entrypoint: 'verified',
+  }),
+])
+
+/**
  * Build the composition rows that register these agents as ACP providers.
- * Only entries with a known entrypoint produce a row: an unverified agent has
- * no command to spawn, and emitting a placeholder would fail at run time
- * instead of at composition time.
+ * Only `verified` entries produce a row: the other states have no portable
+ * command, and emitting a placeholder would fail at run time instead of at
+ * composition time.
  * @param agents - the agents to mount.
  * @param options - permission policy.
  * @returns one mount row per agent with a known entrypoint, in agent order.

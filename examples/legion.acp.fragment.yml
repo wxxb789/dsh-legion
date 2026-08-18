@@ -1,0 +1,137 @@
+# Optional ACP delegation. Generated from the ACP agent catalog — do not edit by hand.
+#
+# acpProviderRows mounts one DSH ACP backend per external agent. Those rows
+# belong in the DSH agent preset that already mounts dsh-legion, NOT in Legion
+# config: registering a ctx.subagents provider is DSH's job, not Legion's.
+#
+# legionCatalogLayer gives each registered provider a Profile. Append it to
+# Legion's catalogLayers; it requires configVersion 2. A Profile whose provider
+# is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,
+# never a hard failure, so you can adopt these one at a time.
+#
+# Each agent must be installed and authenticated separately. Each runs in its
+# own process with its own model, credentials, and tools; none of them inherit
+# this conversation. permission: reject declines the child's own permission
+# prompts — raise it deliberately, per agent, once you trust the delegation.
+#
+# No portable spawn command exists for: zcode.
+# Mount those yourself with @deepseek-ai/dsh-subagent-acp, using a providerName
+# equal to the Profile name.
+acpProviderRows:
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: codex
+      command: npx
+      args:
+        - '-y'
+        - '@agentclientprotocol/codex-acp'
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: claude-code
+      command: npx
+      args:
+        - '-y'
+        - '@agentclientprotocol/claude-agent-acp'
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: oh-my-pi
+      command: omp
+      args:
+        - acp
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: kimi-code
+      command: kimi
+      args:
+        - acp
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: grok-build
+      command: grok
+      args:
+        - agent
+        - stdio
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: pi
+      command: npx
+      args:
+        - '-y'
+        - pi-acp
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: github-copilot
+      command: copilot
+      args:
+        - '--acp'
+      permission: reject
+  - name: '@deepseek-ai/dsh-subagent-acp'
+    config:
+      providerName: hermes
+      command: hermes
+      args:
+        - acp
+      permission: reject
+legionCatalogLayer:
+  id: legion-acp-v1
+  profiles:
+    codex:
+      description: Delegate to OpenAI Codex in its own workspace process.
+      subagentProvider: codex
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    claude-code:
+      description: Delegate to Claude Code in its own workspace process.
+      subagentProvider: claude-code
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    oh-my-pi:
+      description: Delegate to the oh-my-pi coding agent in its own workspace process.
+      subagentProvider: oh-my-pi
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    kimi-code:
+      description: Delegate to Kimi Code in its own workspace process.
+      subagentProvider: kimi-code
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    zcode:
+      description: Delegate to ZCode in its own workspace process.
+      subagentProvider: zcode
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    grok-build:
+      description: Delegate to xAI Grok Build in its own workspace process.
+      subagentProvider: grok-build
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    pi:
+      description: Delegate to the Pi coding agent in its own workspace process.
+      subagentProvider: pi
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    github-copilot:
+      description: Delegate to GitHub Copilot CLI in its own workspace process.
+      subagentProvider: github-copilot
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text
+    hermes:
+      description: Delegate to the Hermes agent in its own workspace process.
+      subagentProvider: hermes
+      maxDepth: provider-managed
+      defaultRunInBackground: false
+      result: text

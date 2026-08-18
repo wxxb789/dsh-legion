@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -143,6 +144,114 @@ describe('ACP catalog layer and mount rows', () => {
 
   it('rejects duplicate agent ids', () => {
     expect(() => legion.acpCatalogLayer([sample, sample])).toThrow(/duplicate ACP agent id/)
+  })
+})
+
+describe('curated ACP agent catalog', () => {
+  const ids = legion.ACP_AGENT_CATALOG.map(agent => agent.id)
+
+  it('covers the nine requested agents', () => {
+    expect([...ids].sort()).toEqual([
+      'claude-code', 'codex', 'github-copilot', 'grok-build', 'hermes',
+      'kimi-code', 'oh-my-pi', 'pi', 'zcode',
+    ])
+  })
+
+  it('gives every entry a source reference and a usable description', () => {
+    for (const agent of legion.ACP_AGENT_CATALOG) {
+      expect(agent.reference, agent.id).toMatch(/^https:\/\//)
+      expect(agent.description.length, agent.id).toBeGreaterThan(10)
+      expect(agent.title.length, agent.id).toBeGreaterThan(1)
+    }
+  })
+
+  it('ships a command only for a verified entrypoint', () => {
+    for (const agent of legion.ACP_AGENT_CATALOG) {
+      if (agent.entrypoint === 'verified') expect(agent.command, agent.id).toBeTruthy()
+      else expect(agent.command, agent.id).toBeUndefined()
+    }
+  })
+
+  it('never pins @xai-official/grok@1.0.4, a version npm does not publish', () => {
+    const args = legion.ACP_AGENT_CATALOG.flatMap(agent => [...agent.args ?? []])
+    expect(args.some(arg => arg.includes('grok@'))).toBe(false)
+  })
+
+  it('uses the renamed Claude adapter, not the deprecated one', () => {
+    const claude = legion.ACP_AGENT_CATALOG.find(agent => agent.id === 'claude-code')
+    expect(claude?.args).toContain('@agentclientprotocol/claude-agent-acp')
+    expect(claude?.args?.some(arg => arg.includes('@zed-industries/'))).toBe(false)
+  })
+
+  it('compiles into a layer whose every Profile is ACP-compatible', () => {
+    const layer = legion.acpCatalogLayer(legion.ACP_AGENT_CATALOG)
+    expect(Object.keys(layer.profiles ?? {}).sort()).toEqual([...ids].sort())
+    for (const [name, profile] of Object.entries(layer.profiles ?? {})) {
+      expect(() => legion.assertAcpProfileCompatible(name, profile)).not.toThrow()
+    }
+  })
+
+  it('emits a mount row for every verified entry and none for the others', () => {
+    const rows = legion.acpMountRows(legion.ACP_AGENT_CATALOG)
+    const verified = legion.ACP_AGENT_CATALOG.filter(agent => agent.entrypoint === 'verified')
+    expect(rows).toHaveLength(verified.length)
+    expect(rows.map(row => row.config.providerName).sort())
+      .toEqual(verified.map(agent => agent.id).sort())
+    // Every generated row names a Profile that exists in the generated layer.
+    const layer = legion.acpCatalogLayer(legion.ACP_AGENT_CATALOG)
+    for (const row of rows) {
+      expect(layer.profiles?.[row.config.providerName]?.subagentProvider)
+        .toBe(row.config.providerName)
+    }
+  })
+
+  it('defaults every generated mount to rejecting the child permission prompts', () => {
+    for (const row of legion.acpMountRows(legion.ACP_AGENT_CATALOG)) {
+      expect(row.config.permission, row.config.providerName).toBe('reject')
+    }
+  })
+
+  it('keeps the whole curated catalog error-free against zero-capability providers', () => {
+    const catalog = legion.compileCatalog(
+      legion.materializeConfig({
+        configVersion: 2,
+        profiles: {
+          quick: {
+            description: 'Local delegation.',
+            subagentProvider: 'spawn',
+            maxDepth: 2,
+            defaultRunInBackground: false,
+          },
+        },
+        catalogLayers: [legion.acpCatalogLayer(legion.ACP_AGENT_CATALOG)],
+      } as never),
+      {
+        providers: Object.fromEntries([
+          ['spawn', {
+            capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+            continuable: true,
+          }],
+          ...ids.map(id => [id, {
+            capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+            continuable: false,
+          }] as const),
+        ]),
+      },
+    )
+    expect(catalog.diagnostics.filter(item => item.severity === 'error')).toEqual([])
+    expect(Object.keys(catalog.activeProfiles).sort()).toEqual(['quick', ...ids].sort())
+  })
+})
+
+describe('shipped ACP example fragment', () => {
+  it('matches what the catalog renders today', () => {
+    const committed = readFileSync(
+      new URL('../examples/legion.acp.fragment.yml', import.meta.url),
+      'utf8',
+    ).replace(/\r\n/g, '\n')
+    const rendered = legion.renderAcpFragment(legion.ACP_AGENT_CATALOG).replace(/\r\n/g, '\n')
+    // Regenerate with: pnpm run render:acp
+    expect(committed).toBe(rendered)
   })
 })
 

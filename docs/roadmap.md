@@ -92,6 +92,15 @@ Legion keeps one configuration vocabulary. The DSH settings service, which from 
 - [x] Degrade a rejected registration or unpublishable commit to the last publishable generation instead of withdrawing the delegation surface.
 - [ ] Ship the browser settings card once DSH publishes the `clientBundle` preset; today a served namespace with no card renders nothing.
 
+## v1.2 — Optional ACP delegation
+
+DSH owns the Agent Client Protocol backend. Legion contributes the delegation policy for agents mounted through it, as ordinary opt-in catalog data.
+
+- [x] Public ACP agent descriptor, Profile factory, catalog layer, and composition-row generator sharing one descriptor list.
+- [x] Authoring-time rejection of Profile fields an out-of-process child cannot honor.
+- [x] Curated entries for the nine requested agents, with per-entry entrypoint provenance and no guessed spawn command.
+- [x] Generated example fragment with a drift test.
+
 ## Type-system gates
 
 - [x] Distinct authored Config/Spec, materialized catalog, Effective Profile/Team, and Compiled Plan types at catalog boundaries.

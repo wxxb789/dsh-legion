@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - ADR 0021 and `docs/settings.md` covering layer resolution, failure behaviour, and the deferred browser card.
 - Optional ACP delegation catalog: `defineAcpAgent`, `acpProfile`, `acpCatalogLayer`, `acpMountRows`, and `assertAcpProfileCompatible` turn any ACP-speaking CLI mounted through `@deepseek-ai/dsh-subagent-acp` into a Legion Profile, generating the Profile and its composition row from one descriptor so `subagentProvider` cannot drift from `providerName`.
 - ACP Profiles fix every constraint an out-of-process child cannot honor (provider-managed depth, foreground-only, `text` result, no persona/toolFilter/routes) and report an unestablished entrypoint explicitly instead of shipping a guessed spawn command.
+- Curated ACP agents for Codex, Claude Code, oh-my-pi, Kimi Code, ZCode, Grok Build, Pi, GitHub Copilot CLI, and Hermes, each spawn command taken from the agent's own documentation and re-checked against the npm registry.
+- `renderAcpFragment` and `pnpm run render:acp` generate `examples/legion.acp.fragment.yml`, carrying the DSH provider rows and the Legion catalog layer in one document; a test fails if the shipped fragment drifts from the catalog.
+- `docs/acp-delegation.md` covering the ACP Profile constraints, per-agent setup, incremental adoption, and the permission/credential boundary.
 
 ### Changed
 
