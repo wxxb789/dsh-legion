@@ -14,7 +14,7 @@ Use force-push only when the human explicitly requests history rewriting. A succ
 
 ## Reuse before building
 
-Search the DeepSeek Harness packages before implementing any capability Legion does not already own. The DSH checkout's `packages/` tree carries a one-line description for every package; read those first, then read the candidate's source. Prefer an official package over a hand-rolled equivalent even when the hand-rolled version looks smaller, and state in the commit body which package you reused or why none fit.
+Search the DeepSeek Harness packages before implementing any capability Legion does not already own. The catalog is the harness repository's package tree, [`packages/`](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages), where every `package.json` description states that package's role in one line; a local harness checkout answers the same question faster. Read those descriptions first, then read the candidate's source. Prefer an official package over a hand-rolled equivalent even when the hand-rolled version looks smaller, and state in the commit body which package you reused or why none fit.
 
 Take the first option that works, in this order: an existing `ctx.*` service seam; an official DSH utility package; a companion package that mounts a service DSH does not own; new code inside Legion. Reaching the last option for anything a Host normally owns is a design smell — re-search before writing it.
 
