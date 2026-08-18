@@ -42,6 +42,11 @@ const checks = [
   ['acpCatalogLayerId', contract.acpCatalogLayerId, legion.ACP_CATALOG_LAYER_ID],
   ['acpEntrypointProvenance', contract.acpEntrypointProvenance, legion.ACP_ENTRYPOINT_PROVENANCE],
   ['acpCuratedAgents', contract.acpCuratedAgents, legion.ACP_AGENT_CATALOG.map(agent => agent.id).sort()],
+  ['clientBundle', contract.clientBundle, {
+    id: manifest.name,
+    platform: manifest.dsh.client.platform,
+    entry: manifest.exports['./client'].default,
+  }],
   ['compatibilityPolicy.compatibilityReceiptVersion', compatibilityPolicy.compatibilityReceiptVersion, contract.compatibilityReceiptVersion],
   ['compatibilityPolicy.dshPackageClosure', compatibilityPolicy.dshPackageClosure, [...new Set(compatibilityPolicy.dshPackageClosure)].sort()],
   ['packageVersion', contract.packageVersion, manifest.version],

@@ -47,6 +47,11 @@
     "disable-tombstone",
     "revive-later"
   ],
+  "clientBundle": {
+    "id": "dsh-legion",
+    "platform": "web",
+    "entry": "./lib/client.js"
+  },
   "compatibilityReceiptFields": [
     "schemaVersion",
     "requestedDshVersion",
@@ -657,6 +662,9 @@
       ".": {
         "types": "./lib/index.d.ts",
         "default": "./lib/index.js"
+      },
+      "./client": {
+        "default": "./lib/client.js"
       },
       "./contracts/v1.json": "./contracts/v1.json",
       "./contracts/compatibility.json": "./contracts/compatibility.json",

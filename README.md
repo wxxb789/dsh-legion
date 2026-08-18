@@ -57,6 +57,8 @@ Legion is for developers and deployment owners who already use DSH and want conf
 | Prompt Fragments | Load confined, immutable UTF-8 prompt resources from deployment-owned roots. |
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
 | Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
+| Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. |
+| ACP delegation | Optional Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
 ## How it works

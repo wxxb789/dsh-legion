@@ -51,4 +51,4 @@ Detection is read-only and registers nothing, so diagnostics can call it without
 
 ## Web settings card
 
-Legion registers the Host half only. DSH serves the namespace, but the **Plugin configuration** tab renders a card only for a namespace some browser half claims. DSH's `clientBundle` preset is not published yet, and its bundle-purity gate requires a third-party card to reproduce the loader artifact format and own its staging and revision fencing, so Legion defers the card. Until then, edit the namespace through the Host's settings document or any other settings consumer.
+Legion ships the browser half too: the namespace appears as a card on **Settings → Plugins → Plugin configuration**. See [the settings card](settings-card.md) for what it edits, how staging works, and the hand-maintained couplings it carries.

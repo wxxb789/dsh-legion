@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Curated ACP agents for Codex, Claude Code, oh-my-pi, Kimi Code, ZCode, Grok Build, Pi, GitHub Copilot CLI, and Hermes, each spawn command taken from the agent's own documentation and re-checked against the npm registry.
 - `renderAcpFragment` and `pnpm run render:acp` generate `examples/legion.acp.fragment.yml`, carrying the DSH provider rows and the Legion catalog layer in one document; a test fails if the shipped fragment drifts from the catalog.
 - `docs/acp-delegation.md` covering the ACP Profile constraints, per-agent setup, incremental adoption, and the permission/credential boundary.
+- A browser settings card for the `legion` namespace on the Web plugin configuration tab, shipped as `lib/client.js` with its own staged form, override badges, and revision fencing. Edits are staged and written only on save.
+- `tests/client-bundle.spec.ts` executes the built bundle under the Host loader's own protocol — factory handoff, id match, and a require that answers only the platform module table — so an externals drift fails the suite instead of the page.
+- `docs/settings-card.md` covering what the card edits and the three hand-maintained couplings shipping a third-party client bundle currently costs.
 
 ### Changed
 

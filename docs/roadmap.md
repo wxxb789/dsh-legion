@@ -90,7 +90,7 @@ Legion keeps one configuration vocabulary. The DSH settings service, which from 
 - [x] Layer the composition entry under the stored user section and restore it when the provider detaches.
 - [x] Widen a published generation's inputs to configuration, prompt-fragment resources, and runtime facts, with serialized last-commit-wins republication.
 - [x] Degrade a rejected registration or unpublishable commit to the last publishable generation instead of withdrawing the delegation surface.
-- [ ] Ship the browser settings card once DSH publishes the `clientBundle` preset; today a served namespace with no card renders nothing.
+- [x] Ship the browser settings card as an ordinary DSH client bundle, verified by executing the artifact under the loader's protocol.
 
 ## v1.2 — Optional ACP delegation
 
@@ -118,7 +118,9 @@ DSH owns the Agent Client Protocol backend. Legion contributes the delegation po
 
 ## Upstream DSH proposals
 
-- Published `clientBundle` preset so a third-party settings card need not reproduce the loader artifact format, staging, and revision fencing.
+- Published `clientBundle` preset so a third-party settings card need not reproduce the loader artifact format.
+- Published `settings.plugin.item` slot declaration so a third-party card need not re-declare it.
+- Client packages published on the same line as the Host, so a third party can typecheck against the version it targets instead of declaring that surface locally.
 - Child reasoning-effort override at the AgentOptions/request seam.
 - Per-child named preset composition with durable resume semantics.
 - Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling profile-local DSH Skill registrations.
