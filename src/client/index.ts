@@ -13,6 +13,9 @@
  */
 import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+// Module scope: the loader claims plugin styles as soon as this factory
+// returns, so the tag must exist by then.
+import './styles.ts'
 import { LegionCard, type LegionCardState } from './LegionCard.ts'
 import { SettingsForm, booleanField, textField, type FormActions } from './settings-form.ts'
 import { en, zh } from './locales.ts'

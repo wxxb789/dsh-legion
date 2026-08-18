@@ -46,15 +46,36 @@ function walk(node: unknown, seen: Element[] = []): Element[] {
  * with a `window.__ModuleLoader__`, capture the handoff, and run its factory
  * against a require that answers only the platform module table.
  */
-function materialize(): { id: string; exports: Record<string, unknown>; required: string[] } {
+/** One `<style>` the bundle injected into the stub document. */
+interface StyleTag {
+  dataset: Record<string, string>
+  textContent: string
+}
+
+function materialize(options: { document?: boolean } = {}): {
+  id: string
+  exports: Record<string, unknown>
+  required: string[]
+  styles: StyleTag[]
+} {
   const required: string[] = []
+  const styles: StyleTag[] = []
   let handoff: { id: string; factory: (require: (spec: string) => unknown) => unknown } | undefined
+  // The loader claims `style:not([data-plugin])` right after the factory
+  // returns, so the stub records what the bundle injected and when.
+  const stubDocument = {
+    head: { appendChild(tag: StyleTag) { styles.push(tag) } },
+    querySelector: (selector: string) =>
+      styles.find(tag => selector.includes(tag.dataset.pluginCss ?? '\u0000')) ?? null,
+    createElement: (): StyleTag => ({ dataset: {}, textContent: '' }),
+  }
   const sandbox = {
     window: {
       __ModuleLoader__: {
         load(value: typeof handoff) { handoff = value },
       },
     },
+    ...options.document === false ? {} : { document: stubDocument },
     console,
   }
   runInNewContext(bundle(), sandbox, { filename: 'lib/client.js' })
@@ -82,7 +103,7 @@ function materialize(): { id: string; exports: Record<string, unknown>; required
     if (entry === undefined) throw new Error(`require("${spec}") missed the module table`)
     return entry
   }) as Record<string, unknown>
-  return { id: handoff.id, exports, required }
+  return { id: handoff.id, exports, required, styles }
 }
 
 describe('client bundle artifact', () => {
@@ -105,6 +126,42 @@ describe('client bundle artifact', () => {
     const { required } = materialize()
     expect(required.length).toBeGreaterThan(0)
     for (const spec of required) expect(CLIENT_EXTERNALS, spec).toContain(spec)
+  })
+
+  it('injects one loader-owned stylesheet before the factory returns', () => {
+    const { styles } = materialize()
+    expect(styles).toHaveLength(1)
+    const tag = styles[0]!
+    // claimStyles() keys ownership on data-plugin, and unload removes what it owns.
+    expect(tag.dataset.plugin).toBe(manifest.name)
+    expect(tag.dataset.pluginCss).toBe(`${manifest.name}/legion-card.css`)
+    expect(tag.textContent).toContain('.dsh-legion-card')
+  })
+
+  it('styles every class the card actually renders', () => {
+    const { styles } = materialize()
+    const css = styles[0]!.textContent
+    for (const className of [
+      'dsh-legion-card', 'dsh-legion-card__header', 'dsh-legion-card__row',
+      'dsh-legion-card__label', 'dsh-legion-card__control', 'dsh-legion-card__badge',
+      'dsh-legion-card__hint', 'dsh-legion-card__error', 'dsh-legion-card__footer',
+    ]) {
+      expect(css, className).toContain(`.${className}`)
+    }
+  })
+
+  it('takes every colour from a theme token, so the card follows the active theme', () => {
+    const css = materialize().styles[0]!.textContent
+    // Colour-bearing declarations only: border-radius and friends carry none.
+    const declarations = [...css.matchAll(/(?:^|\s)(?:color|background|background-color|border)\s*:\s*([^;]+);/g)]
+      .map(match => match[1]!.trim())
+      .filter(value => value !== 'inherit')
+    expect(declarations.length).toBeGreaterThan(5)
+    for (const value of declarations) expect(value, value).toContain('var(--dsw-alias-')
+  })
+
+  it('loads without a DOM, so a DOM-free harness can still materialize it', () => {
+    expect(() => materialize({ document: false })).not.toThrow()
   })
 
   it('carries no unsubstituted build-time environment reads', () => {

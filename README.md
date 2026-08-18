@@ -57,8 +57,8 @@ Legion is for developers and deployment owners who already use DSH and want conf
 | Prompt Fragments | Load confined, immutable UTF-8 prompt resources from deployment-owned roots. |
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
 | Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
-| Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. |
-| ACP delegation | Optional Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. |
+| Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. See [the settings card](docs/settings-card.md). |
+| ACP delegation | Optional Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. See [ACP delegation](docs/acp-delegation.md). |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
 ## How it works
@@ -269,7 +269,9 @@ A minimal agent-preset row:
 
 Use valid provider and model IDs for your deployment. See the [complete preset fragment](examples/legion.agent.cordis.fragment.yml) and [standalone configuration example](examples/legion.config.yml).
 
-When the Host mounts a settings provider (DSH 0.1.0-rc.7 serves every registered namespace), Legion also registers this same schema as the `legion` settings namespace: the preset row above becomes the base layer, a stored user section overrides individual fields, and a commit republishes the tool without restarting DSH. Nothing changes in a composition without a settings provider. See [live reconfiguration](docs/settings.md).
+When the Host mounts a settings provider (DSH 0.1.0-rc.7 serves every registered namespace), Legion also registers this same schema as the `legion` settings namespace: the preset row above becomes the base layer, a stored user section overrides individual fields, and a commit republishes the tool without restarting DSH. Nothing changes in a composition without a settings provider. See [live reconfiguration](docs/settings.md) and [the settings card](docs/settings-card.md).
+
+To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHub Copilot CLI, and others — mount DSH's ACP backend once per agent and append the generated catalog layer. See [ACP delegation](docs/acp-delegation.md) and `examples/legion.acp.fragment.yml`.
 
 ### Top-level fields
 
@@ -400,14 +402,15 @@ Exit codes: `0` for no error diagnostic, `1` for capability errors, and `2` for 
 
 ## Status and limitations
 
-The source tree declares version `1.1.0` and config contract v2. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
+The source tree declares version `1.2.0` and config contract v2. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
 
 Known limitations:
 
 - Curated Strategies are not automatically model-exposed; deployment owners may opt in with `enableStrategies: true`.
 - Legion does not retry or switch models after a selected child fails.
 - In-process children inherit the parent's named DSH agent preset; Profiles can still vary model, persona, tools, backend, and limits.
-- There is no Legion GUI settings card; configure it in a user-owned agent preset.
+- The GUI settings card edits four scalar policies; Profiles, Teams, Strategies, and catalog layers stay in the configuration document.
+- The card's browser half reproduces DSH's unpublished client bundle format by hand, so an upstream change to that format fails at load time rather than at build time.
 - A bare package without compatible DSH peers is unsupported.
 
 ## FAQ

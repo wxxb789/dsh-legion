@@ -56,6 +56,9 @@ Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，
 | Catalog 自定义 | 分层添加、替换、禁用和恢复用户或第三方条目。 |
 | Prompt Fragment | 从部署者控制的 Root 加载受约束、不可变的 UTF-8 Prompt 资源。 |
 | 可解释策略 | 提供稳定 Digest、确定性诊断、路由证据和 JSON Explain 输出。 |
+| 运行时重配置 | 可选：Host 挂载 Settings Provider 后，可通过 `legion` 命名空间修改同一份配置并即时重新发布，无需重启。参见[运行时重配置](docs/settings.md)。 |
+| Web 设置卡片 | DSH「设置 → 插件」页中的插件卡片，支持暂存编辑与覆盖标记。参见[设置卡片](docs/settings-card.md)。 |
+| ACP 委派 | 可选 Profile，通过 DSH 的 ACP 后端委派给 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode。参见 [ACP 委派](docs/acp-delegation.md)。 |
 | 原生 DSH 生命周期 | Continuation、取消、结算通知、Provider 生命周期和 HMR 注册仍由 DSH 管理。 |
 
 ## 工作原理
@@ -266,6 +269,10 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 
 请使用当前部署中真实有效的 Provider 和 Model ID。更多内容参见[完整 Preset Fragment](examples/legion.agent.cordis.fragment.yml)与[独立配置示例](examples/legion.config.yml)。
 
+当 Host 挂载了 Settings Provider 时（DSH 0.1.0-rc.7 起会服务每一个已注册的命名空间），Legion 会把同一份 Schema 注册为 `legion` 设置命名空间：上面的 Preset 行成为 base 层，用户层可逐字段覆盖，提交后即时重新发布工具，无需重启 DSH。没有 Settings Provider 的组合则行为不变。参见[运行时重配置](docs/settings.md)与[设置卡片](docs/settings-card.md)。
+
+若要委派给外部编码 Agent（Codex、Claude Code、Kimi Code、GitHub Copilot CLI 等），为每个 Agent 挂载一次 DSH 的 ACP 后端，并追加生成好的 Catalog Layer。参见 [ACP 委派](docs/acp-delegation.md)与 `examples/legion.acp.fragment.yml`。
+
 ### 顶层字段
 
 | 字段 | 默认值 | 含义 |
@@ -300,7 +307,9 @@ Profile 名称必须匹配 `^[a-z][a-z0-9-]*$`。
 | `result` | `text` | `text`、`findings-v1` 或 `review-v1`。 |
 | `promptFiles` | 无 | 验证后按顺序加载的 Prompt Fragment。 |
 
-对于 `codex` 和 `claude-code`，Model 选择由外部产品管理。通常应设置 `maxDepth: provider-managed` 和 `defaultRunInBackground: false`。
+对于 `codex`、`claude-code` 这类外部产品，Model 选择由产品自身管理，通常应设置 `maxDepth: provider-managed` 和 `defaultRunInBackground: false`。
+
+如果目标 Agent 支持 Agent Client Protocol，更推荐走 DSH 的通用 ACP 后端：Legion 会按上述约束自动生成 Profile 与挂载行，无需手写。参见 [ACP 委派](docs/acp-delegation.md)与 `examples/legion.acp.fragment.yml`。
 
 ### 精确 Route Candidate
 
@@ -395,14 +404,15 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 状态与限制
 
-当前源码声明版本为 `1.1.0`，配置契约为 v2。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
+当前源码声明版本为 `1.2.0`，配置契约为 v2。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
 
 已知限制：
 
 - Curated Strategy 不会自动向模型开放；部署者可显式设置 `enableStrategies: true`。
 - 已选择的子智能体失败后，Legion 不会重试或切换模型。
 - 进程内子智能体继承父级命名 DSH Agent Preset；Profile 仍可改变 Model、Persona、Tool、Backend 和限制。
-- 当前没有 Legion GUI 设置卡片，需要在用户自有 Agent Preset 中配置。
+- GUI 设置卡片只编辑四个标量策略；Profile、Team、Strategy 与 Catalog Layer 仍由配置文档管理。
+- 卡片的浏览器半侧是手工复刻 DSH 尚未发布的客户端 Bundle 格式，上游若变更该格式，失败会发生在加载期而不是构建期。
 - 不支持在缺少兼容 DSH Peer 的环境中直接运行裸 Package。
 
 ## 常见问题
