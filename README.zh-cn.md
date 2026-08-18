@@ -21,7 +21,7 @@
 ## 快速开始
 
 ~~~bash
-# 1. 将插件安装到某个 DSH Host Profile，并固定到不可变的 commit SHA
+# 1. 将插件安装到某个 DSH Host Profile（追加 #<commit-sha> 可锁定具体版本）
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 
 # 2. 把 Legion 配置行复制到用户自有的 Agent Preset，然后开启一个新 Session
@@ -127,13 +127,25 @@ Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、�
 
 ### 从 GitHub 安装
 
-将不可变的 Commit SHA 安装到 `web` Profile：
+把默认分支安装到 `web` Profile：
+
+~~~bash
+dsh plugin --profile web add github:wxxb789/dsh-legion
+~~~
+
+如果插件应安装到其他 DSH Host Profile，请替换 `web`。
+
+该命令只在**安装那一刻**解析一次 `main`。`dsh plugin` 会把操作转发给 pnpm，由 pnpm 把解析出的 Commit 记录到 Host Profile 的 Lockfile 中；在你显式升级之前，已安装版本不会跟随后续提交漂移。
+
+#### 锁定具体版本
+
+Git 安装会在你的机器上执行 Legion 的 `prepare` 构建，且不在 Agent 运行的任何沙箱之内。当已安装代码需要可审计、可复现时——生产 Profile、共享机器，或需要审查「允许哪些代码执行构建」的部署——请追加不可变版本：
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 ~~~
 
-如果插件应安装到其他 DSH Host Profile，请替换 `web`。当前尚未发布 Release Tag，因此请使用 Commit SHA，而不是会移动的分支。将来 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) 出现正式版本后，对应 Tag 也可作为不可变的安装版本。
+当前尚未发布 Release Tag。将来 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) 出现正式版本后，对应 Tag 同样是不可变的安装版本。
 
 Git 依赖会执行 Legion 的 `prepare` 构建。pnpm 10+ 可能会拒绝第一次安装，并要求显式允许构建。请把 pnpm 输出的**完整 Key**加入 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`，然后重新执行安装：
 
@@ -180,16 +192,16 @@ dsh plugin --profile web add .
 
 ### 升级 GitHub 安装
 
-使用新的精确 Commit SHA 重新执行 Add。正式 Release 发布后，也可以改用较新的已发布 Release Tag：
-
-~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
-~~~
-
-对于 Registry 或移动引用安装，DSH 也会转发 pnpm 的 Update 命令：
+分支安装可以通过 pnpm 的 Update 命令重新解析到当前 `main` 提交，DSH 会转发该命令：
 
 ~~~bash
 dsh plugin --profile web update dsh-legion
+~~~
+
+锁定版本的安装按设计会停留在已记录的版本上。需要升级时，请添加新的精确版本；将来的 Release Tag 用法完全相同：
+
+~~~bash
+dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
 ~~~
 
 升级后请：

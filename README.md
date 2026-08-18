@@ -21,7 +21,7 @@ Give one DSH agent a small, meaningful delegation interface—such as `quick`, `
 ## Quick start
 
 ~~~bash
-# 1. Install the plugin into a DSH host profile, pinned to an immutable commit SHA
+# 1. Install the plugin into a DSH host profile (append #<commit-sha> to pin a revision)
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 
 # 2. Copy the Legion row into a user-owned agent preset, then start a NEW session
@@ -127,13 +127,25 @@ Legion intentionally does **not** own the agent loop, sessions, persistence, mod
 
 ### Install from GitHub
 
-Install an immutable commit SHA into the `web` profile:
+Install the default branch into the `web` profile:
+
+~~~bash
+dsh plugin --profile web add github:wxxb789/dsh-legion
+~~~
+
+Replace `web` if Legion should be available in another DSH host profile.
+
+This resolves `main` **once, at install time**. `dsh plugin` forwards to pnpm, which records the resolved commit in the host profile's lockfile, so the installed revision does not follow later pushes until you upgrade explicitly.
+
+#### Pin a revision
+
+A git install runs Legion's `prepare` build on your machine, outside any sandbox the agent runs under. Append an immutable revision whenever the installed code has to stay auditable and reproducible — production profiles, shared machines, or a deployment where you review what you allow to build:
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
 ~~~
 
-Replace `web` if Legion should be available in another DSH host profile. No release tag is published yet, so use a commit SHA rather than a moving branch. After a version appears on [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases), that release's tag is also an immutable installation spec.
+No release tag is published yet. After a version appears on [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases), that release's tag is an immutable installation spec too.
 
 Git dependencies run Legion's `prepare` build. pnpm 10+ may reject the first install until the package is explicitly allowed. Add the **exact key printed by pnpm** to `$DSH_HOME/profiles/web/pnpm-workspace.yaml`, then repeat the install:
 
@@ -180,16 +192,16 @@ A copied preset is a versioned template. It does not automatically inherit later
 
 ### GitHub installation
 
-Re-add the package with the new exact commit SHA. After releases exist, a newer published release tag may be used instead:
-
-~~~bash
-dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
-~~~
-
-For a registry or moving-ref installation, DSH also forwards pnpm's update command:
+A branch installation re-resolves to the current `main` commit through pnpm's update command, which DSH forwards:
 
 ~~~bash
 dsh plugin --profile web update dsh-legion
+~~~
+
+A pinned installation stays on its recorded revision by design. Move it by adding the new exact revision — a later release tag works the same way:
+
+~~~bash
+dsh plugin --profile web add github:wxxb789/dsh-legion#<new-commit-sha>
 ~~~
 
 After upgrading:
