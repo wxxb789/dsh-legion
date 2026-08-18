@@ -35,6 +35,7 @@ The coordinator now sees one `legion` tool whose `profile` values are your seman
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [What is dsh-legion used for?](#what-is-dsh-legion-used-for)
 - [Capabilities](#capabilities)
 - [How it works](#how-it-works)
