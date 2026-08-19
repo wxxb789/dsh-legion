@@ -57,6 +57,14 @@ same guarantee class `AGENTS.md` already warns about for `ctx.fs` version-guarde
 ("serialized by a per-process lock map, so `replaceIfVersion` is not a cross-process
 compare-and-set").
 
+Worth naming the failure mode precisely, because it is worse than a lost update. Two processes
+mutating one Lead Session do not merely race — they break the fold's invariants, and the strict fold
+plus its `./invariant` companion surface that as a replay *error*: double-queue (`fold.ts:263`),
+non-contiguous revision (`fold.ts:246`), double delivery (`fold.ts:271`). That is detection after
+the fact rather than prevention, so the race is converted into an **unloadable Session**. A
+coordination layer whose concurrency failure mode is corruption of the durable log is the opposite
+of what Legion's fail-closed posture exists to buy.
+
 ## 2. The domain models do not line up either
 
 Even setting atomicity aside, the three overlapping nouns are false friends.
@@ -110,7 +118,7 @@ official `ctx.sessionPersistence.inspect(childId, signal)` and checks the event 
 than throwing for both a missing session and a transient read failure — is **unconfirmed** and must
 be settled before any ADR change.
 
-### 4.3 An uncomfortable comparison worth stating
+### 4.3 An uncomfortable comparison, stated fairly in both directions
 
 agent-team ships a working coordination system on the same durable substrate Legion uses (Session
 log + `sessions.flush`), accepting a weaker guarantee, and it **executes**. Legion's durable-run is
@@ -120,6 +128,16 @@ log + `sessions.flush`), accepting a weaker guarantee, and it **executes**. Legi
   'unbound'` (`capabilities.ts:122`), with no assignment path anywhere in the repository. Even a
   perfect Host coordination service would not turn journal mode on.
 - **Blocker B, external:** no Host implements the mandatory `legionRunCoordination`.
+
+The comparison runs the other way too, and the read model is where Legion is clearly ahead.
+agent-team registers no projection and keeps no cache: `state()` performs a full
+`foldTeam(root.id, root.session.events)` linear replay on *every* read (`journal.ts:30-32`),
+including once inside every transaction. Legion's `restoreLegionProjection` (`replay.ts:26-36`)
+resumes from a checkpoint and folds only the tail, falling back to a full fold solely when the
+checkpoint's `stateVersion` does not match the current version 6. The upstream package is therefore
+not uniformly "the more mature implementation" — it is a smaller design that traded read
+scalability and cross-process safety for shipping. Treating it as a template for Legion's
+engineering standards would be the wrong lesson; the right one is narrower, and it is §4.1 and §4.2.
 
 ## Recommendation
 
