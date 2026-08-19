@@ -21,21 +21,32 @@ import { defineConfig } from 'tsdown'
 const ID = 'dsh-legion'
 
 /**
- * Specifiers the Host's module table answers. Mirrors PLATFORM_MODULES plus the
- * runtime store exemption in `packages/client/tsdown.client.ts`. Anything not
- * listed here MUST inline: a `require` the table cannot answer throws at load.
+ * Specifiers the Host's module table answers for every dynamic client bundle.
+ * Mirrors `PLATFORM_MODULES` plus `PRELOADED_CLIENT_EXTERNALS` in
+ * `packages/client/web/src/platform.ts`. Anything not listed here MUST inline:
+ * a `require` the table cannot answer throws at load.
+ *
+ * DSH 0.1.0-rc.8 split the single upstream list in two and dropped three rows
+ * this mirror used to carry: `dsh-client-web-react` (renamed to
+ * `dsh-client-ui-renderer` and delisted), `dsh-client-ui-attachment` (now an
+ * ordinary client plugin), and `dsh-client-schema-form` (deleted; schema
+ * handling moved into `dsh-client-ui-settings`). It also replaced the exported
+ * `CLIENT_EXTERNALS` constant and the hardcoded runtime-store exemption with a
+ * per-package computation, so a bundle needing a row beyond this baseline now
+ * declares it in `package.json` under `dsh.client.external`. Legion needs none:
+ * it requires only the preloaded runtime store and the ui-primitives table row.
  */
 export const CLIENT_EXTERNALS: readonly string[] = [
+  // PLATFORM_MODULES: shared into the frozen module table by the shell.
   'react',
   'react/jsx-runtime',
   'react-dom',
   'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives',
-  '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
+  // PRELOADED_CLIENT_EXTERNALS: factories the parser registers before the shell
+  // starts, so no boot-graph edge is needed to reach them.
   '@deepseek-ai/dsh-client-runtime/client',
 ]
 

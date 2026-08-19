@@ -586,6 +586,75 @@ describe('dsh-legion', () => {
     expect(rendered(result)).toContain('Legion child run failed')
   })
 
+  it('surfaces the provider diagnostic beside the stop reason when the Host supplies one', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
+    ctx.subagents.registerProvider(provider('spawn', {
+      // `diagnostic` arrived in DSH 0.1.0-rc.8 and is absent from the 0.1.0-rc.6
+      // SubagentResult the peer floor still admits, so the literal is asserted
+      // rather than declared — the same version boundary settlement.ts reads across.
+      result: () => ({
+        output: [],
+        stopReason: 'error',
+        diagnostic: 'provider gateway returned 502 after 3 attempts',
+      } as SubagentResult),
+    }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: false,
+      profiles: {
+        deep: {
+          description: 'Diagnostic carrier.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'first', provider: 'models', model: 'first' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const result = await execute(ctx, { description: 'diagnostic', prompt: 'Work.' })
+    expect(result.isError).toBe(true)
+    const text = rendered(result)
+    // The stable stop-reason phrasing survives; the provider account is appended.
+    expect(text).toContain('Legion child run failed')
+    expect(text).toContain('provider gateway returned 502 after 3 attempts')
+  })
+
+  it('keeps the stop reason alone when the provider supplies no diagnostic', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
+    ctx.subagents.registerProvider(provider('spawn', { stopReason: 'refusal' }))
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: false,
+      profiles: {
+        deep: {
+          description: 'No diagnostic.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'first', provider: 'models', model: 'first' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'deep',
+    })
+
+    const result = await execute(ctx, { description: 'no diagnostic', prompt: 'Work.' })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('Legion child declined the task')
+    expect(rendered(result)).not.toContain('provider diagnostic')
+  })
+
   it('loads confined prompt fragments before registration and installs them as child persona', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-legion-plugin-resources-'))
     mkdirSync(join(root, 'resources', 'prompts'), { recursive: true })

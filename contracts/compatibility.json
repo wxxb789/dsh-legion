@@ -2,7 +2,7 @@
   "schemaVersion": "dsh-legion-compatibility-policy-v1",
   "dshPeerRange": ">=0.1.0-rc.6 <0.2.0",
   "minimumDshVersion": "0.1.0-rc.6",
-  "latestTestedDshVersion": "0.1.0-rc.7",
+  "latestTestedDshVersion": "0.1.0-rc.8",
   "dshPackageClosure": [
     "dsh-agent",
     "dsh-agent-loop",
@@ -27,13 +27,13 @@
     "dsh-user-approval"
   ],
   "packageVersion": "1.2.0",
-  "assessedDshVersions": ["0.1.0-rc.6", "0.1.0-rc.7"],
+  "assessedDshVersions": ["0.1.0-rc.6", "0.1.0-rc.8"],
   "hostCapabilities": {
     "ephemeralProfileAndStrategy": "supported",
     "journalContractAndPureReplay": "supported",
     "liveSettingsReconfiguration": "capability-detected-optional",
     "durableMutation": "unavailable-fail-closed",
-    "reason": "Neither published DSH 0.1.0-rc.6 nor 0.1.0-rc.7 provides the atomic run coordination Host service durable mutation requires; 0.1.0-rc.7 changes no type Legion imports."
+    "reason": "No DSH 0.1.0-rc.6, 0.1.0-rc.7, or 0.1.0-rc.8 release provides the atomic run coordination Host service durable mutation requires; the 0.1.0-rc.8 Agent Teams packages implement their own durable mailbox and task DAG but are private and unpublished. Neither 0.1.0-rc.7 nor 0.1.0-rc.8 changes a type Legion imports."
   },
   "previousMinorCompatibility": [
     "config-v2-with-durable-fields-omitted",

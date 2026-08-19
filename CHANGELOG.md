@@ -6,10 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A child failure now carries the provider's own account when the Host supplies one: DSH 0.1.0-rc.8 added `SubagentResult.diagnostic`, and Legion appends it to the stop-reason sentence instead of replacing it, keeping it separate from the child's `output` as the contract requires. Because the declared peer floor still admits 0.1.0-rc.6, whose `SubagentResult` has no such member, the field is read across that version boundary and validated rather than declared.
+
 ### Changed
 
 - Journal Strategy execution is now exposed on one condition instead of two independent ones: `durableActivationAvailable` gates the model-facing `execution` parameter on a bound durable Strategy activation adapter, not on Host capabilities alone. No build binds an adapter yet, so the parameter stays out of the published schema on every Host rather than advertising a request that always fails closed, and the strategy branch of the parameter schema now carries `execution` whenever it is exposed instead of silently dropping it.
 - `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE` states that this build binds no activation adapter, instead of attributing the gap to the Host.
+- Compatibility policy records DSH 0.1.0-rc.8 as the latest tested version, and the packed `latest-tested` matrix channel targets it. Neither 0.1.0-rc.7 nor 0.1.0-rc.8 changes a type Legion imports, and the three breaking changes in 0.1.0-rc.8 all miss this plugin: it never configures subagent report delivery, asserts nothing about report turn boundaries, and folds only its own `legion/*` events, never `assistant/message`. Durable mutation stays fail-closed because no release provides atomic run coordination; the 0.1.0-rc.8 Agent Teams packages carry their own durable mailbox and task DAG but are private and unpublished.
+- The client bundle's module-table mirror drops three rows DSH 0.1.0-rc.8 removed — `dsh-client-web-react` (renamed to `dsh-client-ui-renderer` and delisted), `dsh-client-ui-attachment` (now an ordinary client plugin), and `dsh-client-schema-form` (deleted) — and is restated as `PLATFORM_MODULES` plus the new `PRELOADED_CLIENT_EXTERNALS`. Legion required none of the three, so no bundle behaviour changes; the list is what a reader trusts, and it was wrong.
+
+### Notes
+
+- `docs/notes/dsh-0.1.0-rc.8-upgrade.md` records the full assessment, including that the LLM default retry count rose from 2 to 5 upstream (inherited by every delegated child) and that `ContinuableStartSpec.childId` and `SubagentRuntime.drainContinuableChildren` are new seams worth an ADR-level look for the durable Strategy controller.
+
 
 ## [1.2.0] - 2026-08-17
 

@@ -18,7 +18,42 @@ export interface ForegroundResult {
   readonly structured?: JsonValue
 }
 
+/**
+ * Read the provider-authored failure detail DSH 0.1.0-rc.8 added to
+ * `SubagentResult`.
+ *
+ * This is a real version boundary, not a convenience cast: Legion's peer range
+ * still admits 0.1.0-rc.6, whose `SubagentResult` declares no `diagnostic`
+ * member, so the field is read as `unknown` and validated instead of declared.
+ * Providers cap it at 4096 UTF-8 bytes and keep it free of tool inputs, file
+ * contents, environment values, and credentials.
+ * @param result - the settled child result.
+ * @returns the trimmed detail, or undefined when the Host or provider supplied none.
+ */
+function providerDiagnostic(result: SubagentResult): string | undefined {
+  const value: unknown = (result as { readonly diagnostic?: unknown }).diagnostic
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length === 0 ? undefined : trimmed
+}
+
+/**
+ * Describe why a child run ended, preferring the provider's own account.
+ *
+ * The provider diagnostic is appended rather than substituted, so the stable
+ * stop-reason phrasing callers may already match on survives. It stays separate
+ * from the child's `output`, as the contract requires.
+ * @param result - the settled child result.
+ * @returns the failure sentence, or undefined when the run completed.
+ */
 function stopReasonError(result: SubagentResult): string | undefined {
+  const reason = stopReasonSentence(result)
+  if (reason === undefined) return undefined
+  const diagnostic = providerDiagnostic(result)
+  return diagnostic === undefined ? reason : `${reason} (provider diagnostic: ${diagnostic})`
+}
+
+function stopReasonSentence(result: SubagentResult): string | undefined {
   switch (result.stopReason) {
     case 'completed': return undefined
     case 'aborted': return 'Legion child run was cancelled'
