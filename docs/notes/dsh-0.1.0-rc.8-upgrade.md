@@ -133,28 +133,28 @@ and the compatibility reason should now name rc.8 rather than stopping at rc.7.
 The other standing asks are unchanged: no child reasoning-effort override at the
 `AgentOptions`/request seam, and no unified DSH recovery seam.
 
-## Verification limitation: the 0.1.0-rc.x line does not resolve from the configured feed
+## Registry availability: published upstream, invisible from the corporate feed
 
-Local gate results are authoritative for **source** compatibility only. Registry availability is a
-separate question, and it comes back negative here.
+0.1.0-rc.8 **is** published to the public npm registry. The CI run for this change proves it: all
+four `packed E2E (…, latest-tested, …)` jobs installed with
+`--registry=https://registry.npmjs.org` at `DSH_VERSION: 0.1.0-rc.8` and passed, on both platforms
+and both Node versions.
 
-Against the configured Azure DevOps feed with a freshly refreshed AAD token — authentication
-confirmed working, since `npm view @deepseek-ai/dsh-subagent versions` succeeds — the published
-version list is exactly `["0.0.1-rc.1", "0.0.1-rc.2"]`. Every `0.1.0-rc.6`, `-rc.7`, and `-rc.8`
-request returns E404, for `dsh-subagent`, `dsh-agent`, and `dsh-client-runtime` alike. The public
-npm registry is denied by company policy and cannot arbitrate. This matches the pre-existing
-observation in `dsh-client-card-feasibility.md`, which recorded the published line as `0.0.1-rc.1`
-against a `0.1.0-rc.7` checkout.
+That correction matters, because the local picture says the opposite and is wrong. Against the
+configured Azure DevOps feed, with a freshly refreshed AAD token and authentication confirmed
+working (`npm view @deepseek-ai/dsh-subagent versions` succeeds), the published list is exactly
+`["0.0.1-rc.1", "0.0.1-rc.2"]`, and every `0.1.0-rc.6`, `-rc.7`, and `-rc.8` request returns E404 —
+`dsh-subagent`, `dsh-agent`, and `dsh-client-runtime` alike. The public registry is denied by company
+policy, so no local command can arbitrate. The feed does not mirror the `0.1.0-rc.x` line; that is a
+fact about the feed, not about what upstream published. The same trap is latent in
+`dsh-client-card-feasibility.md`, which recorded the published client line as `0.0.1-rc.1` from this
+same feed and treated it as an upstream gap.
 
-Consequences:
+Practical consequence: **do not regenerate `pnpm-lock.yaml` or move the exact `devDependencies`
+pins from a machine on this feed** — not because rc.8 is unavailable, but because the feed cannot
+resolve it, so a local install would either fail or record resolutions no consumer could reproduce.
+Locally those pins resolve only through the junctions onto the harness checkout. CI reaches npmjs
+directly and is where the pins should be moved; that step is deliberately left undone here, and the
+`latest-tested` receipts already exercise rc.8 end to end without it.
 
-- **Do not bump the exact `devDependencies` pins from `0.1.0-rc.6` to `0.1.0-rc.8` yet.** The pins
-  currently resolve only because `node_modules/@deepseek-ai/*` are junctions onto a local harness
-  checkout; a real `pnpm install --frozen-lockfile` of rc.8 cannot be satisfied from this feed, and
-  regenerating `pnpm-lock.yaml` here would produce a lockfile no consumer could install.
-- `contracts/compatibility.json` records `latestTestedDshVersion`, which this assessment did test —
-  against rc.8 **sources**. Release-time receipts additionally require
-  `resolvedDshVersion === latestTestedDshVersion` (`scripts/verify-compatibility-receipts.mjs:76-77`),
-  so the release job must run somewhere that can actually resolve `0.1.0-rc.8` before the
-  `latest-tested` channel can be produced. That is a CI-environment precondition, not a local one.
 
