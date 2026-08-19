@@ -148,9 +148,43 @@ engineering standards would be the wrong lesson; the right one is narrower, and 
 3. **The highest-value move remains a companion package mounting `legionRunCoordination` and
    `legionGlobalAdmission`**, exactly as `AGENTS.md` prescribes ("Mount it as a separate package,
    and keep Legion failing closed while it is absent") and ADR 0020 requires. That is the difference
-   between "cannot execute" and "can". `@deepseek-ai/dsh-atomic-write`'s cross-process
-   `withFileLock` is the candidate substrate, noting its documented atomic-but-not-durable caveat.
+   between "cannot execute" and "can".
+
+   **Correction to an earlier draft of this note:** it named
+   `@deepseek-ai/dsh-atomic-write`'s `withFileLock` as "the candidate substrate". That overstates
+   what a lock can do here, and it contradicts Legion's own published contract — Journal Contract v1
+   states that "No process map, file lock, private WAL, or implicit single-process fallback
+   satisfies this contract" (`docs/journal-contract-v1.md:9`). The reason is that `RunCoordination`
+   is not merely mutual exclusion: it must also allocate a **monotonic fence** and revalidate
+   owner+fence **atomically with the journal append** (`run-control.ts:51-64`, four separate port
+   comments). A lock without a fencing token is the classic unsafe pattern — a stalled holder that
+   loses its lock cannot be prevented from committing afterwards, which is precisely what the fence
+   exists to stop. `withFileLock` may serve as *one internal ingredient* of such a package, but the
+   package still owes durable monotonic fence allocation and CAS-at-append, and `dsh-atomic-write`
+   documents itself as atomic and not durable, so the fence store needs its own crash barrier.
+
 4. **Investigate 4.2 separately.** If `inspect` can express the required trichotomy, Legion can
    delete an invented Host service key in favour of an official seam.
 5. **Blocker A deserves its own decision.** A subsystem that is 38% of source and cannot be switched
    on by any deployment is worth an explicit keep/bind/shrink call, independent of upstream.
+
+## Appendix: two latent inconsistencies noticed while reading
+
+Neither is reachable today, because the subsystem cannot execute. Both are cheap to fix now and
+expensive to discover later.
+
+1. **`RunLease.journalWatermark` is declared and validated but never consumed.** It is declared at
+   `host.ts:23` and validated at `lease.ts:67`, `:83-85`; a search of `src/` finds no reader. Its
+   intended relationship to `AcquireRunLeaseRequest.observedJournalSeq` (`host.ts:12`) is
+   unspecified. A Host contract field that nothing reads is either a missing CAS input or dead
+   weight in a public port — decide which before a Host implements against it.
+
+2. **Task attempt counting may make retry unreachable.** `graph.ts:415` blocks readiness with
+   `attempt-limit` once `state.attempts >= 1`, and `projection.ts:185-186` computes that count
+   **across all generations** (`filter(attempt => attempt.taskId === task.taskId).length`, with no
+   generation predicate). Taken together, any task that has ever been attempted can never re-enter
+   the ready frontier, which appears to contradict the multi-generation retry paths in
+   `recovery.ts:117-128`. **Unverified:** whether recovery-driven retry actually dispatches through
+   `deriveReadyFrontier` or bypasses it — that is what decides whether this is a real defect or an
+   unused branch.
+
