@@ -2,6 +2,7 @@ node_modules/
 lib/
 coverage/
 dist/
+.tmp/
 *.tgz
 .DS_Store
 Thumbs.db
