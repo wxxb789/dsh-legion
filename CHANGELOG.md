@@ -8,10 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A **Prompt fragment budget** control on the settings card for `maxResourceBytes`, bounded by the same range the `Config` schema accepts. A draft outside that range is reported on the control itself instead of being sent for the Host to refuse, and `tests/client-bundle.spec.ts` pins the card's bounds against the schema so the two cannot drift.
 - A child failure now carries the provider's own account when the Host supplies one: DSH 0.1.0-rc.8 added `SubagentResult.diagnostic`, and Legion appends it to the stop-reason sentence instead of replacing it, keeping it separate from the child's `output` as the contract requires. Because the declared peer floor still admits 0.1.0-rc.6, whose `SubagentResult` has no such member, the field is read across that version boundary and validated rather than declared.
 
 ### Changed
 
+- The settings card now draws itself as a disclosure card, matching the chrome DSH's own plugin cards use as of 0.1.0-rc.8. The plugin configuration tab renders every card into one `<ul>`, so the card is a list item with a stacked name/description header, an `Unsaved` marker that survives collapsing, a read-only notice, and a footer that reports a save in flight — rather than an always-open `<section>` that read as a different kind of object than its neighbours.
+- Boolean policies use an exclusive three-option radio group instead of a dropdown, so `Inherit` is visible as a distinct choice from the value it currently resolves to rather than hidden inside a collapsed list, and its exclusivity and arrow-key traversal reach assistive technology natively.
+- Saving now judges the outcome from what the Host holds afterwards instead of treating "no exception" as success. The Host owns constraints no schema can express, so a write it silently refuses is reported as a save that did not land, with the drafts kept for correction.
+- Retyping the value the section already holds is no longer an edit, and clearing a field the user layer never carried is no longer a pending change — whether that clear was staged through **Reset** or by choosing `Inherit`. Neither now marks the card dirty, arms the Save button, or sends an unset for a field nobody had overridden.
+- **Reset** seeds the control with the composition layer's value, so it previews what the field re-inherits instead of blanking and implying the setting is about to disappear.
+- Form controls are plain elements styled by the card's own stylesheet rather than the `Button`/`Input` atoms, for the reason DSH's own cards use plain elements: those atoms are toolbar-sized capsules, not settings-row density. The card still takes its disclosure chevron from `@deepseek-ai/dsh-client-ui-primitives`, so it uses the platform glyph rather than a copied path.
 - Journal Strategy execution is now exposed on one condition instead of two independent ones: `durableActivationAvailable` gates the model-facing `execution` parameter on a bound durable Strategy activation adapter, not on Host capabilities alone. No build binds an adapter yet, so the parameter stays out of the published schema on every Host rather than advertising a request that always fails closed, and the strategy branch of the parameter schema now carries `execution` whenever it is exposed instead of silently dropping it.
 - `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE` states that this build binds no activation adapter, instead of attributing the gap to the Host.
 - Compatibility policy records DSH 0.1.0-rc.8 as the latest tested version, and the packed `latest-tested` matrix channel targets it. Neither 0.1.0-rc.7 nor 0.1.0-rc.8 changes a type Legion imports, and the three breaking changes in 0.1.0-rc.8 all miss this plugin: it never configures subagent report delivery, asserts nothing about report turn boundaries, and folds only its own `legion/*` events, never `assistant/message`. Durable mutation stays fail-closed because no release provides atomic run coordination; the 0.1.0-rc.8 Agent Teams packages carry their own durable mailbox and task DAG but are private and unpublished.
@@ -19,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Notes
 
+- The card's stylesheet deliberately diverges from upstream's on one token. DSH's own plugin card CSS colours error copy with `--dsw-alias-label-error`, which the DSH theme palette does not declare; Legion uses `--dsw-alias-state-error-primary`, which it does, and a test pins every token the card names against that palette.
 - `docs/notes/dsh-0.1.0-rc.8-upgrade.md` records the full assessment, including that the LLM default retry count rose from 2 to 5 upstream (inherited by every delegated child) and that `ContinuableStartSpec.childId` and `SubagentRuntime.drainContinuableChildren` are new seams worth an ADR-level look for the durable Strategy controller.
 
 

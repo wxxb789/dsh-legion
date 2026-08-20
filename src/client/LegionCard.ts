@@ -1,24 +1,36 @@
 /**
  * Legion's plugin settings card.
  *
- * The card edits the few scalar policies that are meaningful to change while
- * the harness runs. Profiles, routes, Teams, Strategies, and catalog layers
- * stay in the configuration document on purpose: they are structured data
- * whose validity depends on other entries, and a form that let them be edited
+ * The card edits the scalar policies that are meaningful to change while the
+ * harness runs. Profiles, routes, Teams, Strategies, and catalog layers stay in
+ * the configuration document on purpose: they are structured data whose
+ * validity depends on other entries, and a form that let them be edited
  * field-by-field would publish half-built catalogs.
+ *
+ * The chrome is a disclosure card, matching the shape DSH's own plugin cards
+ * use as of 0.1.0-rc.8: the plugin configuration tab renders every card into
+ * one `<ul>`, so a card that drew itself as an always-open `<section>` would
+ * read as a different kind of object than its neighbours. Form controls are
+ * plain elements rather than the `Button`/`Input` atoms, for the same reason
+ * DSH's own cards use plain elements: those atoms are 36px capsules sized for
+ * toolbars, not for a settings row's density.
  *
  * Written with `createElement` rather than JSX because Legion carries no React
  * toolchain: React is a platform module resolved from the Host's module table,
- * not a dependency of this package.
+ * not a dependency of this package. Keeping to `createElement` also keeps the
+ * hand-maintained React declaration in `dsh-client.d.ts` down to one function.
  */
 import { createElement as h, type ReactNode } from 'react'
-import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { FieldState, FormShell } from './settings-form.ts'
 
 /** What the Legion card renders. */
 export interface LegionCardState extends FormShell {
+  /** Whether the card is disclosing its controls. */
+  readonly open: boolean
   readonly toolName: FieldState
   readonly defaultProfile: FieldState
+  readonly maxResourceBytes: FieldState
   readonly enableRunInBackground: FieldState
   readonly enableStrategies: FieldState
 }
@@ -34,6 +46,8 @@ export interface LegionCardProps {
   readonly t: LegionCardCopy
   /** Card snapshot selector published by the controller. */
   readonly useLegionCard: (select: (state: LegionCardState) => LegionCardState) => LegionCardState
+  /** Disclose or collapse the card's controls. */
+  readonly toggle: () => void
   /** Stage draft text for one field. */
   readonly edit: (field: string, text: string) => void
   /** Stage a clear so the field re-inherits the composition layer. */
@@ -44,56 +58,125 @@ export interface LegionCardProps {
   readonly discard: () => void
 }
 
-/** One labelled row wrapping a control plus its override badge. */
-function row(options: {
+/** Copy every control row needs regardless of what it edits. */
+interface RowCopy {
+  readonly overriddenLabel: string
+  readonly resetLabel: string
+  readonly disabled: boolean
+}
+
+/** One labelled row: its label, its override badge and reset, and its hint. */
+function row(options: RowCopy & {
   readonly id: string
   readonly label: string
   readonly hint: string
+  readonly invalidLabel: string
   readonly state: FieldState
+  /** Builds the control; receives the id the label points at. */
   readonly control: ReactNode
-  readonly overriddenLabel: string
-  readonly resetLabel: string
+  /** True when the label names the control through `aria-labelledby` instead. */
+  readonly labelledBy: boolean
   readonly onReset: () => void
-  readonly disabled: boolean
 }): ReactNode {
+  const label = options.labelledBy
+    ? h('span', { className: 'dsh-legion-card__label', id: `${options.id}-label`, key: 'label' }, options.label)
+    : h('label', { className: 'dsh-legion-card__label', htmlFor: options.id, key: 'label' }, options.label)
   return h('div', { className: 'dsh-legion-card__row', key: options.id }, [
-    h('label', { className: 'dsh-legion-card__label', htmlFor: options.id, key: 'label' }, options.label),
-    h('div', { className: 'dsh-legion-card__control', key: 'control' }, [
-      options.control,
+    h('div', { className: 'dsh-legion-card__head', key: 'head' }, [
+      label,
       options.state.overridden
-        ? h('span', { className: 'dsh-legion-card__badge', key: 'badge' }, options.overriddenLabel)
-        : null,
-      options.state.overridden
-        ? h(Button, {
-            key: 'reset',
-            variant: 'ghost',
-            disabled: options.disabled,
-            onClick: options.onReset,
-            children: options.resetLabel,
-          })
+        ? h('span', { className: 'dsh-legion-card__badges', key: 'badges' }, [
+            h('span', { className: 'dsh-legion-card__badge', key: 'badge' }, options.overriddenLabel),
+            h('button', {
+              key: 'reset',
+              type: 'button',
+              className: 'dsh-legion-card__reset',
+              disabled: options.disabled,
+              onClick: options.onReset,
+            }, options.resetLabel),
+          ])
         : null,
     ]),
-    h('p', { className: 'dsh-legion-card__hint', key: 'hint' }, options.hint),
+    options.control,
+    // The invalid line replaces the hint rather than stacking under it: a row
+    // that reports both says two things about one control.
+    h('p', {
+      className: options.state.invalid ? 'dsh-legion-card__invalid' : 'dsh-legion-card__hint',
+      key: 'hint',
+    }, options.state.invalid ? options.invalidLabel : options.hint),
   ])
 }
 
-/** A tri-state control: inherited, explicitly on, or explicitly off. */
-function toggle(options: {
+/** A staged free-text or numeric control. */
+function textControl(options: {
   readonly id: string
   readonly state: FieldState
   readonly disabled: boolean
+  readonly numeric: boolean
   readonly onEdit: (text: string) => void
 }): ReactNode {
-  return h('select', {
+  return h('input', {
+    key: 'control',
     id: options.id,
+    type: 'text',
+    className: options.state.invalid ? 'dsh-legion-card__input--invalid' : 'dsh-legion-card__input',
+    // `numeric` only hints the keypad. Which drafts a field accepts is decided
+    // by its spec, so the control never silently rewrites what was typed.
+    ...options.numeric ? { inputMode: 'numeric' } : {},
+    ...options.state.invalid ? { 'aria-invalid': true } : {},
     value: options.state.text,
     disabled: options.disabled,
     onChange: (event: { currentTarget: { value: string } }) => { options.onEdit(event.currentTarget.value) },
+  })
+}
+
+/** The three states a tri-state boolean control offers, in reading order. */
+const TOGGLE_CHOICES = [
+  { value: '', key: 'inherit' },
+  { value: 'true', key: 'on' },
+  { value: 'false', key: 'off' },
+] as const
+
+/**
+ * A tri-state boolean control: inherited, explicitly on, or explicitly off.
+ *
+ * Three options rather than a `<select>`, because all three states are then
+ * visible at once — a collapsed list hides that "inherit" is a distinct choice
+ * from the value it currently resolves to. They are native radios rather than
+ * pressable buttons because the three are mutually exclusive: a radio group
+ * carries that exclusivity to assistive technology, and arrow-key traversal
+ * comes with it instead of having to be re-implemented.
+ */
+function toggleControl(options: {
+  readonly id: string
+  readonly state: FieldState
+  readonly disabled: boolean
+  readonly copy: LegionCardCopy
+  readonly onEdit: (text: string) => void
+}): ReactNode {
+  return h('div', {
+    key: 'control',
+    id: options.id,
+    className: 'dsh-legion-card__toggle',
+    role: 'radiogroup',
+    'aria-labelledby': `${options.id}-label`,
+  }, TOGGLE_CHOICES.map(choice => h('label', {
+    key: choice.key,
+    className: 'dsh-legion-card__option',
+    'data-active': options.state.text === choice.value ? 'true' : undefined,
   }, [
-    h('option', { value: '', key: 'inherit' }, '—'),
-    h('option', { value: 'true', key: 'true' }, 'on'),
-    h('option', { value: 'false', key: 'false' }, 'off'),
-  ])
+    h('input', {
+      key: 'input',
+      type: 'radio',
+      className: 'dsh-legion-card__radio',
+      name: options.id,
+      value: choice.value,
+      checked: options.state.text === choice.value,
+      disabled: options.disabled,
+      onChange: () => { options.onEdit(choice.value) },
+    }),
+    h('span', { key: 'text' }, options.copy(choice.key)),
+  ])))
 }
 
 /**
@@ -108,88 +191,146 @@ export function LegionCard(props: LegionCardProps): ReactNode {
   // an empty shell would claim a surface the deployment did not compose.
   if (!state.available) return null
   const disabled = !state.writable || state.saving
-  const shared = {
+  const shared: RowCopy = {
     overriddenLabel: t('overridden'),
     resetLabel: t('reset'),
     disabled,
   }
-  return h('section', { className: 'dsh-legion-card' }, [
-    h('header', { className: 'dsh-legion-card__header', key: 'header' }, [
-      h('h3', { key: 'title' }, t('title')),
-      h('p', { key: 'description' }, t('description')),
+  const title = t('title')
+  // The label replaces the header's own contents for assistive technology, so
+  // the unsaved marker has to be restated here or collapsing the card would
+  // hide the fact that it holds edits.
+  const name = state.dirty ? `${title} (${t('unsaved')})` : title
+  const header = h('button', {
+    key: 'header',
+    type: 'button',
+    className: 'dsh-legion-card__header',
+    'aria-expanded': state.open,
+    'aria-label': `${t(state.open ? 'collapse' : 'expand')}: ${name}`,
+    onClick: props.toggle,
+  }, [
+    h('span', { className: 'dsh-legion-card__headtext', key: 'text' }, [
+      h('span', { className: 'dsh-legion-card__name', key: 'name' }, title),
+      h('span', { className: 'dsh-legion-card__description', key: 'description' }, t('description')),
     ]),
-    row({
-      ...shared,
-      id: 'dsh-legion-tool-name',
-      label: t('toolName'),
-      hint: t('toolNameHint'),
-      state: state.toolName,
-      onReset: () => { props.resetField('toolName') },
-      control: h(Input, {
+    // Carried on the header so a collapsed card still says it holds edits.
+    state.dirty ? h('span', { className: 'dsh-legion-card__pending', key: 'pending' }, t('unsaved')) : null,
+    h(IconChevronDownOutline14, {
+      key: 'chevron',
+      className: state.open ? 'dsh-legion-card__chevron--open' : 'dsh-legion-card__chevron',
+    }),
+  ])
+  if (!state.open) return h('li', { className: 'dsh-legion-card' }, [header])
+  return h('li', { className: 'dsh-legion-card dsh-legion-card--open' }, [
+    header,
+    h('div', { className: 'dsh-legion-card__body', key: 'body' }, [
+      state.writable
+        ? null
+        : h('p', { className: 'dsh-legion-card__notice', role: 'status', key: 'read-only' }, t('readOnly')),
+      row({
+        ...shared,
         id: 'dsh-legion-tool-name',
-        value: state.toolName.text,
-        disabled,
-        onChange: (event: { currentTarget: { value: string } }) => { props.edit('toolName', event.currentTarget.value) },
+        label: t('toolName'),
+        hint: t('toolNameHint'),
+        invalidLabel: t('invalidText'),
+        state: state.toolName,
+        labelledBy: false,
+        onReset: () => { props.resetField('toolName') },
+        control: textControl({
+          id: 'dsh-legion-tool-name',
+          state: state.toolName,
+          disabled,
+          numeric: false,
+          onEdit: text => { props.edit('toolName', text) },
+        }),
       }),
-    }),
-    row({
-      ...shared,
-      id: 'dsh-legion-default-profile',
-      label: t('defaultProfile'),
-      hint: t('defaultProfileHint'),
-      state: state.defaultProfile,
-      onReset: () => { props.resetField('defaultProfile') },
-      control: h(Input, {
+      row({
+        ...shared,
         id: 'dsh-legion-default-profile',
-        value: state.defaultProfile.text,
-        disabled,
-        onChange: (event: { currentTarget: { value: string } }) => { props.edit('defaultProfile', event.currentTarget.value) },
+        label: t('defaultProfile'),
+        hint: t('defaultProfileHint'),
+        invalidLabel: t('invalidText'),
+        state: state.defaultProfile,
+        labelledBy: false,
+        onReset: () => { props.resetField('defaultProfile') },
+        control: textControl({
+          id: 'dsh-legion-default-profile',
+          state: state.defaultProfile,
+          disabled,
+          numeric: false,
+          onEdit: text => { props.edit('defaultProfile', text) },
+        }),
       }),
-    }),
-    row({
-      ...shared,
-      id: 'dsh-legion-run-in-background',
-      label: t('enableRunInBackground'),
-      hint: t('enableRunInBackgroundHint'),
-      state: state.enableRunInBackground,
-      onReset: () => { props.resetField('enableRunInBackground') },
-      control: toggle({
+      row({
+        ...shared,
+        id: 'dsh-legion-max-resource-bytes',
+        label: t('maxResourceBytes'),
+        hint: t('maxResourceBytesHint'),
+        invalidLabel: t('invalidBytes'),
+        state: state.maxResourceBytes,
+        labelledBy: false,
+        onReset: () => { props.resetField('maxResourceBytes') },
+        control: textControl({
+          id: 'dsh-legion-max-resource-bytes',
+          state: state.maxResourceBytes,
+          disabled,
+          numeric: true,
+          onEdit: text => { props.edit('maxResourceBytes', text) },
+        }),
+      }),
+      row({
+        ...shared,
         id: 'dsh-legion-run-in-background',
+        label: t('enableRunInBackground'),
+        hint: t('enableRunInBackgroundHint'),
+        invalidLabel: t('invalidText'),
         state: state.enableRunInBackground,
-        disabled,
-        onEdit: text => { props.edit('enableRunInBackground', text) },
+        labelledBy: true,
+        onReset: () => { props.resetField('enableRunInBackground') },
+        control: toggleControl({
+          id: 'dsh-legion-run-in-background',
+          state: state.enableRunInBackground,
+          disabled,
+          copy: t,
+          onEdit: text => { props.edit('enableRunInBackground', text) },
+        }),
       }),
-    }),
-    row({
-      ...shared,
-      id: 'dsh-legion-enable-strategies',
-      label: t('enableStrategies'),
-      hint: t('enableStrategiesHint'),
-      state: state.enableStrategies,
-      onReset: () => { props.resetField('enableStrategies') },
-      control: toggle({
+      row({
+        ...shared,
         id: 'dsh-legion-enable-strategies',
+        label: t('enableStrategies'),
+        hint: t('enableStrategiesHint'),
+        invalidLabel: t('invalidText'),
         state: state.enableStrategies,
-        disabled,
-        onEdit: text => { props.edit('enableStrategies', text) },
+        labelledBy: true,
+        onReset: () => { props.resetField('enableStrategies') },
+        control: toggleControl({
+          id: 'dsh-legion-enable-strategies',
+          state: state.enableStrategies,
+          disabled,
+          copy: t,
+          onEdit: text => { props.edit('enableStrategies', text) },
+        }),
       }),
-    }),
-    state.failed ? h('p', { className: 'dsh-legion-card__error', key: 'failed' }, t('saveFailed')) : null,
-    h('footer', { className: 'dsh-legion-card__footer', key: 'footer' }, [
-      h(Button, {
-        key: 'save',
-        variant: 'primary',
-        disabled: disabled || !state.dirty || state.invalid,
-        onClick: props.save,
-        children: t('save'),
-      }),
-      h(Button, {
-        key: 'discard',
-        variant: 'ghost',
-        disabled: state.saving || !state.dirty,
-        onClick: props.discard,
-        children: t('discard'),
-      }),
+      h('div', { className: 'dsh-legion-card__footer', key: 'footer' }, [
+        state.failed
+          ? h('p', { className: 'dsh-legion-card__error', role: 'status', key: 'failed' }, t('saveFailed'))
+          : null,
+        h('button', {
+          key: 'discard',
+          type: 'button',
+          className: 'dsh-legion-card__discard',
+          disabled: state.saving || !state.dirty,
+          onClick: props.discard,
+        }, t('discard')),
+        h('button', {
+          key: 'save',
+          type: 'button',
+          className: 'dsh-legion-card__save',
+          disabled: disabled || !state.dirty || state.invalid,
+          onClick: props.save,
+        }, t(state.saving ? 'saving' : 'save')),
+      ]),
     ]),
   ])
 }

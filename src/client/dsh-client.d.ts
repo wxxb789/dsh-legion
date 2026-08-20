@@ -1,8 +1,8 @@
 /**
  * Local ambient declarations for the DSH browser platform.
  *
- * Legion's browser half imports React and four DSH client packages. None of
- * them can be ordinary dependencies here:
+ * Legion's browser half imports React and two DSH client packages. Neither of
+ * them can be an ordinary dependency here:
  *
  * - Every one of these specifiers is a *platform module*. The client bundle
  *   marks them external and the Host's frozen module table answers the
@@ -87,22 +87,12 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-primitives' {
-  import type { ReactNode } from 'react'
+  /** Shared props for every `ic_ds_*` glyph; colour rides `currentColor`. */
+  export interface IconProps {
+    size?: number | undefined
+    className?: string | undefined
+  }
 
-  /** Primitive button. */
-  export const Button: (props: {
-    children?: ReactNode
-    onClick?: () => void
-    disabled?: boolean
-    variant?: string
-  }) => ReactNode
-
-  /** Primitive text input. */
-  export const Input: (props: {
-    id?: string
-    value?: string
-    disabled?: boolean
-    placeholder?: string
-    onChange?: (event: { currentTarget: { value: string } }) => void
-  }) => ReactNode
+  /** `ic_ds_chevron_down_outline_14`, the disclosure affordance DSH's own cards use. */
+  export const IconChevronDownOutline14: (props: IconProps) => unknown
 }

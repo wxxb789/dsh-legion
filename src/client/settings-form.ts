@@ -12,8 +12,15 @@
  * override equal to the composition default is still an override, and
  * comparing values could not see it.
  *
+ * The Host is the only authority on whether a value was accepted: its
+ * validators own constraints no schema can express. So a save reads the
+ * section back and reports whether the staged value is what the Host now
+ * holds, rather than treating "no exception" as "landed".
+ *
  * DSH ships an equivalent model for its own cards, but a client bundle may not
- * import another plugin's values, so this is Legion's own.
+ * import another plugin's values, so this is Legion's own. It mirrors the
+ * semantics of `CardForm` in `@deepseek-ai/dsh-client-ui-settings-plugins` as
+ * of DSH 0.1.0-rc.8.
  */
 import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -83,6 +90,31 @@ export function textField(field: string): FieldSpec {
 }
 
 /**
+ * A whole-number field bounded by the schema's own range. An empty draft
+ * clears it; any other draft outside the range is reported invalid here rather
+ * than sent for the Host to refuse, so the user sees which control is wrong
+ * instead of a save that silently did not land.
+ * @param field - field name inside the namespace section.
+ * @param bounds - the inclusive range the Host schema accepts.
+ */
+export function numberField(field: string, bounds: { min: number; max: number }): FieldSpec {
+  return {
+    // A section carrying no number renders empty rather than as a value
+    // nobody chose.
+    field,
+    format: value => typeof value === 'number' ? String(value) : '',
+    parse: (text) => {
+      const trimmed = text.trim()
+      if (trimmed === '') return { kind: 'clear' }
+      const parsed = Number(trimmed)
+      if (!Number.isSafeInteger(parsed)) return undefined
+      if (parsed < bounds.min || parsed > bounds.max) return undefined
+      return { kind: 'set', value: parsed }
+    },
+  }
+}
+
+/**
  * A boolean field. Its control writes the canonical strings below rather than
  * free text, so no draft it can produce is ever invalid.
  */
@@ -103,6 +135,17 @@ interface StagedEdit {
   readonly text: string
   /** True when this edit clears the field whatever text it shows. */
   readonly clear: boolean
+}
+
+/** One staged edit resolved into the write a save performs. */
+interface PlannedWrite {
+  /** Field this entry writes. */
+  readonly field: string
+  /**
+   * Perform the write and report whether the Host holds the staged value
+   * afterwards; undefined when the draft is not a value the field accepts.
+   */
+  readonly run: (() => Promise<boolean>) | undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -142,7 +185,7 @@ export class SettingsForm<Section> {
       available: snapshot.status === 'ready',
       writable: snapshot.writable,
       dirty: planned.length > 0,
-      invalid: planned.some(entry => entry.write === undefined),
+      invalid: planned.some(entry => entry.run === undefined),
       saving: this.saving,
       failed: this.failed,
     }
@@ -170,18 +213,17 @@ export class SettingsForm<Section> {
     return {
       edit: (field, text) => {
         this.spec(field)
-        this.staged.set(field, { text, clear: false })
-        this.failed = false
-        this.publish()
+        this.stage(field, { text, clear: false })
       },
       resetField: (field) => {
-        const spec = this.spec(field)
-        this.staged.set(field, { text: spec.format(undefined), clear: true })
-        this.failed = false
-        this.publish()
+        // Seed the control with what the field will re-inherit, so a reset
+        // previews the composition layer instead of blanking the control and
+        // implying the setting is about to disappear.
+        this.stage(field, { text: this.spec(field).format(this.baseValue(field)), clear: true })
       },
       save: () => { void this.commit() },
       discard: () => {
+        if (this.staged.size === 0 && !this.failed) return
         this.staged.clear()
         this.failed = false
         this.publish()
@@ -189,41 +231,88 @@ export class SettingsForm<Section> {
     }
   }
 
-  /** Resolve every staged edit into the write a save would perform. */
-  private plan(): readonly { field: string; write: FieldWrite | undefined }[] {
-    return [...this.staged.entries()].map(([field, staged]) => ({
-      field,
-      write: staged.clear ? { kind: 'clear' as const } : this.spec(field).parse(staged.text),
-    }))
+  /**
+   * Every staged edit a save would write. A draft that restates what the
+   * section already holds carries no write at all, so retyping a value is not
+   * an edit; neither is clearing a field the user layer never carried, however
+   * that clear was staged — the tri-state controls reach it by draft, not only
+   * through reset. An unacceptable draft carries no runnable write, which keeps
+   * the form dirty and makes the save refuse rather than drop it.
+   */
+  private plan(): readonly PlannedWrite[] {
+    const planned: PlannedWrite[] = []
+    for (const [field, staged] of this.staged) {
+      const spec = this.spec(field)
+      if (staged.clear) {
+        if (this.stored(field)) planned.push({ field, run: () => this.clear(field) })
+        continue
+      }
+      if (staged.text === spec.format(this.sectionValue(field))) continue
+      const write = spec.parse(staged.text)
+      if (write === undefined) planned.push({ field, run: undefined })
+      else if (write.kind === 'clear') {
+        if (this.stored(field)) planned.push({ field, run: () => this.clear(field) })
+      }
+      else planned.push({ field, run: () => this.store(field, write.value) })
+    }
+    return planned
   }
 
+  /**
+   * Write every staged edit, then judge the outcome from what the Host holds.
+   *
+   * A save that did not land keeps its drafts, so the user can correct them
+   * instead of retyping, and re-seeds nothing: the next scope publication
+   * tells the truth.
+   */
   private async commit(): Promise<void> {
     const planned = this.plan()
-    if (planned.length === 0 || planned.some(entry => entry.write === undefined)) return
+    const writes = planned.flatMap(entry => entry.run === undefined ? [] : [entry.run])
+    if (planned.length === 0 || this.saving || writes.length !== planned.length) return
     this.saving = true
     this.failed = false
     this.publish()
-    try {
-      // Writes are issued in staged order; the scope fences each one with the
-      // latest known revision and reloads Host state if the latest is refused.
-      for (const entry of planned) {
-        if (entry.write === undefined) continue
-        if (entry.write.kind === 'clear') await this.scope.unset(entry.field)
-        else await this.scope.set(entry.field, entry.write.value)
-      }
-      this.staged.clear()
-    } catch {
-      // The Host is authoritative. Keep the drafts so the user can retry or
-      // discard, and re-seed nothing: the next scope publication tells the truth.
-      this.failed = true
-    } finally {
-      this.saving = false
-      this.publish()
+    let landed = true
+    // Writes are issued in staged order; the scope fences each one with the
+    // latest known revision and reloads Host state if the latest is refused.
+    for (const write of writes) {
+      landed = await this.attempt(write) && landed
     }
+    if (landed) this.staged.clear()
+    this.saving = false
+    this.failed = !landed
+    this.publish()
+  }
+
+  /** Run one write, treating a rejection as a write that did not land. */
+  private async attempt(write: () => Promise<boolean>): Promise<boolean> {
+    try {
+      return await write()
+    } catch {
+      return false
+    }
+  }
+
+  private async clear(field: string): Promise<boolean> {
+    await this.scope.unset(field)
+    return !this.stored(field)
+  }
+
+  private async store(field: string, value: unknown): Promise<boolean> {
+    await this.scope.set(field, value)
+    return this.userLayer()?.[field] === value
+  }
+
+  private stage(field: string, edit: StagedEdit): void {
+    this.staged.set(field, edit)
+    this.failed = false
+    this.publish()
   }
 
   private spec(field: string): FieldSpec {
     const spec = this.specs.get(field)
+    // Every call site names a field this card declared; a missing one is a
+    // wiring mistake that must not degrade into a silently inert control.
     if (spec === undefined) throw new Error(`dsh-legion: unknown settings field "${field}"`)
     return spec
   }
@@ -233,10 +322,21 @@ export class SettingsForm<Section> {
     return isRecord(section) ? section[field] : undefined
   }
 
+  /** The composition layer's value — what a cleared field re-inherits. */
+  private baseValue(field: string): unknown {
+    const base = this.scope.getSnapshot().base
+    return isRecord(base) ? base[field] : undefined
+  }
+
+  private userLayer(): Record<string, unknown> | undefined {
+    const user = this.scope.getSnapshot().user
+    return isRecord(user) ? user : undefined
+  }
+
   /** Whether the raw user layer carries this field — what marks it overridden. */
   private stored(field: string): boolean {
-    const user = this.scope.getSnapshot().user
-    return isRecord(user) && Object.hasOwn(user, field)
+    const user = this.userLayer()
+    return user !== undefined && Object.hasOwn(user, field)
   }
 
   private publish(): void {
