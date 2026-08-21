@@ -468,6 +468,16 @@ Structured foreground contracts are deliberately narrow:
 
 Presets, Catalog Layers, plugin packages, resource roots, and Prompt Fragments are trusted deployment configuration. Tool filters and path confinement enforce policy and integrity for that trusted deployment; they are **not** a sandbox for hostile presets or untrusted plugins. See [SECURITY.md](SECURITY.md).
 
+### Tool presentation (Code Mode / PTC mode)
+
+Legion declares no tool presentation, and that is what keeps it current. Whether a model sees every tool schema (`native`), only `run_code` plus a generated TypeScript SDK (`code` — the Web client labels this **PTC mode**), or both, is decided by DSH: by the official `@deepseek-ai/dsh-agent-tool-presentation` row on a preset, falling back to the deployment's `dsh-tools` default. A Legion agent therefore runs in whatever presentation its deployment selected, against the current official implementation of it, with no version for Legion to pin or lag behind.
+
+Delegated children inherit the same presentation. `dsh-agent-presets` re-parents a child agent's scope onto the parent's preset standing scope, and the registry resolves the mode along that chain — so a child of a PTC-mode Legion coordinator is itself in PTC mode, with the SDK section regenerated for that child's own visible tools.
+
+Profile `toolFilter` keeps its meaning under Code Mode. The SDK binding table is built from the calling agent's *visible* set, so a denied capability never appears in the generated SDK, and a call naming it from inside `run_code` still resolves to `UNKNOWN_TOOL`: the `review` profile's deny of `write`/`edit` holds in both presentations. Two boundaries belong to the Host's design rather than Legion's — `run_code` itself can never be denied, and a filter constrains only the surface a child *inherits*, never the tools that child's own scope registers (its report and structured-output tools).
+
+To fix a presentation, add the official row to your preset rather than looking for a Legion setting; `presets/legion/agent.cordis.yml` carries the exact snippet, commented out. It is off by default because selecting a code mode against a deployment that composes no TypeScript runtime fails the preset at mount.
+
 ## Doctor and explain
 
 Validate a standalone Legion config against an **explicit provider fixture**:

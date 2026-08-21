@@ -470,6 +470,16 @@ Prompt Fragment 是显式部署资源，不是任意 Workspace 文件读取。Le
 
 Preset、Catalog Layer、Plugin Package、Resource Root 和 Prompt Fragment 都属于受信的部署配置。Tool Filter 与路径约束用于受信部署中的策略和完整性控制，**不是**隔离恶意 Preset 或不可信 Plugin 的安全沙箱。参见 [SECURITY.md](SECURITY.md)。
 
+### Tool Presentation（Code Mode / PTC 模式）
+
+Legion 不声明任何 Tool Presentation，这正是它保持最新的方式。模型看到的是全部工具 Schema（`native`）、只有 `run_code` 加一份生成的 TypeScript SDK（`code`——Web 客户端将其标注为 **PTC 模式**），还是两者兼有，由 DSH 决定：来自 Preset 上的官方 `@deepseek-ai/dsh-agent-tool-presentation` 行，未声明时回落到部署的 `dsh-tools` 默认值。因此 Legion Agent 始终运行在其部署所选的 Presentation 上，用的是该 Presentation 当前的官方实现，Legion 没有任何版本可以 pin 住或落后。
+
+被委派的子 Agent 继承同一 Presentation。`dsh-agent-presets` 会把子 Agent 的 Scope 重新挂到父 Agent 所在 Preset 的 standing scope 上，注册表沿这条链解析模式——所以 PTC 模式协调者的子 Agent 自身也在 PTC 模式，SDK 段按该子 Agent 自己的可见工具重新生成。
+
+Profile 的 `toolFilter` 在 Code Mode 下含义不变。SDK binding table 由调用方 Agent 的**可见**集合构建，因此被拒绝的能力不会出现在生成的 SDK 中，从 `run_code` 内部按名调用它仍然解析为 `UNKNOWN_TOOL`：`review` Profile 对 `write`/`edit` 的拒绝在两种 Presentation 下都成立。有两条边界属于 Host 的设计而非 Legion——`run_code` 本身永远不能被拒绝，且 Filter 只约束子 Agent**继承**到的表面，不约束该子 Agent 自身 Scope 注册的工具（它的 report 与结构化输出工具）。
+
+若要固定某个 Presentation，请在自己的 Preset 中添加官方行，而不是去找 Legion 的配置项；`presets/legion/agent.cordis.yml` 已附上该片段并注释掉。默认不开启，是因为在未组装 TypeScript 运行时的部署上选择 code 模式会让 Preset 在挂载时直接失败。
+
 ## Doctor 与 Explain
 
 使用**显式 Provider Fixture**验证独立 Legion 配置：

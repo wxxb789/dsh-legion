@@ -311,3 +311,30 @@
   config:
     fetch: false
     searchTimeoutMs: 60000
+
+# ── presentation ────────────────────────────────────────────────────────────
+#
+# Deliberately absent. Tool presentation — native, code (the Web client labels
+# it PTC mode), or both — is Host-owned, and this template declares none, so a
+# Legion agent runs in whatever presentation its deployment selected and always
+# gets the current official implementation of it. Legion's delegated children
+# inherit the same mode: dsh-agent-presets re-parents a child's scope onto this
+# preset's standing scope, and the registry resolves the mode along that chain.
+#
+# Legion's profile toolFilter keeps working under Code Mode. The SDK binding
+# table is built from the calling agent's VISIBLE set, so a denied capability is
+# absent from the generated SDK and an sub-dispatch naming it still resolves to
+# UNKNOWN_TOOL — the review profile's deny of write/edit holds either way. Two
+# limits are the Host's design, not Legion's: run_code itself can never be
+# denied, and a filter constrains only the surface a child INHERITS, never the
+# tools that child's own scope registers.
+#
+# To fix a presentation for this preset, add the official row below — never a
+# Legion config key, which would compete with it for the same decision. Selecting
+# a code mode against a deployment that composes no TypeScript runtime fails this
+# preset at mount, naming the row, which is why it is not on by default.
+#
+# - id: tool-presentation
+#   name: '@deepseek-ai/dsh-agent-tool-presentation'
+#   config:
+#     mode: code
