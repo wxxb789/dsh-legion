@@ -213,7 +213,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-本地 Checkout 必须先生成 `lib/` 构建产物。Legion 的 Bundle Patch 有意保持为空：安装操作只让用户自定义 Agent Preset 能够解析 `dsh-legion`，不会向整个进程自动注入模型工具。
+本地 Checkout 必须先生成 `lib/` 构建产物。安装操作仍然不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。Bundle Patch 现在会挂载一行 Host 平面配置行（`id: legion-settings`，`role: settings`），使 `legion` 设置命名空间及其 Web 卡片归属于整个进程，而不再只在使用该 Preset 的 Session 存活期间存在。
 
 ## 创建 Legion Agent Preset
 
@@ -271,7 +271,7 @@ dsh plugin --profile web add .
 
 需要从所有安装过 Legion 的 DSH Host Profile 中分别卸载：
 
-1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。
+1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。Bundle Patch 安装的 `legion-settings` 配置行会随下一步删除 Package 一并消失。
 2. 删除已安装的 Package：
 
    ~~~bash
@@ -352,7 +352,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 
 请使用当前部署中真实有效的 Provider 和 Model ID。更多内容参见[完整 Preset Fragment](examples/legion.agent.cordis.fragment.yml)与[独立配置示例](examples/legion.config.yml)。
 
-当 Host 挂载了 Settings Provider 时（DSH 0.1.0-rc.7 起会服务每一个已注册的命名空间），Legion 会把同一份 Schema 注册为 `legion` 设置命名空间：上面的 Preset 行成为 base 层，用户层可逐字段覆盖，提交后即时重新发布工具，无需重启 DSH。没有 Settings Provider 的组合则行为不变。参见[运行时重配置](docs/settings.md)与[设置卡片](docs/settings-card.md)。
+当 Host 挂载了 Settings Provider 时（DSH 0.1.0-rc.7 起会服务每一个已注册的命名空间），`legion` 设置命名空间由 Bundle Patch 安装的 Host 平面配置行持有，并发布同一份 Schema。上面的 Preset 行仍是它自身委派能力的 base 层：它会把用户层保存的 Section 叠加在自己的 Entry 之上，提交后即时重新发布该工具，无需重启 DSH。没有 Settings Provider 的组合则行为不变。参见[运行时重配置](docs/settings.md)与[设置卡片](docs/settings-card.md)。
 
 若要委派给外部编码 Agent（Codex、Claude Code、Kimi Code、GitHub Copilot CLI 等），为每个 Agent 挂载一次 DSH 的 ACP 后端，并追加生成好的 Catalog Layer。参见 [ACP 委派](docs/acp-delegation.md)与 `examples/legion.acp.fragment.yml`。
 
@@ -360,6 +360,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
+| `role` | `delegation` | 该配置行的组合角色，只从配置行自身的 Entry 读取，绝不取自设置层。`settings` 行只注册 `legion` 命名空间，不提供其他任何内容——没有工具、没有 Prompt Section、没有 Projection、没有 Service。 |
 | `configVersion` | `2` | 当前配置契约。省略该字段或写 `1` 都会被接受并归一化为 `2`；但 v1 文档一旦使用 `catalogLayers`、`teams`、`strategies`、`enableStrategies` 或 Durable Run，会在激活时被拒绝，而不是自动升级。 |
 | `toolName` | `legion` | 暴露给模型的工具名称。 |
 | `profiles` | 必填 | 语义化 Profile Map。 |

@@ -39,6 +39,8 @@ Legion delegates through `ctx.subagents.start()` and `startContinuable()`. It do
 
 The plugin lives in an agent preset because it contributes only a model-facing tool and prompt section. Its installable DSH bundle patch is empty by design: installation makes the package resolvable from user-authored presets without publishing a process-global tool or service.
 
+[ADR 0022](0022-host-plane-settings-row.md) amends the last sentence: the patch now carries one Host-plane row that owns the settings namespace and the Web card. The delegation surface this ADR describes is unchanged and still agent-plane.
+
 ## Consequences
 
 ### Positive

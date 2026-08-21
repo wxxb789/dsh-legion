@@ -213,7 +213,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-A local checkout needs built `lib/` artifacts. The bundle patch is intentionally empty: installation makes `dsh-legion` resolvable from user-owned agent presets but does not inject a process-global model tool.
+A local checkout needs built `lib/` artifacts. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it. The bundle patch now mounts one Host-plane row, `id: legion-settings` with `role: settings`, so the `legion` settings namespace and its Web card belong to the process instead of existing only while a session using the preset is alive.
 
 ## Set up a Legion agent preset
 
@@ -271,7 +271,7 @@ dsh plugin --profile web add .
 
 Remove Legion from every DSH host profile where it was installed:
 
-1. Remove or disable the `name: dsh-legion` row in user-owned agent presets.
+1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. The `legion-settings` row installed by the bundle patch goes away with the package in the next step.
 2. Remove the package:
 
    ~~~bash
@@ -352,7 +352,7 @@ A minimal agent-preset row:
 
 Use valid provider and model IDs for your deployment. See the [complete preset fragment](examples/legion.agent.cordis.fragment.yml) and [standalone configuration example](examples/legion.config.yml).
 
-When the Host mounts a settings provider (DSH 0.1.0-rc.7 serves every registered namespace), Legion also registers this same schema as the `legion` settings namespace: the preset row above becomes the base layer, a stored user section overrides individual fields, and a commit republishes the tool without restarting DSH. Nothing changes in a composition without a settings provider. See [live reconfiguration](docs/settings.md) and [the settings card](docs/settings-card.md).
+When the Host mounts a settings provider (DSH 0.1.0-rc.7 serves every registered namespace), the `legion` settings namespace is owned by the Host-plane row the bundle patch installs, and it publishes this same schema. The preset row above stays the base layer for its own delegation surface: it applies the stored user section over its own entry, and a commit republishes that tool without restarting DSH. Nothing changes in a composition without a settings provider. See [live reconfiguration](docs/settings.md) and [the settings card](docs/settings-card.md).
 
 To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHub Copilot CLI, and others — mount DSH's ACP backend once per agent and append the generated catalog layer. See [ACP delegation](docs/acp-delegation.md) and `examples/legion.acp.fragment.yml`.
 
@@ -360,6 +360,7 @@ To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHu
 
 | Field | Default | Meaning |
 |---|---:|---|
+| `role` | `delegation` | Composition role of this row, read from the row's own entry and never from the settings layer. A `settings` row registers the `legion` namespace and nothing else — no tool, no prompt section, no projection, no service. |
 | `configVersion` | `2` | Current configuration contract. Omitted or `1` is accepted and normalized to `2`; a v1 document that uses `catalogLayers`, `teams`, `strategies`, `enableStrategies`, or durable runs is rejected at activation instead of upgraded. |
 | `toolName` | `legion` | Model-facing tool name. |
 | `profiles` | required | Semantic Profile map. |

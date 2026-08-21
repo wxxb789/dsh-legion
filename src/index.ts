@@ -4,7 +4,7 @@ import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/ds
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { Config, materializeConfig, type MaterializedConfig } from './config.ts'
+import { Config, materializeConfig, validateSettingsSection, type MaterializedConfig } from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
   assertDurableMutationAvailable,
@@ -40,6 +40,7 @@ import {
   LEGION_SETTINGS_NAMESPACE,
   detectSettingsCapabilities,
   installSettingsSection,
+  registerSettingsNamespace,
   type SettingsCapabilitySnapshot,
   type SettingsDiagnosticCode,
   type SettingsHostContext,
@@ -863,7 +864,65 @@ interface ConfigGeneration {
   readonly resources: ResourceSnapshot
 }
 
+/**
+ * Serve the Legion settings namespace for the lifetime of this composition and
+ * contribute nothing else.
+ *
+ * A settings namespace is process-wide, but a Profile catalog belongs to the
+ * row that composed it, so this row registers the namespace and publishes no
+ * tool, no prompt section, no projection, and no service. Mounting it from the
+ * Host composition is what keeps the configuration surface offering Legion
+ * between sessions: registration is an effect on the registering fiber, so the
+ * same namespace registered from an Agent Preset is served exactly while a
+ * session using that preset is alive.
+ * @param ctx - the settings row plugin context.
+ * @param config - the row entry, layered under the stored user section.
+ */
+async function applySettingsRow(ctx: Context, config: Config): Promise<void> {
+  const capabilities = detectSettingsCapabilities(ctx as unknown as SettingsHostContext)
+  if (!capabilities.liveReconfiguration) {
+    // The row is inert rather than broken: a deployment without a settings
+    // provider has no configuration surface for the namespace to appear on.
+    ctx.logger.warn(
+      `dsh-legion: ${'LEGION_SETTINGS_SERVICE_UNAVAILABLE' satisfies SettingsDiagnosticCode}`
+      + ': this settings row registers nothing because no settings provider is composed',
+    )
+    return
+  }
+  const declared = Object.keys(config.profiles).length
+    + Object.keys(config.teams ?? {}).length
+    + Object.keys(config.strategies ?? {}).length
+  if (declared > 0) {
+    // Catalog data on this row would be silently unreachable, which is exactly
+    // the kind of quiet misconfiguration a coordinator must not keep to itself.
+    ctx.logger.warn(
+      'dsh-legion: a role: settings row publishes no delegation surface, so the '
+      + `${String(declared)} Profile, Team, and Strategy entries it declares are ignored; `
+      + 'move them to the delegation row that publishes the tool',
+    )
+  }
+  await registerSettingsNamespace(
+    ctx as unknown as SettingsHostContext,
+    LEGION_SETTINGS_NAMESPACE,
+    Config,
+    config,
+    {
+      // Only the facts that hold for any catalog: this row owns a namespace
+      // several rows read, and each of those judges its own cross-references.
+      validate: (value) => { validateSettingsSection(value) },
+      onError: (error) => {
+        ctx.logger.warn(
+          `dsh-legion: ${'LEGION_SETTINGS_REGISTRATION_REJECTED' satisfies SettingsDiagnosticCode}`
+          + ': the settings namespace is not served by this row',
+        )
+        ctx.logger.warn(error)
+      },
+    },
+  )
+}
+
 export async function apply(ctx: Context, config: Config): Promise<void> {
+  if (config.role === 'settings') return applySettingsRow(ctx, config)
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,

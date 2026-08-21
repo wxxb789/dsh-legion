@@ -27,7 +27,15 @@ describe('published package contract', () => {
     expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
     const patchPath = resolve(ROOT, manifest.dsh!.bundle!.patch!)
     const patch = load(await readFile(patchPath, 'utf8'), { schema: entryListSchema })
-    expect(patch).toEqual([])
+    // One Host-plane row, and it contributes only the settings namespace and the
+    // card bundle: a delegation row here would land in the global tool layer.
+    expect(patch).toEqual([
+      {
+        insert: [
+          { id: 'legion-settings', name: 'dsh-legion', config: { role: 'settings', profiles: {} } },
+        ],
+      },
+    ])
   })
 
   it('ships every runtime, preset, and example surface named by its manifest and README', async () => {

@@ -1,5 +1,43 @@
-# dsh-legion is an agent-plane plugin. DSH anchors a profile's Loader baseUrl at
-# that profile directory, so installing this bundle makes profile-local
-# node_modules/dsh-legion resolvable from user-authored agent presets. No Host
-# row is needed or desired.
-[]
+# Profile Bundle: mount Legion's Host-plane settings row.
+#
+# `dsh plugin add dsh-legion` appends this package to the profile's
+# `dsh.profile.bundles` list because the manifest declares `dsh.bundle.patch`,
+# and this file is the whole of what that adds to the composition.
+#
+# The delegation tool stays on the agent plane. `tools` and `system-prompt` are
+# layered registries, so a Host row would land in the global layer and hand
+# every agent a delegation surface it never asked for. That is why this file
+# mounted nothing at all until v1.3: installing the bundle made profile-local
+# `node_modules/dsh-legion` resolvable from user-authored agent presets, and the
+# preset row did the rest.
+#
+# Two of the things Legion contributes are process-wide, and neither of them
+# survives on the agent plane:
+#
+#   - the `legion` settings namespace. A namespace registration is an effect on
+#     the registering fiber, so one registered from an Agent Preset is served
+#     exactly while a session using that preset is alive: the settings card
+#     appears when a session starts, vanishes when the last one ends, and is
+#     absent after a restart, while values already saved stay in the user
+#     document with no way left to edit them.
+#   - the Web card bundle. The client module registry composes its table from
+#     the Host loader entries, and a preset subtree is plugged directly rather
+#     than created as a loader entry, so a package mounted only inside a preset
+#     is never discovered and its card is never served to the page.
+#
+# `role: settings` keeps this row to exactly those two. It publishes no tool, no
+# prompt section, no projection, and no service, and it never becomes a
+# delegation row: the role is read from this entry and is deliberately not
+# taken from the settings layer, so a stored section cannot flip it. The empty
+# `profiles` map is the schema formality that says the same thing — a Legion row
+# must name its Profiles, and this one has none to name.
+#
+# Configure Legion on the delegation row in your Agent Preset. Every delegation
+# row layers the stored user section over its own entry, so what this row serves
+# is edited once and applies wherever Legion is composed.
+- insert:
+    - id: legion-settings
+      name: dsh-legion
+      config:
+        role: settings
+        profiles: {}

@@ -1,6 +1,8 @@
 # The Legion settings card
 
-Legion ships both halves of its settings surface: the Host half registers the `legion` namespace (see [live reconfiguration](settings.md)), and the browser half draws it as a card on the Web **Settings → Plugins → Plugin configuration** tab.
+Legion ships both halves of its settings surface: the Host half serves the `legion` namespace (see [live reconfiguration](settings.md)), and the browser half draws it as a card on the Web **Settings → Plugins → Plugin configuration** tab.
+
+Both halves are Host-plane, and for the same reason. The tab renders the intersection of what the Host serves and what the page registered, and each side of that intersection is process-wide: a namespace is served only while its registrant's fiber lives, and the client module table is composed from the Host loader entries. Mounted only inside an Agent Preset, Legion would satisfy neither — the card would exist while a session using that preset was alive, if the browser had ever been handed the bundle at all. The row the bundle patch installs is what makes both true for the whole process.
 
 DSH pairs the two automatically. The tab keys each card on the settings namespace it edits, so a plugin that registers both halves under the same namespace is matched without the tab ever learning what the namespace means.
 
@@ -40,7 +42,9 @@ Form controls are plain elements styled by the card's own stylesheet, for the sa
 
 ## Packaging
 
-The browser half is an ordinary DSH client bundle: `lib/client.js`, declared by `exports["./client"]` and `dsh.client.platform: "web"`. The Host's client module registry discovers it by resolving `dsh-legion/package.json` from the composition root, then serves the bundle to the page. Mounting `dsh-legion` is all it takes — the web application is not rebuilt.
+The browser half is an ordinary DSH client bundle: `lib/client.js`, declared by `exports["./client"]` and `dsh.client.platform: "web"`. The Host's client module registry discovers it by resolving `dsh-legion/package.json` from the composition root, then serves the bundle to the page. The web application is not rebuilt.
+
+Discovery reads the **Host loader entries**, and an Agent Preset subtree is plugged directly rather than created as a loader entry, so a package mounted only inside a preset is never scanned and its bundle is never served. `cordis.patch.yml` therefore mounts one Host-plane row (`role: settings`), which is what puts `dsh-legion` in front of the registry. The row publishes no tool: discovery and delegation are different planes, and a Host row that published one would hand every agent a delegation surface it never asked for.
 
 A negative discovery verdict is cached for the process lifetime, so a harness that started before the declaration existed needs a **restart**, not just a plugin reload.
 

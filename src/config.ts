@@ -17,6 +17,22 @@ export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1', 'plan-delta-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
+/**
+ * What one composed Legion row contributes.
+ *
+ * `delegation` is the ordinary agent-plane row: it publishes the delegation
+ * tool and the coordinator prompt section into the layer it was mounted in.
+ * `settings` is the Host-plane row that owns the process-wide settings
+ * namespace and nothing else — no tool, no prompt section, no service — so the
+ * configuration surface keeps serving Legion between sessions.
+ *
+ * The role is a composition fact read from the row's own entry. It is
+ * deliberately never taken from the settings layer: a stored section that could
+ * flip it would silently withdraw every deployment's delegation tool.
+ */
+export const LEGION_ROW_ROLES = Object.freeze(['delegation', 'settings'] as const)
+export type LegionRowRole = (typeof LEGION_ROW_ROLES)[number]
+
 export interface DurableRunPolicySpec {
   /** Maximum task starts in one single-caller activation. */
   readonly maxStartsPerActivation?: number
@@ -79,6 +95,8 @@ export interface LegionProfile {
 export interface Config {
   /** Explicit document version; omission is the pre-v0.4 unversioned v1 shape. */
   readonly configVersion?: ConfigVersion
+  /** What this composed row contributes; a composition fact, never a stored setting. */
+  readonly role?: LegionRowRole
   /** Model-facing tool name. */
   readonly toolName: string
   /** Semantic profiles selected by the coordinator instead of raw model ids. */
@@ -186,6 +204,7 @@ const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
 
 export const Config: z<Config> = z.object({
   configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
+  role: z.union(LEGION_ROW_ROLES).default('delegation'),
   toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
@@ -305,6 +324,7 @@ function assertKnownConfigKeys(input: unknown): void {
     input,
     [
       'configVersion',
+      'role',
       'toolName',
       'profiles',
       'defaultProfile',
@@ -525,8 +545,20 @@ export function exportConfigDocument(
   return target === 1 ? { ...v1, configVersion: 1 } : v1
 }
 
-/** Validate cross-field facts Schemastery cannot express. */
-export function validateConfig(config: Config): void {
+/**
+ * Validate the cross-field facts that hold for any Legion row, whatever
+ * Profiles it composes.
+ *
+ * The settings namespace is process-wide while a Profile catalog belongs to one
+ * row, so this is exactly the judgement a namespace owner may make about a
+ * stored section: a `defaultProfile` naming a Profile is valid for the row that
+ * defines it and invalid for the row next to it, and refusing the write on
+ * behalf of one catalog would refuse it for every other. Catalog cross-checks
+ * therefore stay in {@link validateConfig}, which each row runs against its own
+ * effective catalog.
+ * @param config - a schema-resolved section or entry.
+ */
+export function validateSettingsSection(config: Config): void {
   if (config.durableRunPolicy?.maxConcurrentTasks !== undefined
     && config.durableRunPolicy.maxStartsPerActivation !== undefined
     && config.durableRunPolicy.maxConcurrentTasks > config.durableRunPolicy.maxStartsPerActivation) {
@@ -545,6 +577,11 @@ export function validateConfig(config: Config): void {
     if (root.trim().length === 0) throw new Error(`dsh-legion: resource root "${name}" must not be blank`)
     assertPortableRelativePath(root, `resource root "${name}"`)
   }
+}
+
+/** Validate cross-field facts Schemastery cannot express. */
+export function validateConfig(config: Config): void {
+  validateSettingsSection(config)
 
   const entries = Object.entries(config.profiles)
   if (entries.length === 0) {
