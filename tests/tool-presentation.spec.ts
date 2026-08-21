@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
+import { Context } from '@deepseek-ai/cordis'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import * as legion from '../src/index.ts'
 import { inject } from '../src/index.ts'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
@@ -17,9 +23,62 @@ const PRESENTATION_ROW = '@deepseek-ai/dsh-agent-tool-presentation'
 const FORBIDDEN: readonly (readonly [RegExp, string])[] = [
   [/\bpresentAs\b/u, 'declares a tool presentation in code instead of composing the official row'],
   [/\bToolPresentationMode\b/u, 'types a presentation Legion does not own'],
-  [/\bcodeRuntime\b/u, 'reaches the host-plane code runtime directly'],
+  [/inject\([^)]*codeRuntime/u, 'takes the host-plane code runtime as a dependency, which would make the Legion row unmountable on exactly the deployments its notice exists to help'],
   [/['"`]run_code['"`]/u, 'hardcodes the reserved Code Mode transport name (import RUN_CODE_NAME if it is ever needed)'],
 ]
+
+function stubProvider(): SubagentProvider {
+  return {
+    name: 'spawn',
+    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    inheritsParentContext: false,
+    async start() {
+      return {
+        id: SessionId('presentation-child'),
+        localAgent: undefined,
+        result: Promise.resolve({
+          output: [{ type: 'text' as const, text: 'child result' }],
+          stopReason: 'completed' as const,
+        }),
+        async dispose() {},
+      }
+    },
+    async prepareContinuable() { return {} },
+  }
+}
+
+/** Mount Legion against a deployment that does or does not compose a code runtime. */
+async function warningsFromMount(withRuntime: boolean): Promise<string[]> {
+  const ctx = new Context()
+  const warnings: string[] = []
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(SubagentRuntime)
+  ctx.subagents.registerProvider(stubProvider())
+  if (withRuntime) ctx.provide('codeRuntime', {} as never)
+  const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation((...args: unknown[]) => {
+    warnings.push(args.map(item => String(item)).join(' '))
+  })
+  try {
+    await ctx.plugin(legion, {
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        quick: {
+          description: 'Focused work.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'primary', provider: 'models', model: 'model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultProfile: 'quick',
+    } as legion.LegionConfig)
+    return warnings
+  } finally {
+    warn.mockRestore()
+  }
+}
 
 async function sources(dir: string, found: string[] = []): Promise<string[]> {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -110,6 +169,34 @@ describe('Code Mode is composed from the official row, never owned', () => {
     if (!Array.isArray(rows)) throw new Error('expected fragment rows')
     const named = rows as Array<{ name?: string }>
     expect(named.map(entry => entry.name)).toEqual(['dsh-legion'])
+  })
+
+  it('touches the code runtime only through a read-only presence probe', async () => {
+    // The blanket ban was relaxed for exactly one use: a diagnostic that tells
+    // an operator which package to install. A probe reads; an inject depends.
+    // Only the first is safe here, and one of it is all Legion needs.
+    let probes = 0
+    for (const path of await sources(SRC)) {
+      const text = await readFile(path, 'utf8')
+      probes += [...text.matchAll(/ctx\.get\?\.\('codeRuntime'\)/gu)].length
+    }
+    expect(probes).toBe(1)
+  })
+
+  it('tells the operator what to install when no code runtime is composed', async () => {
+    const withoutRuntime = await warningsFromMount(false)
+    const notice = withoutRuntime.find(line => line.includes('codeRuntime'))
+    expect(notice).toBeDefined()
+    // Actionable means naming the package and the row, not reporting a state.
+    expect(notice).toContain('@deepseek-ai/dsh-code-runtime-worker-thread')
+    expect(notice).toContain('code-runtime')
+    // A notice, never a refusal: Legion still published its tool.
+    expect(notice).toContain('native')
+
+    // And silent when the deployment already composes one, so the notice keeps
+    // meaning something on the deployments that need it.
+    const withRuntime = await warningsFromMount(true)
+    expect(withRuntime.filter(line => line.includes('codeRuntime'))).toEqual([])
   })
 
   it('exposes no presentation knob in its own configuration surface', async () => {

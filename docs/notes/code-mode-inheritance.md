@@ -111,11 +111,34 @@ one presentation and `presentAs` throws on a second declaration for the same sco
 (`packages/core/tools/src/index.ts:955-957`) — regardless of whether the two modes agree. A row
 there would break exactly the base preset a PTC-mode user starts from.
 
+**A missing runtime is an install instruction, not a downgrade.** Legion is a development
+coordinator and Code Mode is the mode it is built for, so the useful answer when `ctx.codeRuntime`
+is absent is which package to add. The runtime is host-plane — the official package's own README
+says a preset "cannot supply the TypeScript runtime it needs" — so the fix belongs in the Host
+composition, not in a preset. Legion now says so at activation: a read-only `ctx.get?.('codeRuntime')`
+probe, and when it comes back empty, one `ctx.logger.warn` naming
+`@deepseek-ai/dsh-code-runtime-worker-thread` and the row to add.
+
+It is a notice, never a refusal, and the distinction is load-bearing. Legion delegates perfectly
+well in the native presentation, and `inject`-ing the runtime would make the Legion row unmountable
+on exactly the deployments the notice exists to help. The probe follows the same structural idiom
+`detectDurableCapabilities` already uses (`src/durable-run/capabilities.ts:87-98`), and reads at
+activation, after the Host bundle has booted.
+
+Note where this notice can and cannot fire. If the bundled preset is used on a runtime-less
+deployment, the official row fails the preset at mount and Legion never activates — the Host's
+message is the one you see. The notice covers the other path: the append-to-your-preset fragment on
+a native base preset, where nothing is broken and nothing would otherwise mention that a runtime
+would unlock Code Mode.
+
 `tests/tool-presentation.spec.ts` pins all of it: the complete preset must carry the official row at
 `mode: code`, the fragment must carry no presentation row at all, and Legion's source must declare
-no presentation, inject no `codeRuntime`, hardcode no `run_code`, and grow no presentation key. It
-carries a negative control against samples quoted from upstream code that legitimately does each of
-those, so a scan that could never fire cannot pass as a gate.
+no presentation, hardcode no `run_code`, grow no presentation key, and never take `codeRuntime` as
+a dependency — exactly one read-only probe of it is allowed, and the count is asserted. The notice
+itself is exercised both ways: mounted without a runtime it must name the package, mounted with one
+it must stay silent, so the notice keeps meaning something on the deployments that need it. A
+negative control against samples quoted from upstream code that legitimately does each forbidden
+thing keeps a scan that could never fire from passing as a gate.
 
 It also caught a live bug on its first run: `examples/legion.agent.cordis.fragment.yml` — shipped in
 the package and named by the README as the recommended install path — had `enableDurableRuns` at

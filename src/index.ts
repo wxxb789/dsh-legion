@@ -895,6 +895,27 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return { config: resolved, resources }
   }
 
+  // Legion is a development coordinator, and Code Mode is what makes coordination
+  // efficient: one program starts several delegations together and reduces their
+  // results without a model round trip per child. The TypeScript runtime that
+  // mode needs is host-plane — a preset can select the presentation but cannot
+  // supply the runtime — so when a deployment composes none, the actionable fact
+  // is which package to add, not that Legion is broken. Legion keeps working in
+  // the native presentation; this is a notice, never a refusal.
+  //
+  // Read-only probe, never an `inject`: taking the runtime as a dependency would
+  // make the Legion row itself unmountable exactly on the deployments this notice
+  // exists to help. Probed once at activation, after the Host bundle has booted.
+  const announceCodeRuntimeGap = (): void => {
+    if (ctx.get?.('codeRuntime') !== undefined) return
+    ctx.logger.warn(
+      'dsh-legion: no ctx.codeRuntime in this deployment, so delegation runs in the native '
+      + 'tool presentation. Install @deepseek-ai/dsh-code-runtime-worker-thread and add '
+      + "'- id: code-runtime' / \"name: '@deepseek-ai/dsh-code-runtime-worker-thread'\" to the "
+      + 'Host composition to enable Code Mode (PTC mode). The shipped dsh bundles compose it already.',
+    )
+  }
+
   const announceDurableGap = (resolved: MaterializedConfig): void => {
     const gap = resolved.enableDurableRuns && !durableCapabilities.durableMutation
     if (!gap || warnedDurableGap) {
@@ -937,6 +958,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
   let generation = await materializeGeneration(configSource())
   ctx.fiber.assertActive()
+  announceCodeRuntimeGap()
   announceDurableGap(generation.config)
   let activeSnapshot: StrategyExecutionSnapshot | undefined
   let activeDefinition: ToolDefinition | undefined

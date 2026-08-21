@@ -482,7 +482,14 @@ Profile 的 `toolFilter` 在 Code Mode 下含义不变。SDK binding table 由�
 
 你走哪条安装路径，决定这一行放在哪里。随包 Preset（[`presets/legion`](presets/legion)）拥有完整 composition，因此携带该行。追加式 Fragment（[`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)）不携带，因为一个 composition 只选择一种 Presentation，第二次声明会被拒绝而非合并——把它追加到官方 `code` Preset 就得到 PTC 模式，追加到 `standard` 就是 `native`，Legion 两者都跟随。
 
-该行会等待宿主的 `codeRuntime` 而非假定其存在，因此未组装 TypeScript 运行时的部署会在**挂载时**失败并指名该行，而不是等到第一次请求。两个发货 Bundle 都组装了运行时；若你的部署没有，删除该行或改为 `mode: native`。
+该行会等待宿主的 `codeRuntime` 而非假定其存在，因此未组装 TypeScript 运行时的部署会在**挂载时**失败并指名该行，而不是等到第一次请求。这应当读作*去装运行时*，而不是*把 Code Mode 关掉*：Legion 是面向开发的协调者，这正是它为之设计的模式。运行时属于 host plane——Preset 只能选择 Presentation，永远无法自带运行时——所以修复位置在你的 **Host** composition（`cordis.yml`）：
+
+~~~yaml
+- id: code-runtime
+  name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+~~~
+
+两个发货 Bundle 都已组装运行时，因此这只会出现在手工拼装的部署上。Legion 在运行期也会这么说：挂载在没有 `codeRuntime` 的部署上时，它会把该包名写进日志，并继续以 native Presentation 工作，而不是直接失败。`mode: native` 是留给「刻意想要 native 工具」的场景，不是绕开缺失运行时的手段。
 
 ## Doctor 与 Explain
 

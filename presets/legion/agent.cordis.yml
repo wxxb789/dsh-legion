@@ -338,9 +338,22 @@
 #
 # The row waits for the host's codeRuntime rather than assuming it, so a
 # deployment that composes no TypeScript runtime fails this preset at mount,
-# naming this id, instead of at the first request. Both shipping bundles compose
-# one; delete this row for a deployment that does not, or set mode: native to opt
-# out deliberately.
+# naming this id, instead of at the first request.
+#
+# Treat that failure as "install the runtime", not as "turn Code Mode off".
+# Legion is a development coordinator and this is the mode it is built for; the
+# runtime is host-plane, so a preset can select the presentation but can never
+# supply it. Both shipping bundles compose one already, so this only comes up on
+# a hand-assembled deployment. The fix there is to add the runtime to the HOST
+# composition (cordis.yml), not to change this row:
+#
+#   - id: code-runtime
+#     name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+#
+# Legion also says so at runtime: mounted where nothing composes a codeRuntime,
+# it logs that package name and keeps working in the native presentation rather
+# than failing. Setting mode: native here is for deliberately wanting native
+# tools, not for working around a missing runtime.
 - id: tool-presentation
   name: '@deepseek-ai/dsh-agent-tool-presentation'
   config:

@@ -480,7 +480,14 @@ Profile `toolFilter` keeps its meaning under Code Mode. The SDK binding table is
 
 Which path you took decides where the row lives. The bundled preset ([`presets/legion`](presets/legion)) owns its whole composition and carries it. The append-to-your-preset fragment ([`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)) carries none, because one composition selects one presentation and a second declaration is refused rather than merged — appending it to the official `code` preset gives you PTC mode, appending it to `standard` gives you `native`, and Legion follows either.
 
-The row waits for the host's `codeRuntime` rather than assuming it, so a deployment that composes no TypeScript runtime fails the preset **at mount**, naming the row, instead of at the first request. Both shipping bundles compose one; delete the row, or set `mode: native`, for a deployment that does not.
+The row waits for the host's `codeRuntime` rather than assuming it, so a deployment that composes no TypeScript runtime fails the preset **at mount**, naming the row, instead of at the first request. Read that as *install the runtime*, not *turn Code Mode off*: Legion is a development coordinator and this is the mode it is built for. The runtime is host-plane — a preset can select the presentation but can never supply it — so the fix belongs in your **Host** composition (`cordis.yml`):
+
+~~~yaml
+- id: code-runtime
+  name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+~~~
+
+Both shipping bundles compose one already, so this only comes up on a hand-assembled deployment. Legion says the same thing at runtime: mounted where nothing composes a `codeRuntime`, it logs that package name and keeps working in the native presentation rather than failing. `mode: native` is for deliberately wanting native tools, not for working around a missing runtime.
 
 ## Doctor and explain
 
