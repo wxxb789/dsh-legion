@@ -8,13 +8,14 @@ import { inject } from '../src/index.ts'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const PRESET = fileURLToPath(new URL('../presets/legion/agent.cordis.yml', import.meta.url))
+const FRAGMENT = fileURLToPath(new URL('../examples/legion.agent.cordis.fragment.yml', import.meta.url))
 
-/** The official row that selects a presentation; a preset may carry it, Legion may not reimplement it. */
+/** The official row that selects a presentation. A composition may carry it; Legion may not reimplement it. */
 const PRESENTATION_ROW = '@deepseek-ai/dsh-agent-tool-presentation'
 
 /** What owning a copy of the presentation mechanism would look like in Legion's source. */
 const FORBIDDEN: readonly (readonly [RegExp, string])[] = [
-  [/\bpresentAs\b/u, 'declares a tool presentation instead of inheriting the deployment default'],
+  [/\bpresentAs\b/u, 'declares a tool presentation in code instead of composing the official row'],
   [/\bToolPresentationMode\b/u, 'types a presentation Legion does not own'],
   [/\bcodeRuntime\b/u, 'reaches the host-plane code runtime directly'],
   [/['"`]run_code['"`]/u, 'hardcodes the reserved Code Mode transport name (import RUN_CODE_NAME if it is ever needed)'],
@@ -31,27 +32,27 @@ async function sources(dir: string, found: string[] = []): Promise<string[]> {
 
 /**
  * Tool presentation — `native`, `code` (the Web client labels it PTC mode), or
- * `both` — is Host-owned end to end. It is declared once by the official
+ * `both` — is Host-owned end to end: declared once by the official
  * `@deepseek-ai/dsh-agent-tool-presentation` row on a preset's standing scope,
- * resolved along the scope chain, and defaulted by the deployment's `dsh-tools`
- * row. Legion's correct posture is therefore to declare NOTHING: it then runs in
- * whatever presentation its deployment selected, and its delegated children
- * inherit that same presentation because `agent-presets` re-parents a child's
- * scope onto the parent's preset standing scope.
+ * resolved along the scope chain, defaulted by the deployment's `dsh-tools` row.
  *
- * That inheritance is free only while Legion owns no copy of the mechanism. The
- * moment it declares a presentation, injects the code runtime, hardcodes the
- * reserved transport name, or grows a presentation knob of its own, it pins one
- * version of Code Mode and starts drifting from the official one. This suite
- * exists to make that regression loud, because nothing else in the build would
- * notice: Legion reaches none of these symbols, so no compiler is watching.
+ * Legion's complete preset SELECTS Code Mode, because coordination is what Code
+ * Mode is best at and because that preset owns its whole composition. It selects
+ * it by composing the official row, which is the difference that matters: the
+ * mechanism stays upstream, so the preset tracks whatever Code Mode currently is
+ * and the agents it delegates to inherit the same mode through scope
+ * re-parenting. Legion's own source owns no part of it.
+ *
+ * That distinction is invisible to the compiler — Legion reaches none of these
+ * symbols, so nothing else in the build would notice a copy appearing. This
+ * suite is what makes it loud.
  */
-describe('tool presentation is inherited, never owned', () => {
+describe('Code Mode is composed from the official row, never owned', () => {
   it('injects no code runtime', () => {
-    // A code presentation waits for the host-plane `codeRuntime`; that wait
-    // belongs to the official row, which fails a preset at mount when the
-    // deployment composes no runtime. Legion injecting it would make the Legion
-    // row itself unmountable on native-only deployments.
+    // The wait for `codeRuntime` belongs to the official row, which fails a
+    // preset at mount when the deployment composes none. Legion injecting it
+    // would instead make the Legion row itself unmountable on native-only
+    // deployments, where Legion works perfectly well.
     expect(inject).not.toContain('codeRuntime')
     expect(inject).toEqual(['tools', 'subagents', 'systemPrompt'])
   })
@@ -83,31 +84,38 @@ describe('tool presentation is inherited, never owned', () => {
     expect(offences).toEqual([])
   })
 
-  it('ships a preset that inherits the deployment presentation rather than pinning one', async () => {
+  it('ships a complete preset that selects Code Mode through the official row', async () => {
     const rows = load(await readFile(PRESET, 'utf8'), { schema: entryListSchema })
     if (!Array.isArray(rows)) throw new Error('expected preset rows')
-    const named = rows as Array<{ id?: string; name?: string }>
+    const named = rows as Array<{ id?: string; name?: string; config?: { mode?: unknown } }>
 
-    // Omitting the row is what makes the template portable: selecting `code`
-    // here would fail the mount on every deployment composing no TypeScript
-    // runtime, and selecting `native` would opt Legion OUT of a deployment's
-    // PTC mode. Users who want a fixed presentation add the official row
-    // themselves — the README documents exactly that.
-    expect(named.some(row => row.name === PRESENTATION_ROW)).toBe(false)
+    const row = named.find(entry => entry.name === PRESENTATION_ROW)
+    expect(row).toBeDefined()
+    expect(row?.config?.mode).toBe('code')
 
-    // If a future edit does add it, it must be the official package and not a
-    // Legion-owned reimplementation of the same decision.
-    const presentationish = named.filter(row =>
-      row.name !== undefined
-      && row.name !== PRESENTATION_ROW
-      && /presentation|code-?mode|\bptc\b/iu.test(row.name))
-    expect(presentationish).toEqual([])
+    // One composition selects one presentation: a second declaration is refused
+    // rather than merged, so nothing else here may answer the same question.
+    const rival = named.filter(entry =>
+      entry.name !== undefined
+      && entry.name !== PRESENTATION_ROW
+      && /presentation|code-?mode|\bptc\b/iu.test(entry.name))
+    expect(rival).toEqual([])
+  })
+
+  it('ships a fragment that declares no presentation at all', async () => {
+    // The fragment is appended to a preset that already made this choice, so a
+    // row here would be that refused second declaration — breaking exactly the
+    // base preset a PTC-mode user starts from, the official `code` one.
+    const rows = load(await readFile(FRAGMENT, 'utf8'), { schema: entryListSchema })
+    if (!Array.isArray(rows)) throw new Error('expected fragment rows')
+    const named = rows as Array<{ name?: string }>
+    expect(named.map(entry => entry.name)).toEqual(['dsh-legion'])
   })
 
   it('exposes no presentation knob in its own configuration surface', async () => {
     // Legion's config is the customization surface users read first. A
     // `toolPresentation`-shaped key here would look authoritative and would
-    // quietly compete with the official row for the same decision.
+    // quietly compete with the official row for one decision.
     const config = await readFile(join(SRC, 'config.ts'), 'utf8')
     expect(config).not.toMatch(/presentation|presentAs|toolMode|codeMode/iu)
   })

@@ -470,13 +470,17 @@ Presets, Catalog Layers, plugin packages, resource roots, and Prompt Fragments a
 
 ### Tool presentation (Code Mode / PTC mode)
 
-Legion declares no tool presentation, and that is what keeps it current. Whether a model sees every tool schema (`native`), only `run_code` plus a generated TypeScript SDK (`code` — the Web client labels this **PTC mode**), or both, is decided by DSH: by the official `@deepseek-ai/dsh-agent-tool-presentation` row on a preset, falling back to the deployment's `dsh-tools` default. A Legion agent therefore runs in whatever presentation its deployment selected, against the current official implementation of it, with no version for Legion to pin or lag behind.
+**The bundled preset runs in Code Mode.** Whether a model sees every tool schema (`native`), only `run_code` plus a generated TypeScript SDK (`code` — the Web client labels this **PTC mode**), or both is decided by the official `@deepseek-ai/dsh-agent-tool-presentation` row, falling back to the deployment's `dsh-tools` default. Coordination is the work Code Mode is best at: one `run_code` program starts several delegations together, waits on them as values, and reduces their results without a model round trip per child — the guidance Legion injects ("start independent delegations together") is a suggestion under `native` and an ordinary `Promise.all` here.
+
+Legion selects it by *composing that row*, never by reimplementing it, and owns no part of the mechanism in its own source — so it always runs the current official Code Mode, with no version to pin or lag behind. There is deliberately no Legion setting for this: a plugin key would compete with the official row for one decision.
 
 Delegated children inherit the same presentation. `dsh-agent-presets` re-parents a child agent's scope onto the parent's preset standing scope, and the registry resolves the mode along that chain — so a child of a PTC-mode Legion coordinator is itself in PTC mode, with the SDK section regenerated for that child's own visible tools.
 
 Profile `toolFilter` keeps its meaning under Code Mode. The SDK binding table is built from the calling agent's *visible* set, so a denied capability never appears in the generated SDK, and a call naming it from inside `run_code` still resolves to `UNKNOWN_TOOL`: the `review` profile's deny of `write`/`edit` holds in both presentations. Two boundaries belong to the Host's design rather than Legion's — `run_code` itself can never be denied, and a filter constrains only the surface a child *inherits*, never the tools that child's own scope registers (its report and structured-output tools).
 
-To fix a presentation, add the official row to your preset rather than looking for a Legion setting; `presets/legion/agent.cordis.yml` carries the exact snippet, commented out. It is off by default because selecting a code mode against a deployment that composes no TypeScript runtime fails the preset at mount.
+Which path you took decides where the row lives. The bundled preset ([`presets/legion`](presets/legion)) owns its whole composition and carries it. The append-to-your-preset fragment ([`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)) carries none, because one composition selects one presentation and a second declaration is refused rather than merged — appending it to the official `code` preset gives you PTC mode, appending it to `standard` gives you `native`, and Legion follows either.
+
+The row waits for the host's `codeRuntime` rather than assuming it, so a deployment that composes no TypeScript runtime fails the preset **at mount**, naming the row, instead of at the first request. Both shipping bundles compose one; delete the row, or set `mode: native`, for a deployment that does not.
 
 ## Doctor and explain
 

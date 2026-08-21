@@ -92,11 +92,34 @@ exported and should be imported if Legion ever needs it. Legion currently names 
 
 ## What this change adds
 
-Legion's source contained no presentation symbol before this change and contains none after it;
-what was missing was any reason to believe that would stay true. `tests/tool-presentation.spec.ts`
-now fails if Legion declares a presentation, injects `codeRuntime`, hardcodes `run_code`, grows a
-presentation key in its own config, or ships a preset that pins a mode — and it carries a negative
-control, so a scan that could never fire cannot pass as a gate.
+Two separable things, and keeping them separate is the whole design.
+
+**The bundled preset selects Code Mode**, by composing the official row with `mode: code`. This is
+where the capability argument lands: coordination is what Code Mode is best at, because one program
+starts several delegations together, waits on them as values, and reduces their results without a
+model round trip per child. The coordinator guidance Legion already injects — *"start independent
+delegations together"* — is a suggestion under `native` and an ordinary `Promise.all` here. Every
+shipping bundle composes a runtime (`packages/bundle/headless`, `packages/bundle/web-app`), and the
+failure mode where none does is loud and named at mount rather than silent at first request.
+
+**Legion's own source still owns no part of the mechanism.** Selecting a presentation by composing
+the official row and implementing one are opposite acts: the first tracks upstream, the second pins
+a version. The row is preset data, exactly like the `dsh-tool-*` rows beside it.
+
+The append-to-your-preset fragment carries **no** presentation row, because one composition selects
+one presentation and `presentAs` throws on a second declaration for the same scope
+(`packages/core/tools/src/index.ts:955-957`) — regardless of whether the two modes agree. A row
+there would break exactly the base preset a PTC-mode user starts from.
+
+`tests/tool-presentation.spec.ts` pins all of it: the complete preset must carry the official row at
+`mode: code`, the fragment must carry no presentation row at all, and Legion's source must declare
+no presentation, inject no `codeRuntime`, hardcode no `run_code`, and grow no presentation key. It
+carries a negative control against samples quoted from upstream code that legitimately does each of
+those, so a scan that could never fire cannot pass as a gate.
+
+It also caught a live bug on its first run: `examples/legion.agent.cordis.fragment.yml` — shipped in
+the package and named by the README as the recommended install path — had `enableDurableRuns` at
+column zero and **was not parseable YAML**. Nothing had ever loaded it. Fixed here.
 
 The remaining drift risk is not in Legion. `DSH_TOOLS_MODE`, the environment escape hatch the
 web-app and headless bundles read, is annotated upstream as temporary and due for removal
