@@ -55,7 +55,7 @@ nothing for `0.1.1-rc.1` and only alters how `0.2.0` prereleases are excluded.
 
 Legion registers `legionRunProjection` on **every apply** (`src/index.ts:867`) and reaches the
 registry structurally: `projectionRegistry(ctx.get?.('sessionProjections'))` duck-types on the
-presence of `register` (`src/durable-run/projection.ts:360-366`). Legion takes no dependency on
+presence of `register` (`src/durable-run/projection.ts:387-393`). Legion takes no dependency on
 `@deepseek-ai/dsh-session-projection`, so the rename is invisible to `tsc`.
 
 What the old shape does on a 0.1.1-rc.1 Host, read off the registry source:
@@ -67,9 +67,17 @@ What the old shape does on a 0.1.1-rc.1 Host, read off the registry source:
   error, and no Legion value in client snapshots.
 - `checkpoint()` still writes a row for the key (`:329-339`), so the persisted cache stores one.
 - `restore()` then reads that row back and calls `def.stateSchema.parse(row.val)` (`:442`). On
-  `undefined` that is a `TypeError`, thrown **inside the Host's loop over every registered unit** —
-  so one stale Legion registration breaks the cold projection read for the whole session, not just
-  for Legion's key.
+  `undefined` that is a `TypeError`, thrown **inside the Host's loop over every registered unit**.
+
+**What that costs, stated exactly.** It is not a crash, and an earlier draft of this note overstated
+it. The sole caller, `ProjectionCacheStore.coldSnapshot`, wraps `restore()` in `try/catch`
+(`packages/session/session-projection-cache/src/index.ts:184-193`) and recovers by re-reading the
+whole log and refolding from `init` — its own comment at `:188-190` already names "stateSchema
+rejection" as a recoverable failure. The cost is therefore silent and unbounded rather than loud:
+**every** cold snapshot discards **every** unit's cached row and refolds the entire session log from
+seq 0, for as long as Legion is mounted. The persisted projection cache is defeated for that
+session, and the price grows with session length. A cache that never reports a miss and never
+serves a hit is harder to diagnose than one that fails outright.
 
 This is not hypothetical reach. `@deepseek-ai/dsh-session-projection` is mounted by `dsh-base`
 (`packages/bundle/base/cordis.patch.yml:126`), so every profile has the registry, and
@@ -92,6 +100,20 @@ way to say "host-only".
 
 `tests/durable-projection.spec.ts` now exercises both Host contracts against the real definition
 rather than pinning the local shape against itself.
+
+Two things this fix does **not** buy, recorded so the next reader does not assume them:
+
+- **No compile-time protection is restored.** `HostProjectionRegistry.register` is still typed
+  against Legion's own `LegionProjectionDefinition`, so neither Host signature is checked. The next
+  upstream rename fails exactly as silently; only that test stands between it and a shipped
+  regression. Closing this properly means taking a real dependency on
+  `@deepseek-ai/dsh-session-projection`, which the declared floor currently forbids — the floor
+  registry types `register` against the other contract.
+- **The two registries validate at different moments.** 0.1.1-rc.1 parses the stored row *before*
+  folding it (`:442`); the 0.1.0-rc.6 floor seeds the fold with the raw row and parses only the
+  result. On the floor, a corrupt cached row therefore reaches `applyLegionProjection` unvalidated.
+  That is the floor's behaviour, unchanged by this fix and by the shape before it, but "one build
+  correct on both" should not be read as erasing it.
 
 ## Package inventory delta
 
@@ -134,12 +156,18 @@ blockquote flag. Legion calls neither.
 `tsdown.client.config.ts` mirrors — `PLATFORM_MODULES` is the same seven specifiers and
 `PRELOADED_CLIENT_EXTERNALS` the same one. No drift this cycle; the mirror needed no edit.
 
-## Two upstream breaking changes that miss Legion
+## One upstream breaking change that misses Legion
 
 - The wire event `credentials/updated` was renamed `credentials/reference-updated`. Legion
   subscribes to no credentials event.
-- `ctx.webServer.tapIndex` was removed in favour of a `webserver/index-inject` event table. Legion
-  registers no index tap.
+
+`ctx.webServer.tapIndex` is **not** a second one, though a first pass through this release recorded
+it as removed. It survives at `packages/host/webserver/src/index.ts:154`, still documented as the
+escape hatch for markup no row expresses; 0.1.1-rc.1 *added* a structured `webserver/index-inject`
+row table beside it, which runs before the raw transforms
+(`packages/host/webserver/src/injections.ts:8`). Legion registers neither, so the correction changes
+no decision — but a removal that never happened is exactly the kind of claim that later gets acted
+on.
 
 ## Still missing upstream
 
@@ -198,21 +226,21 @@ The DSH `devDependencies` pins stay at `0.1.0-rc.6` for the reason `docs/TODO.md
 the floor-compatibility gate, and they caught a real regression once already. 0.1.1-rc.1 is covered
 by the packed `latest-tested` matrix channel, which installs DSH independently of the lockfile.
 
-## Registry availability: unverifiable from this machine
+## Registry availability: published upstream, invisible from this machine
 
-0.1.1-rc.1 could not be resolved locally, and that is a fact about this machine, not about upstream.
+**0.1.1-rc.1 is published to the public npm registry.** CI run `32466388793` settles it: all four
+`packed E2E (…, latest-tested, …)` jobs installed with `--registry=https://registry.npmjs.org` at
+`DSH_VERSION: 0.1.1-rc.1` and passed, on both platforms and both Node versions, alongside the four
+`minimum` slots at 0.1.0-rc.6 — so the widened peer range admits both ends of its own claim in a
+real install, not only in a semver table.
+
+The local picture says the opposite and is wrong, exactly as it was for 0.1.0-rc.8.
 The configured Azure DevOps feed now mirrors the `0.1.0-rc.x` line up to `0.1.0-rc.6` — an
 improvement over the state `dsh-0.1.0-rc.8-upgrade.md` recorded — but stops there:
 `npm view @deepseek-ai/dsh-agent versions` ends at `0.1.0-rc.6`, and `0.1.1-rc.1` returns E404.
 The public registry is refused at the TLS layer by company policy
 (`ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE` against `registry.npmjs.org`), so no local command can
 arbitrate.
-
-CI is where this is settled: the packed `latest-tested` matrix channel installs from
-`registry.npmjs.org` at `DSH_VERSION: 0.1.1-rc.1` across both platforms and both Node versions. If
-those eight jobs 404, the release has not been published yet and the channel pins back to
-0.1.0-rc.8 — the peer-range and projection fixes stand either way, since both were verified against
-the checkout rather than against the registry.
 
 **Do not regenerate `pnpm-lock.yaml` or move the DSH `devDependencies` pins from a machine on this
 feed.** Locally those pins resolve only through the junctions onto the harness checkout.
