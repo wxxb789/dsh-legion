@@ -275,8 +275,15 @@ function registerOwnedSection<Value>(
       ...hooks.validate === undefined ? {} : { validate: hooks.validate },
     })
   } catch (error: unknown) {
-    // A stored section this consumer cannot act on must not take it down:
-    // the composition entry is still a complete configuration.
+    // Two reasons to land here, and they want different answers. Another row
+    // registered the namespace between the check and this call, in which case
+    // this row should read what that row now serves rather than go blind; or
+    // the stored section is one this row cannot act on, in which case its
+    // composition entry is still a complete configuration.
+    if (provider.get?.(namespace) !== undefined && typeof provider.describe === 'function') {
+      consumeServedSection(ctx, scoped, provider, namespace, schema, entry, hooks)
+      return
+    }
     hooks.setSource(() => entry)
     hooks.onError?.(error)
     return

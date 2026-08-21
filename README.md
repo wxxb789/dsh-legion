@@ -213,7 +213,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-A local checkout needs built `lib/` artifacts. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it. The bundle patch now mounts one Host-plane row, `id: legion-settings` with `role: settings`, so the `legion` settings namespace and its Web card belong to the process instead of existing only while a session using the preset is alive.
+A local checkout needs built `lib/` artifacts, and the consequence of skipping the build has changed: because the bundle patch makes `dsh-legion` a Host loader entry, the Host's client module registry now scans it, and a missing `lib/client.js` fails Host activation loudly rather than merely leaving the card out. Run `pnpm run build` before installing a checkout. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it. The bundle patch now mounts one Host-plane row, `id: legion-settings` with `role: settings`, so the `legion` settings namespace and its Web card belong to the process instead of existing only while a session using the preset is alive.
 
 ## Set up a Legion agent preset
 
@@ -271,7 +271,7 @@ dsh plugin --profile web add .
 
 Remove Legion from every DSH host profile where it was installed:
 
-1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. The `legion-settings` row installed by the bundle patch goes away with the package in the next step.
+1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. Removing the package in the next step removes the bundle layer that contributes the `legion-settings` row; a row you copied by hand into a composed `cordis.yml` is yours to remove there.
 2. Remove the package:
 
    ~~~bash

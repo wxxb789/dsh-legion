@@ -204,7 +204,10 @@ const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
 
 export const Config: z<Config> = z.object({
   configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
-  role: z.union(LEGION_ROW_ROLES).default('delegation'),
+  // Hidden from configuration surfaces on purpose: the role is read from the
+  // row entry, so a control offering to change it in the stored document would
+  // offer a change no row obeys.
+  role: z.union(LEGION_ROW_ROLES).default('delegation').hidden(),
   toolName: z.string().min(1).default('legion'),
   profiles: z.dict(LegionProfileSchema).required(),
   defaultProfile: z.string().pattern(PROFILE_NAME),

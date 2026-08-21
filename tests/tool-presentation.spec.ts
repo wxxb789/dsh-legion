@@ -10,7 +10,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as legion from '../src/index.ts'
-import { inject } from '../src/index.ts'
+import { DELEGATION_INJECT } from '../src/index.ts'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const PRESET = fileURLToPath(new URL('../presets/legion/agent.cordis.yml', import.meta.url))
@@ -112,8 +112,11 @@ describe('Code Mode is composed from the official row, never owned', () => {
     // preset at mount when the deployment composes none. Legion injecting it
     // would instead make the Legion row itself unmountable on native-only
     // deployments, where Legion works perfectly well.
-    expect(inject).not.toContain('codeRuntime')
-    expect(inject).toEqual(['tools', 'subagents', 'systemPrompt'])
+    expect(DELEGATION_INJECT).not.toContain('codeRuntime')
+    expect(DELEGATION_INJECT).toEqual(['tools', 'subagents', 'systemPrompt'])
+    // Declared on the delegation half, not on the package: the Host-plane
+    // settings row publishes none of these and must not wait for them.
+    expect(legion).not.toHaveProperty('inject')
   })
 
   it('detects the offences it scans for', () => {

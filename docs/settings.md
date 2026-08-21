@@ -14,6 +14,8 @@ Which half a row runs is decided by what the Host already serves, not by configu
 
 The `role` is read from the row's composition entry and is deliberately never taken from the settings layer. A stored section that could flip a row to `settings` would withdraw every delegation surface in the deployment from inside the document meant to configure it.
 
+That split moves one class of error from write time to read time, and a card user sees the difference. A write the schema rejects is refused as you save it, with the reason on the card. A write that only a catalog can judge — a `defaultProfile` naming a Profile no row defines, most of all — is accepted and saved by the row that owns the namespace, and then materializes nowhere: each delegation row keeps the generation it last published and logs `LEGION_SETTINGS_REGISTRATION_REJECTED`. The card shows the value it stored; the Host log is where you find out it took effect nowhere.
+
 ## Layers
 
 Three layers resolve a delegation row's configuration, last one wins per field:
@@ -36,9 +38,10 @@ Republication is serialized and last-commit-wins. Two commits landing together p
 
 | Situation | Result |
 |---|---|
-| No settings provider mounted | Legion runs on its composition entry; nothing is registered. A settings row logs `LEGION_SETTINGS_SERVICE_UNAVAILABLE` once and stays inert. |
-| Stored section fails the schema or `materializeConfig` | The row falls back to its composition entry, logs `LEGION_SETTINGS_REGISTRATION_REJECTED` once per distinct failure, and keeps publishing. |
-| A stored section one row cannot materialize | Only that row falls back. The namespace owner validates what holds for any catalog — a blank `toolName`, an inverted `durableRunPolicy`, an unusable resource root — and leaves catalog cross-references such as `defaultProfile` to each row, because a Profile name valid for the row that defines it is invalid for the row beside it. |
+| No settings provider mounted | Legion runs on its composition entry; nothing is registered yet. Both halves attach through an injected scope and wait for a provider instead of going inert, so a settings provider composed after the row still reaches it. `detectSettingsCapabilities` reports `LEGION_SETTINGS_SERVICE_UNAVAILABLE` for the moment it is asked; no row logs it, because a provider that is not there yet is not a failure. |
+| Stored section fails the schema | The owner refuses the write while the caller is still there to read why, so the card reports it and nothing is persisted. |
+| Stored section fails `materializeConfig` | The owner accepts and persists it, because that check is catalog-dependent and the owner judges no catalog. Each delegation row then falls back — it keeps its last published generation, or its composition entry if it never published one — and logs `LEGION_SETTINGS_REGISTRATION_REJECTED` once per distinct failure. |
+| A stored section one row cannot materialize | Only that row falls back and logs; every other row keeps publishing. The namespace owner validates what holds for any catalog — a blank `toolName`, an inverted `durableRunPolicy`, an unusable resource root — and leaves catalog cross-references such as `defaultProfile` to each row, because a Profile name valid for the row that defines it is invalid for the row beside it. |
 | A commit cannot be materialized or its fragments cannot be loaded | The last published generation stays registered; the failure is logged. |
 | The settings provider detaches | The composition entry becomes the source again and Legion republishes from it. |
 | Legion's own fiber unloads | Republication stops; no generation is rebuilt against a disposing fiber. |

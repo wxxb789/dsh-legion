@@ -294,7 +294,17 @@ export * from './durable-run/result-acceptance.ts'
 export * from './durable-run/run-control.ts'
 
 export const name = 'dsh-legion'
-export const inject = ['tools', 'subagents', 'systemPrompt']
+
+/**
+ * Services a delegation row waits for.
+ *
+ * They are declared on the delegation half rather than on the package,
+ * because a settings row publishes no tool, no prompt section, and starts no
+ * child: made a package-level dependency, the Host-plane row would sit PENDING
+ * on a composition that serves settings without one of them, and the only
+ * symptom would be a card that never appears.
+ */
+export const DELEGATION_INJECT = Object.freeze(['tools', 'subagents', 'systemPrompt'] as const)
 
 const PROMPT_ORDER = 116.75
 
@@ -879,16 +889,6 @@ interface ConfigGeneration {
  * @param config - the row entry, layered under the stored user section.
  */
 async function applySettingsRow(ctx: Context, config: Config): Promise<void> {
-  const capabilities = detectSettingsCapabilities(ctx as unknown as SettingsHostContext)
-  if (!capabilities.liveReconfiguration) {
-    // The row is inert rather than broken: a deployment without a settings
-    // provider has no configuration surface for the namespace to appear on.
-    ctx.logger.warn(
-      `dsh-legion: ${'LEGION_SETTINGS_SERVICE_UNAVAILABLE' satisfies SettingsDiagnosticCode}`
-      + ': this settings row registers nothing because no settings provider is composed',
-    )
-    return
-  }
   const declared = Object.keys(config.profiles).length
     + Object.keys(config.teams ?? {}).length
     + Object.keys(config.strategies ?? {}).length
@@ -901,7 +901,12 @@ async function applySettingsRow(ctx: Context, config: Config): Promise<void> {
       + 'move them to the delegation row that publishes the tool',
     )
   }
-  await registerSettingsNamespace(
+  // Attached unconditionally, awaited only when a provider is already there.
+  // The attach is an injected scope, so a provider composed after this row —
+  // Host rows activate on service availability, not in file order — still
+  // reaches it; awaiting that wait instead would leave the row PENDING for the
+  // whole life of a deployment that composes no settings provider at all.
+  const attached = registerSettingsNamespace(
     ctx as unknown as SettingsHostContext,
     LEGION_SETTINGS_NAMESPACE,
     Config,
@@ -919,10 +924,29 @@ async function applySettingsRow(ctx: Context, config: Config): Promise<void> {
       },
     },
   )
+  if (detectSettingsCapabilities(ctx as unknown as SettingsHostContext).liveReconfiguration) {
+    await attached
+  }
+}
+
+/**
+ * The delegation half, as its own plugin so it can declare the services it
+ * actually uses. Mounted by {@link apply} for every row that is not a settings
+ * row; the child fiber derives from the row context, so its tool and prompt
+ * section land in the same layer and unwind with the row.
+ */
+const delegationRow = {
+  name: `${name}:delegation`,
+  inject: [...DELEGATION_INJECT],
+  apply: applyDelegationRow,
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.role === 'settings') return applySettingsRow(ctx, config)
+  await ctx.plugin(delegationRow, config)
+}
+
+async function applyDelegationRow(ctx: Context, config: Config): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,
@@ -987,12 +1011,18 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     )
   }
 
-  // Registering the namespace can only widen where configuration comes from, so
-  // it happens before the first generation is materialized: the initial publish
-  // then already reflects a stored user section instead of publishing the entry
-  // and immediately republishing over it.
-  if (settingsCapabilities.liveReconfiguration) {
-    await installSettingsSection(
+  // Wiring the settings source can only widen where configuration comes from,
+  // so it happens before the first generation is materialized: the initial
+  // publish then already reflects a stored user section instead of publishing
+  // the entry and immediately republishing over it.
+  //
+  // The wiring is attached unconditionally and awaited only when a provider is
+  // already there. There is nothing stored to wait for otherwise, and the
+  // injected scope still catches a provider that attaches later — awaiting that
+  // wait instead would hold the row PENDING for the life of a deployment that
+  // composes no settings provider at all.
+  {
+    const attached = installSettingsSection(
       ctx as unknown as SettingsHostContext,
       LEGION_SETTINGS_NAMESPACE,
       Config,
@@ -1000,9 +1030,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       {
         setSource: (current) => { configSource = current },
         onChange: () => { republish() },
-        // Constraints the schema cannot express refuse the write, not the next
-        // use: an unpublishable section is rejected while the caller is still
-        // there to read why.
+        // Owning the namespace, this refuses the write while the caller is
+        // still there to read why. Consuming one, the same check runs on the
+        // committed section instead: a catalog cross-reference is judged per
+        // row, so the owner cannot refuse it for everyone (see ADR 0022) and a
+        // row that cannot materialize a section keeps its last generation.
         validate: (value) => { materializeConfig(value) },
         onError: (error) => {
           ctx.logger.warn(
@@ -1013,6 +1045,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         },
       },
     )
+    if (settingsCapabilities.liveReconfiguration) await attached
   }
 
   let generation = await materializeGeneration(configSource())

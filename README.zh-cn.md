@@ -213,7 +213,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-本地 Checkout 必须先生成 `lib/` 构建产物。安装操作仍然不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。Bundle Patch 现在会挂载一行 Host 平面配置行（`id: legion-settings`，`role: settings`），使 `legion` 设置命名空间及其 Web 卡片归属于整个进程，而不再只在使用该 Preset 的 Session 存活期间存在。
+本地 Checkout 必须先生成 `lib/` 构建产物，而跳过构建的后果已经变了：Bundle Patch 使 `dsh-legion` 成为 Host Loader 条目，Host 的客户端模块注册表会扫描它，缺失 `lib/client.js` 不再只是没有卡片，而会让整个 Host 激活失败。安装本地 Checkout 前请先执行 `pnpm run build`。安装操作仍然不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。Bundle Patch 现在会挂载一行 Host 平面配置行（`id: legion-settings`，`role: settings`），使 `legion` 设置命名空间及其 Web 卡片归属于整个进程，而不再只在使用该 Preset 的 Session 存活期间存在。
 
 ## 创建 Legion Agent Preset
 
@@ -271,7 +271,7 @@ dsh plugin --profile web add .
 
 需要从所有安装过 Legion 的 DSH Host Profile 中分别卸载：
 
-1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。Bundle Patch 安装的 `legion-settings` 配置行会随下一步删除 Package 一并消失。
+1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。下一步删除 Package 时会一并移除贡献 `legion-settings` 配置行的 Bundle Layer；若该配置行是手工复制进已合成的 `cordis.yml` 的，需要自行在那里删除。
 2. 删除已安装的 Package：
 
    ~~~bash
