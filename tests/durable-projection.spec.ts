@@ -80,4 +80,22 @@ describe('legion-run projection', () => {
     expect(typeof legionRunProjection.schema.parse).toBe('function')
     expect(disposed).toBe(true)
   })
+
+  it('satisfies every Host projection contract the peer range admits', () => {
+    const state = foldLegionProjection([runEvent])
+
+    // DSH 0.1.0-rc.6 through 0.1.0-rc.8: the registry validates `view` output
+    // through `schema`, and restores a checkpoint row the same way.
+    expect(legionRunProjection.schema.parse(legionRunProjection.view(state))).toEqual(state)
+
+    // DSH 0.1.1-rc.1: the registry seeds a fold from `stateSchema.parse(row.val)`.
+    // A unit without this member registers cleanly and then throws inside the
+    // Host's own restore, taking every other unit in that session with it.
+    expect(typeof legionRunProjection.stateSchema.parse).toBe('function')
+    expect(legionRunProjection.stateSchema.parse(structuredClone(state))).toEqual(state)
+    expect(legionRunProjection.stateSchema).toBe(legionRunProjection.schema)
+
+    // Host-only by construction: run state is never pushed into a client snapshot.
+    expect('wire' in legionRunProjection).toBe(false)
+  })
 })

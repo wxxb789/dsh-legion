@@ -293,12 +293,36 @@ export interface ProjectionSchema<Value> {
   parse(value: unknown): Value
 }
 
+/**
+ * The unit Legion hands `ctx.sessionProjections`, written to satisfy every
+ * Host contract the declared peer range admits.
+ *
+ * DSH 0.1.0-rc.6 through 0.1.0-rc.8 drive a unit through `schema` (which
+ * validates the wire payload `view` produces) plus `view`. DSH 0.1.1-rc.1
+ * renamed the parser to `stateSchema` and moved the client view into an
+ * optional `wire` member, so a unit that omits `wire` is host-only. Legion
+ * reaches the registry structurally and takes no dependency on
+ * `@deepseek-ai/dsh-session-projection`, so neither rename reaches the
+ * compiler: a definition carrying only the older spelling registers cleanly on
+ * 0.1.1-rc.1 and then throws inside the Host's own `restore()` — for every
+ * unit in the session, not just this one — the first time a checkpoint row for
+ * this key is usable.
+ *
+ * Carrying both spellings is what keeps one build correct on both. Legion's
+ * `view` is the identity, so one parser is both the state parser and the wire
+ * parser and the two members share it. `wire` is deliberately absent: run
+ * state is host-only, and no Legion surface reads it from a client snapshot.
+ */
 export interface LegionProjectionDefinition {
   readonly key: typeof LEGION_RUN_PROJECTION_KEY
+  /** DSH 0.1.1-rc.1 and later: validates persisted state before it seeds a fold. */
+  readonly stateSchema: ProjectionSchema<LegionProjectionState>
+  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8: the same parser under its former name. */
   readonly schema: ProjectionSchema<LegionProjectionState>
   readonly stateVersion: number
   init(): LegionProjectionState
   apply(state: LegionProjectionState, event: SessionEvent): LegionProjectionState
+  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8 only; 0.1.1-rc.1 reads a client view from `wire`, which a host-only unit omits. */
   view(state: LegionProjectionState): LegionProjectionState
 }
 
@@ -339,9 +363,12 @@ function parseProjectionState(value: unknown): LegionProjectionState {
   return deepFreeze(deepCopy(value as LegionProjectionState))
 }
 
+const legionProjectionSchema: ProjectionSchema<LegionProjectionState> = { parse: parseProjectionState }
+
 export const legionRunProjection: LegionProjectionDefinition = {
   key: LEGION_RUN_PROJECTION_KEY,
-  schema: { parse: parseProjectionState },
+  stateSchema: legionProjectionSchema,
+  schema: legionProjectionSchema,
   stateVersion: LEGION_RUN_PROJECTION_STATE_VERSION,
   init: () => EMPTY_LEGION_PROJECTION_STATE,
   apply: applyLegionProjection,

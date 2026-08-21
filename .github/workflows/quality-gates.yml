@@ -62,7 +62,7 @@ jobs:
           - channel: minimum
             version: 0.1.0-rc.6
           - channel: latest-tested
-            version: 0.1.0-rc.8
+            version: 0.1.1-rc.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - if: inputs.tarball-artifact != ''

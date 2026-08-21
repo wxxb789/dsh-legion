@@ -29,7 +29,7 @@ export function restoreLegionProjection(
   full: readonly SessionEvent[],
 ): LegionProjectionState {
   if (checkpoint?.stateVersion === LEGION_RUN_PROJECTION_STATE_VERSION) {
-    const state = legionRunProjection.schema.parse(checkpoint.state)
+    const state = legionRunProjection.stateSchema.parse(checkpoint.state)
     return foldLegionProjection(tail, state)
   }
   return foldLegionProjection(full)

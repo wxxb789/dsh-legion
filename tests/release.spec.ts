@@ -8,6 +8,9 @@ import { load } from 'js-yaml'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version as string
+const COMPATIBILITY = JSON.parse(
+  readFileSync(join(ROOT, 'contracts/compatibility.json'), 'utf8'),
+) as { dshPeerRange: string; minimumDshVersion: string; latestTestedDshVersion: string }
 
 describe('reproducible CI and release contracts', () => {
   it('commits a pnpm v9 lockfile for every direct dependency', () => {
@@ -39,6 +42,11 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('pnpm run test:recovery')
     expect(workflow).toContain('channel: minimum')
     expect(workflow).toContain('channel: latest-tested')
+    // The packed matrix pins exact versions, and both must be the versions the
+    // compatibility policy claims were assessed — a policy bump that leaves the
+    // matrix behind would publish an untested claim.
+    expect(workflow).toContain(`version: ${COMPATIBILITY.minimumDshVersion}`)
+    expect(workflow).toContain(`version: ${COMPATIBILITY.latestTestedDshVersion}`)
     expect(workflow).not.toContain('>=0.1.0-rc.6 <0.2.0')
     expect(workflow).toContain('pnpm run test:packed-delegation')
     expect(workflow).toContain('test:packed-delegation-supplied')
@@ -48,7 +56,9 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('actions/upload-artifact@')
     const canary = readFileSync(join(ROOT, '.github/workflows/compatibility-canary.yml'), 'utf8')
     expect(() => load(canary)).not.toThrow()
-    expect(canary).toContain("DSH_VERSION: '>=0.1.0-rc.6 <0.2.0'")
+    // The rolling canary resolves the highest DSH the declared peer range
+    // admits, so it must carry that exact range and not a stale copy of it.
+    expect(canary).toContain(`DSH_VERSION: '${COMPATIBILITY.dshPeerRange}'`)
     expect(canary).toContain('compatibility-rolling-compatible-24.19.0')
     for (const name of [
       'ci.yml', 'compatibility-canary.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml',

@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dsh-legion-compatibility-policy-v1",
-  "dshPeerRange": ">=0.1.0-rc.6 <0.2.0",
+  "dshPeerRange": ">=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0",
   "minimumDshVersion": "0.1.0-rc.6",
-  "latestTestedDshVersion": "0.1.0-rc.8",
+  "latestTestedDshVersion": "0.1.1-rc.1",
   "dshPackageClosure": [
     "dsh-agent",
     "dsh-agent-loop",
@@ -27,13 +27,13 @@
     "dsh-user-approval"
   ],
   "packageVersion": "1.2.0",
-  "assessedDshVersions": ["0.1.0-rc.6", "0.1.0-rc.8"],
+  "assessedDshVersions": ["0.1.0-rc.6", "0.1.1-rc.1"],
   "hostCapabilities": {
     "ephemeralProfileAndStrategy": "supported",
     "journalContractAndPureReplay": "supported",
     "liveSettingsReconfiguration": "capability-detected-optional",
     "durableMutation": "unavailable-fail-closed",
-    "reason": "No DSH 0.1.0-rc.6, 0.1.0-rc.7, or 0.1.0-rc.8 release provides the atomic run coordination Host service durable mutation requires; the 0.1.0-rc.8 Agent Teams packages implement their own durable mailbox and task DAG but are private and unpublished. Neither 0.1.0-rc.7 nor 0.1.0-rc.8 changes a type Legion imports."
+    "reason": "No DSH release through 0.1.1-rc.1 provides the atomic run coordination Host service durable mutation requires; the Agent Teams packages carry their own durable mailbox and task DAG but stay private and unpublished. No release through 0.1.1-rc.1 changes a type Legion imports; 0.1.1-rc.1 does change the structural ctx.sessionProjections registration contract, which Legion now satisfies in both spellings."
   },
   "previousMinorCompatibility": [
     "config-v2-with-durable-fields-omitted",

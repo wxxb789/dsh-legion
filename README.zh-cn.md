@@ -535,7 +535,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 兼容性、开发与发布
 
-Package 要求 Node.js `^22.19.0 || >=24.0.0`，并要求 DSH Peer 版本位于 `>=0.1.0-rc.6 <0.2.0`。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
+Package 要求 Node.js `^22.19.0 || >=24.0.0`，并要求 DSH Peer 版本位于 `>=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0`。第二段并非冗余：semver 只在 comparator 与 prerelease 版本共享同一 `major.minor.patch` 时才接纳该 prerelease，因此仅靠第一段会拒绝所有 `0.1.1-rc.x` 的 DSH。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
 
 ~~~bash
 pnpm install --frozen-lockfile

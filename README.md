@@ -533,7 +533,7 @@ Do not. Copy it to a user-owned preset so upgrades cannot overwrite your changes
 
 ## Compatibility, development, and releases
 
-The package requires Node.js `^22.19.0 || >=24.0.0` and DSH peers in `>=0.1.0-rc.6 <0.2.0`. CI covers Windows, Ubuntu, packed DSH consumers, public contracts, protocol benchmarks, and reproducible packages.
+The package requires Node.js `^22.19.0 || >=24.0.0` and DSH peers in `>=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0`. The second clause is not redundant: semver admits a prerelease only against a comparator sharing its `major.minor.patch`, so the first clause alone would reject every `0.1.1-rc.x` DSH. CI covers Windows, Ubuntu, packed DSH consumers, public contracts, protocol benchmarks, and reproducible packages.
 
 ~~~bash
 pnpm install --frozen-lockfile
