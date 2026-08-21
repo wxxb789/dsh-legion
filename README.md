@@ -1,9 +1,9 @@
-# dsh-legion: Multi-Agent Teams and Model Routing for DeepSeek Harness
+# dsh-legion: Multi-Agent Orchestration and LLM Model Routing for DeepSeek Harness
 
 **English** · [简体中文](README.zh-cn.md)
 
 <p align="center">
-  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion: multi-agent teams, model routing, and declarative orchestration for DeepSeek Harness" width="840"></a>
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion architecture: a coordinator agent calls one legion tool, which routes to quick, deep, and review profiles that run as native DeepSeek Harness subagents" width="840"></a>
 </p>
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
-**dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It adds configurable AI agent Profiles, exact model routing, declarative Teams and Strategies, structured results, and bounded subagent delegation without replacing the DSH runtime.
+**dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It turns one AI coding agent into a bounded agent team: configurable AI agent Profiles, an exact LLM model router, declarative Teams and Strategies, structured results, and depth-limited subagent delegation — without replacing the DSH runtime.
 
 ## TL;DR
 
@@ -44,6 +44,7 @@ The coordinator now sees one `legion` tool whose `profile` values are your seman
 - [TL;DR](#tldr)
 - [Quick start](#quick-start)
 - [What is dsh-legion used for?](#what-is-dsh-legion-used-for)
+- [dsh-legion vs standalone multi-agent frameworks](#dsh-legion-vs-standalone-multi-agent-frameworks)
 - [Capabilities](#capabilities)
 - [How it works](#how-it-works)
   - [Under the hood: from tool call to child agent](#under-the-hood-from-tool-call-to-child-agent)
@@ -72,6 +73,22 @@ Legion is useful when one AI coding agent should delegate different kinds of wor
 - **Customize without forking.** Add, replace, disable, or revive Profiles, Teams, and Strategies through Catalog Layers.
 
 Legion is for developers and deployment owners who already use DSH and want configurable multi-agent delegation without adopting another scheduler, session store, or agent runtime.
+
+## dsh-legion vs standalone multi-agent frameworks
+
+Standalone multi-agent frameworks such as LangGraph, CrewAI, and AutoGen ship their own runtime, state model, and process lifecycle, so adopting one places a second orchestrator beside the coding agent you already run. Legion takes the opposite approach: it adds no runtime at all and compiles delegation policy down to native DSH subagents.
+
+| | dsh-legion | A standalone agent framework |
+|---|---|---|
+| What you adopt | Delegation policy for an agent you already run | A second runtime, state model, and process lifecycle |
+| Who owns the agent loop | DeepSeek Harness | The framework |
+| Sessions, sandbox, approvals, model adapters | DSH-owned and unchanged | Framework-owned, parallel to your agent's |
+| Model selection | Ordered exact provider/model Route Candidates per Profile | Usually wired per node or per agent in code |
+| Cost to adopt | One configuration row in a user-owned preset | A new dependency tree, service, or process |
+| Prompt authority | A prompt selects a Profile and can never widen that Profile's model, tools, persona, or depth | Varies by framework |
+| Wrong tool when | You do not run DSH | You want one self-contained orchestrator |
+
+If you are not running DeepSeek Harness, Legion is not the right tool, and a standalone framework is the better fit.
 
 ## Capabilities
 
@@ -486,9 +503,9 @@ Known limitations:
 
 No. It is a DeepSeek Harness plugin for multi-agent policy and delegation. DSH remains the runtime and lifecycle owner.
 
-### How does it compare with standalone multi-agent frameworks?
+### How does it compare with LangGraph, CrewAI, or AutoGen?
 
-Frameworks such as LangGraph, CrewAI, or AutoGen ship their own runtime, state model, and process lifecycle, so adopting one adds a second orchestrator beside your agent. Legion adds no runtime at all: it is declarative delegation policy for a DSH deployment you already run, compiled to native DSH subagents. If you are not running DSH, Legion is not the right tool.
+Those frameworks ship their own runtime, state model, and process lifecycle, so adopting one adds a second orchestrator beside your agent. Legion adds no runtime at all: it is declarative delegation policy for a DSH deployment you already run, compiled to native DSH subagents. See [dsh-legion vs standalone multi-agent frameworks](#dsh-legion-vs-standalone-multi-agent-frameworks) for the full comparison.
 
 ### Which LLM providers and models can it route to?
 

@@ -1,9 +1,9 @@
-# dsh-legion：面向 DeepSeek Harness 的多智能体团队与模型路由
+# dsh-legion：面向 DeepSeek Harness 的多智能体编排与 LLM 模型路由
 
 [English](README.md) · **简体中文**
 
 <p align="center">
-  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion：面向 DeepSeek Harness 的多智能体团队、模型路由与声明式编排插件" width="840"></a>
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion 架构：协调 Agent 调用一个 legion 工具，路由到以原生 DeepSeek Harness Subagent 运行的 quick、deep 和 review Profile" width="840"></a>
 </p>
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
@@ -12,7 +12,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
-**dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它为 DSH 提供可配置的 AI Agent Profile、精确模型路由、声明式 Team 与 Strategy、结构化结果，以及有边界的 Subagent 委派能力，同时不会取代 DSH 自身的运行时。
+**dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它能将单个 AI Coding Agent 转变为有边界的智能体团队：可配置的 AI Agent Profile、精确 LLM 模型路由、声明式 Team 与 Strategy、结构化结果，以及受控深度的 Subagent 委派——同时无需替代 DSH 运行时。
 
 ## TL;DR
 
@@ -44,6 +44,7 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 - [TL;DR](#tldr)
 - [快速开始](#快速开始)
 - [这个项目有什么用？](#这个项目有什么用)
+- [dsh-legion 与独立多智能体框架对比](#dsh-legion-与独立多智能体框架对比)
 - [主要能力](#主要能力)
 - [工作原理](#工作原理)
   - [底层机制：从工具调用到子智能体](#底层机制从工具调用到子智能体)
@@ -72,6 +73,22 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 - **无需 Fork 即可扩展。** 通过 Catalog Layer 添加、替换、禁用或恢复 Profile、Team 和 Strategy。
 
 Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，但不希望再引入另一套 Scheduler、Session Store 或 Agent Runtime 的开发者与部署者。
+
+## dsh-legion 与独立多智能体框架对比
+
+像 LangGraph、CrewAI 和 AutoGen 这类独立多智能体框架都自带运行时、状态模型和进程生命周期，因此采用它们等于在你已经在运行的 Coding Agent 旁再引入第二个编排器。Legion 则采取完全相反的做法：它完全不引入运行时，而是将委派策略编译为原生 DSH Subagent。
+
+| | dsh-legion | 独立智能体框架 |
+|---|---|---|
+| 你所采用的内容 | 面向你已有 Agent 的委派策略 | 第二个运行时、状态模型与进程生命周期 |
+| 谁掌控 Agent Loop | DeepSeek Harness | 框架 |
+| Session、沙箱、审批、模型适配器 | 由 DSH 所有且保持不变 | 由框架所有，与你的 Agent 并行 |
+| 模型选择 | 每个 Profile 拥有有序的精确 Provider/Model 候选路由 | 通常在代码中按 Node 或按 Agent 绑定 |
+| 采用成本 | 用户自有 Preset 中的一行配置 | 新的依赖树、服务或进程 |
+| Prompt 权限 | Prompt 选择 Profile，但永远无法放宽该 Profile 的模型、工具、Persona 或深度 | 因框架而异 |
+| 何时不适用 | 你没有运行 DSH | 你需要一个单体自包含编排器 |
+
+如果你没有运行 DeepSeek Harness，Legion 就不是合适的工具，独立框架会更适合。
 
 ## 主要能力
 
@@ -488,9 +505,9 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 不是。它是 DeepSeek Harness 的多智能体策略与委派插件，DSH 仍然是运行时和生命周期所有者。
 
-### 它与独立的多智能体框架有什么区别？
+### 它与 LangGraph、CrewAI 或 AutoGen 相比如何？
 
-LangGraph、CrewAI、AutoGen 这类框架都自带运行时、状态模型和进程生命周期，采用它们等于在现有 Agent 旁边再引入一个编排器。Legion 完全不引入运行时：它只是你已经在运行的 DSH 部署上的声明式委派策略，并编译为原生 DSH Subagent。如果你没有在使用 DSH，Legion 就不是合适的工具。
+这些框架都自带运行时、状态模型和进程生命周期，因此采用它们等于在你的 Agent 旁再引入第二个编排器。Legion 完全不引入运行时：它只是你已经在运行的 DSH 部署上的声明式委派策略，并编译为原生 DSH Subagent。完整的对比参见 [dsh-legion 与独立多智能体框架对比](#dsh-legion-与独立多智能体框架对比)。
 
 ### 它可以路由到哪些 LLM Provider 和 Model？
 
