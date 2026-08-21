@@ -56,6 +56,14 @@ _Avoid_: Team, Mission database
 The user-owned outcome a Team Run is intended to achieve.
 _Avoid_: Prompt, Task message
 
+**Delegation Row**:
+A composed Legion row that publishes the model-facing delegation tool and its coordinator prompt section into the layer it was mounted in, and reads the settings namespace it does not own.
+_Avoid_: Agent-plane plugin, Tool registration, Session
+
+**Settings Row**:
+The Host-plane Legion row that owns the process-wide settings namespace and the Web card and contributes nothing else — no tool, no prompt section, no projection, no service.
+_Avoid_: Global Legion mount, Config service, Second configuration source
+
 **Default Catalog**:
 Legion's curated Profiles, Teams, and Strategies, distributed as ordinary replaceable configuration under the same contracts available to users.
 _Avoid_: Built-in special cases, Hardcoded team

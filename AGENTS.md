@@ -24,7 +24,7 @@ Never invent a Host service Legion could obtain, and never grow the Legion plugi
 
 ## Architecture
 
-Before changing routing policy, profile configuration, result contracts, or DSH lifecycle integration, read `docs/roadmap.md` and the applicable ADR under `docs/adr/`.
+Before changing routing policy, profile configuration, result contracts, or DSH lifecycle integration, read `docs/roadmap.md` and the applicable ADR under `docs/adr/`. Check `docs/solutions/` first when a problem looks like one this repository has already diagnosed; it holds one document per solved problem, with the symptoms, what did not work, and the prevention rule.
 
 DeepSeek Harness remains the sole owner of Agent, Session, subagent, workflow, Goal, persistence, sandbox, approval, model adapter, and UI lifecycles. Legion contributes delegation policy and diagnostics through public DSH seams.
 
