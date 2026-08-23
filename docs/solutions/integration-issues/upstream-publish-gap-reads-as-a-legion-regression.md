@@ -51,10 +51,17 @@ Legion's own peer range had just gained the `>=0.1.1-rc.1 <0.2.0` clause, so a f
 prerelease line and hit the upstream ranges. The packed gates never did, because their overrides bypass ranges
 entirely.
 
+The version that fails is not one the contract names. A free install takes the *highest* version the declared
+peer range admits, which was a prerelease published after the declared latest-tested line. Checking only the
+declared lines therefore reports "satisfied" while the install still fails — the first live run of the preflight
+did exactly that, and the check had to be widened to the version the peer range resolves to.
+
 ## What didn't work
 
 - **Reading the version list alone.** Every declared line was published. A preflight that only asks "does this
   version exist" answers yes and misses the failure completely.
+- **Checking only the versions the contract names.** The failing build is the one the peer range resolves to,
+  which is by definition newer than the declared latest-tested line whenever the contract has drifted.
 - **Trusting the dist-tags.** `latest` pointed at `0.1.0-rc.6` for one package and at `0.0.1-rc.1` for another
   while newer versions existed, so the tag says nothing about whether a declared line resolves.
 - **Treating the packed E2E result as coverage.** It pins the closure to one exact generation, which is the one
@@ -67,7 +74,8 @@ entirely.
 `scripts/verify-dependency-preflight.mjs` reads the declared closure and version lines from
 `contracts/compatibility.json`, resolves each declared package against the registry, and evaluates three things:
 whether each declared line is published, whether the declared peer range is satisfiable, and whether the
-published packages at those lines can satisfy their own `@deepseek-ai/dsh-*` ranges. It classifies the outcome
+published packages can satisfy their own `@deepseek-ai/dsh-*` ranges — both at the declared lines and at the
+highest version the declared peer range admits, which is the one an unpinned consumer installs. It classifies the outcome
 as an upstream publish gap (exit 1) or a local regression in this repository (exit 2), and reports drift between
 the declared latest-tested version and the highest version resolvable across the whole closure as an advisory.
 

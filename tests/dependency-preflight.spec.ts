@@ -136,9 +136,27 @@ describe('dependency availability preflight', () => {
     expect(result.status).toBe(1)
     expect(result.stdout).toContain('dependency preflight: upstream-publish-gap')
     expect(result.stdout).toContain(
-      '@deepseek-ai/dsh-agent@0.1.1-rc.1 requires @deepseek-ai/dsh-typert-protocol@^0.1.1',
+      '@deepseek-ai/dsh-agent@0.1.1-rc.1 (the declared latest-tested/assessed line)'
+      + ' requires @deepseek-ai/dsh-typert-protocol@^0.1.1',
     )
     expect(result.stdout).toContain('no published version of @deepseek-ai/dsh-typert-protocol satisfies it')
+  })
+
+  it('checks the version the peer range resolves to, not only the declared lines', () => {
+    const result = preflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture('peer-range-top-unsatisfiable.snapshot.json'),
+    ])
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain('dependency preflight: upstream-publish-gap')
+    // Every declared line is published here. What cannot install is the version
+    // an unpinned consumer actually gets, which is the highest the declared
+    // peer range admits.
+    expect(result.stdout).not.toContain('LEGION_DECLARED_LINE_UNPUBLISHED')
+    expect(result.stdout).toContain(
+      '@deepseek-ai/dsh-agent@0.1.1-rc.2 (the highest version the declared peer range admits)'
+      + ' requires @deepseek-ai/dsh-typert-protocol@^0.1.1',
+    )
   })
 
   it('classifies a self-contradicting contract as a local regression instead', () => {

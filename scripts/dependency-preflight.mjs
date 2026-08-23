@@ -440,13 +440,38 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
           + (advertisesDeclaredLine ? ' and which this contract declares as a Host line' : ''),
       }))
     }
-    // What a package at a declared line requires of its own siblings is part of
-    // whether that line installs at all. An upstream package published with a
-    // stable-only range over a prerelease-only sibling cannot resolve, and that
-    // is invisible in the version list alone.
-    for (const line of exactLines) {
+    // What a package requires of its own siblings is part of whether it
+    // installs at all: an upstream package published with a stable-only range
+    // over a prerelease-only sibling cannot resolve, and that is invisible in
+    // the version list alone. Both the declared lines and the version the
+    // declared peer range actually resolves to have to be checked — a consumer
+    // who does not pin the closure gets the latter, which is the highest
+    // version the range admits rather than anything this contract names.
+    const resolution = sortVersions(admitted).at(-1)
+    const requirementLines = [
+      ...exactLines.map(line => ({
+        version: line.version,
+        label: `the declared ${line.kinds.join('/')} line`,
+      })),
+      ...(resolution === undefined || exactLines.some(line => line.version === resolution)
+        ? []
+        : [{ version: resolution, label: 'the highest version the declared peer range admits' }]),
+    ]
+    for (const line of requirementLines) {
       const manifest = object(entry.manifests[line.version])
-      if (manifest === null) continue
+      if (manifest === null) {
+        if (versionSet.has(line.version)) {
+          findings.push(finding({
+            code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+            classification: 'coverage',
+            package: name,
+            line: line.version,
+            detail: `the snapshot records no manifest for ${name}@${line.version}, ${line.label}`
+              + ', so what it requires of its siblings could not be checked',
+          }))
+        }
+        continue
+      }
       const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
       const required = {
         ...(object(manifest.dependencies) ?? {}),
@@ -465,7 +490,8 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
             line: line.version,
             target,
             range,
-            detail: `${name}@${line.version} requires ${target}@${String(range)} and the snapshot records nothing for ${target}`,
+            detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
+              + ` and the snapshot records nothing for ${target}`,
           }))
           continue
         }
@@ -478,7 +504,8 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
             line: line.version,
             target,
             range,
-            detail: `${name}@${line.version} requires ${target}@${String(range)}, which is not a range this preflight evaluates`,
+            detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
+              + ', which is not a range this preflight evaluates',
           }))
           continue
         }
@@ -491,7 +518,8 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
           target,
           range,
           publishedVersions: targetEntry.versions,
-          detail: `${name}@${line.version} requires ${target}@${String(range)} and no published version of ${target} satisfies it; the registry offers ${offers(targetEntry.versions)}`,
+          detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
+            + ` and no published version of ${target} satisfies it; the registry offers ${offers(targetEntry.versions)}`,
         }))
       }
     }
@@ -568,9 +596,9 @@ const CLASSIFICATION_HEADINGS = {
 
 const VERDICTS = {
   satisfied: 'every declared Host dependency line resolves against the registry',
-  'upstream-publish-gap': 'a declared Host dependency line is not published upstream.'
-    + ' This is an upstream publish gap, not a Legion defect: pin, wait, or report it upstream'
-    + ' rather than looking for a regression in this repository.',
+  'upstream-publish-gap': 'the Host dependency closure this contract declares does not resolve'
+    + ' against the registry as published. This is an upstream publish gap, not a Legion defect:'
+    + ' pin, wait, or report it upstream rather than looking for a regression in this repository.',
   'local-regression': 'the compatibility policy contract contradicts itself.'
     + ' This is a local regression in this repository, not an upstream publish gap.',
   'incomplete-evidence': 'the registry evidence needed to decide a declared line is missing.'
