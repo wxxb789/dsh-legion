@@ -47,3 +47,17 @@ Teams and Strategies are declarative catalog data. Compile them through ADR 0010
 ## Files and language
 
 Use English for code, comments, documentation, commit messages, and release notes. Public documentation must use repository-relative paths, generic placeholders, or URLs—never a developer machine's absolute path.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `wxxb789/dsh-legion`, operated through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its role name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repository root. See `docs/agents/domain.md`.
