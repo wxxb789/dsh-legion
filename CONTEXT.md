@@ -1,19 +1,19 @@
 # Legion Orchestration
 
-Legion lets a coordinator delegate one objective through user-defined worker capabilities, team shapes, and bounded orchestration policies while DeepSeek Harness owns execution lifecycle and authority.
+Legion lets a coordinator delegate one objective through user-defined worker capabilities, cohort shapes, and bounded orchestration policies while DeepSeek Harness owns execution lifecycle and authority.
 
 ## Language
 
 **Config Document**:
-A versioned authored description of Profiles and deployment policy that can be normalized or exported for a compatible rollback target.
+A versioned authored description of Specialists and deployment policy that can be normalized or exported for a compatible rollback target.
 _Avoid_: Effective Catalog, Runtime state
 
-**Profile**:
+**Specialist**:
 A reusable worker capability template describing task fit, model-routing requirements, prompt behavior, visible capabilities, and result contract.
-_Avoid_: Agent, Worker instance, Role preset
+_Avoid_: Profile, Agent preset, Persona, Agent, Worker instance, Role preset
 
 **Route Candidate**:
-One exact provider/model choice in a Profile's priority-ordered pre-start policy, with optional static constraints and additive instructions.
+One exact provider/model choice in a Specialist's priority-ordered pre-start policy, with optional static constraints and additive instructions.
 _Avoid_: Runtime fallback, Retry target, Model class
 
 **Route Plan**:
@@ -21,23 +21,23 @@ An immutable, evidence-bearing decision that selects at most one Route Candidate
 _Avoid_: Retry plan, Availability check, Model leaderboard
 
 **Prompt Fragment**:
-A bounded, deployment-authorized text resource that adds Profile-specific system instructions without becoming a user task or a Skill.
+A bounded, deployment-authorized text resource that adds Specialist-specific system instructions without becoming a user task or a Skill.
 _Avoid_: Skill, Prompt template, Arbitrary file
 
 **Resource Root**:
 A deployment-owned directory alias that bounds where Prompt Fragments may be loaded from.
 _Avoid_: Search path, Workspace access, Filesystem permission
 
-**Team**:
-A named composition of member slots available to one orchestration strategy.
-_Avoid_: Agent list, Fleet, Runtime
+**Cohort**:
+A named composition of member slots available to one orchestration strategy. It is authored and compiled, never live: it names positions, not participants.
+_Avoid_: Team, Roster, Agent list, Fleet, Runtime
 
 **Member Slot**:
-A named position in a Team that references a Profile and may declare multiplicity or participation constraints; it is not a live child.
-_Avoid_: Agent, Process, Session
+A named position in a Cohort that references a Specialist and may declare multiplicity or participation constraints; it is not a live child.
+_Avoid_: Team member, Teammate, Agent, Process, Session
 
 **Strategy**:
-A bounded policy that turns an Objective and Team into orchestration decisions, artifact handoffs, completion rules, and limits.
+A bounded policy that turns an Objective and Cohort into orchestration decisions, artifact handoffs, completion rules, and limits.
 _Avoid_: Workflow runtime, Scheduler, Prompt
 
 **Artifact**:
@@ -46,15 +46,23 @@ _Avoid_: Tool result object, Shared mutable state, Runtime handle
 
 **Compiled Strategy Plan**:
 An immutable objective-bound graph of DSH primitive IR, artifacts, completion, and narrowed hard limits.
-_Avoid_: Team Run, WorkflowRun, Scheduler state
+_Avoid_: Cohort Run, WorkflowRun, Scheduler state
 
-**Team Run**:
-One execution of a Strategy against an Objective and Team, with one stable Team Run identity plus the native DSH runs and artifacts it invokes.
-_Avoid_: Team, Mission database
+**Cohort Run**:
+One execution of a Strategy against an Objective and Cohort, with one stable Cohort Run identity plus the native DSH runs and artifacts it invokes.
+_Avoid_: Team, Agent Team, Mission database
 
 **Objective**:
-The user-owned outcome a Team Run is intended to achieve.
+The user-owned outcome a Cohort Run is intended to achieve.
 _Avoid_: Prompt, Task message
+
+**Run Receipt**:
+The durable, structured account of one Cohort Run — its stages, children, live participation, consumed tokens, elapsed time, and outcome — derived from Host-owned facts rather than from what a model reported about itself. It accounts in tokens and time, never in money.
+_Avoid_: Transcript, Log line, Progress narration, Telemetry event, Invoice
+
+**Endorsement**:
+The evidence-derived standing of a catalog entry, distinguishing what a deployment may run from what Legion is willing to recommend.
+_Avoid_: Availability, Enablement, Registration, Benchmark score
 
 **Delegation Row**:
 A composed Legion row that publishes the model-facing delegation tool and its coordinator prompt section into the layer it was mounted in, and reads the settings namespace it does not own.
@@ -65,8 +73,8 @@ The Host-plane Legion row that owns the process-wide settings namespace and the 
 _Avoid_: Global Legion mount, Config service, Second configuration source
 
 **Default Catalog**:
-Legion's curated Profiles, Teams, and Strategies, distributed as ordinary replaceable configuration under the same contracts available to users.
-_Avoid_: Built-in special cases, Hardcoded team
+Legion's curated Specialists, Cohorts, and Strategies, distributed as ordinary replaceable configuration under the same contracts available to users.
+_Avoid_: Built-in special cases, Hardcoded cohort
 
 **Effective Catalog**:
 The validated, normalized view of user and default catalog entries that are available for orchestration.
