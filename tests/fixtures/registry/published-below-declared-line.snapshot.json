@@ -1,0 +1,82 @@
+{
+  "_provenance": "Reproduces the shape observed on main: a declared Host line that the registry does not publish, while the package dist-tag advertises exactly that version. Package version lists follow the DSH 0.1.x release history; the gap is recorded on @deepseek-ai/dsh-agent.",
+  "schemaVersion": "dsh-legion-registry-snapshot-v1",
+  "registry": "https://registry.npmjs.org",
+  "source": "recorded",
+  "recordedAt": "2026-08-23",
+  "packages": {
+    "@deepseek-ai/dsh-agent": {
+      "versions": [
+        "0.0.1-rc.1",
+        "0.0.1-rc.2",
+        "0.0.1-rc.3",
+        "0.0.1-rc.5",
+        "0.1.0-rc.2",
+        "0.1.0-rc.3",
+        "0.1.0-rc.6"
+      ],
+      "distTags": {
+        "latest": "0.1.1-rc.1"
+      },
+      "manifests": {
+        "0.1.0-rc.6": {
+          "dependencies": {},
+          "peerDependencies": {
+            "@deepseek-ai/dsh-invariants": "^0.1.0-rc.2",
+            "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.2"
+          }
+        }
+      }
+    },
+    "@deepseek-ai/dsh-invariants": {
+      "versions": [
+        "0.0.1-rc.1",
+        "0.0.1-rc.2",
+        "0.0.1-rc.3",
+        "0.0.1-rc.5",
+        "0.1.0-rc.2",
+        "0.1.0-rc.3",
+        "0.1.0-rc.6",
+        "0.1.1-rc.1"
+      ],
+      "distTags": {
+        "latest": "0.1.1-rc.1"
+      },
+      "manifests": {
+        "0.1.0-rc.6": {
+          "dependencies": {},
+          "peerDependencies": {}
+        },
+        "0.1.1-rc.1": {
+          "dependencies": {},
+          "peerDependencies": {}
+        }
+      }
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "versions": [
+        "0.0.1-rc.1",
+        "0.0.1-rc.2",
+        "0.0.1-rc.3",
+        "0.0.1-rc.5",
+        "0.1.0-rc.2",
+        "0.1.0-rc.3",
+        "0.1.0-rc.6",
+        "0.1.1-rc.1"
+      ],
+      "distTags": {
+        "latest": "0.1.1-rc.1"
+      },
+      "manifests": {
+        "0.1.0-rc.6": {
+          "dependencies": {},
+          "peerDependencies": {}
+        },
+        "0.1.1-rc.1": {
+          "dependencies": {},
+          "peerDependencies": {}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_provenance": "The declaration Legion actually shipped before 1.2.0: a peer range anchored on the 0.1.0 tuple cannot admit any 0.1.1-rc.x build, so the contract contradicted its own latest-tested line. Recorded as the local-regression control.",
+  "schemaVersion": "dsh-legion-compatibility-policy-v1",
+  "dshPeerRange": ">=0.1.0-rc.6 <0.2.0",
+  "minimumDshVersion": "0.1.0-rc.6",
+  "latestTestedDshVersion": "0.1.1-rc.1",
+  "dshPackageClosure": [
+    "dsh-agent",
+    "dsh-invariants",
+    "dsh-typert-protocol"
+  ],
+  "packageVersion": "1.2.0",
+  "assessedDshVersions": [
+    "0.1.0-rc.6",
+    "0.1.1-rc.1"
+  ],
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2"
+}

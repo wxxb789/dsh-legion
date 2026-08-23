@@ -1,0 +1,18 @@
+{
+  "_provenance": "Recorded shape of the DSH 0.1.1-rc.1 Host line as Legion declared it in contracts/compatibility.json at package version 1.2.0. Frozen: the recorded fixtures must keep reproducing the historical failure after the live contract moves on.",
+  "schemaVersion": "dsh-legion-compatibility-policy-v1",
+  "dshPeerRange": ">=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0",
+  "minimumDshVersion": "0.1.0-rc.6",
+  "latestTestedDshVersion": "0.1.1-rc.1",
+  "dshPackageClosure": [
+    "dsh-agent",
+    "dsh-invariants",
+    "dsh-typert-protocol"
+  ],
+  "packageVersion": "1.2.0",
+  "assessedDshVersions": [
+    "0.1.0-rc.6",
+    "0.1.1-rc.1"
+  ],
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2"
+}

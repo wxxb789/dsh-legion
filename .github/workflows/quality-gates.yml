@@ -44,6 +44,11 @@ jobs:
       - run: pnpm run test:unit
       - run: pnpm run verify:reproducible-pack
       - run: pnpm run verify:pack
+      # A declared Host line that upstream never published fails here in
+      # seconds, naming the package and the range, instead of surfacing minutes
+      # later as a raw resolver error inside the packed install.
+      - if: matrix.packedProfile
+        run: pnpm run verify:dependency-preflight
       - if: matrix.packedProfile
         run: pnpm run test:profile-install
 

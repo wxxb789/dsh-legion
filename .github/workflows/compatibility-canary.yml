@@ -23,6 +23,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
       - run: pnpm run build
+      - run: pnpm run verify:dependency-preflight
       - run: pnpm run test:packed-delegation
         env:
           DSH_VERSION: '>=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0'

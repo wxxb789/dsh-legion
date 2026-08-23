@@ -70,6 +70,7 @@
     "test:durable": "vitest run tests/durable-*.spec.ts",
     "test:recovery": "vitest run tests/durable-crash-cut.spec.ts tests/durable-replay.spec.ts tests/durable-projection.spec.ts",
     "verify:compatibility-receipts": "node scripts/verify-compatibility-receipts.mjs",
+    "verify:dependency-preflight": "node scripts/verify-dependency-preflight.mjs",
     "verify:reproducible-pack": "node scripts/verify-reproducible-pack.mjs",
     "test:profile-install": "node scripts/verify-profile-install.mjs",
     "test:packed-delegation": "node scripts/verify-packed-delegation.mjs",
