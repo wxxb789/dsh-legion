@@ -48,7 +48,16 @@ jobs:
       # seconds, naming the package and the range, instead of surfacing minutes
       # later as a raw resolver error inside the packed install.
       - if: matrix.packedProfile
-        run: pnpm run verify:dependency-preflight
+        run: pnpm run verify:dependency-preflight -- --record dependency-preflight-snapshot.json
+      # The recorded registry answer is the gate's evidence: keeping it lets a
+      # live verdict be replayed offline instead of re-run against a registry
+      # that has already moved.
+      - if: matrix.packedProfile && always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dependency-preflight-${{ matrix.os }}-${{ matrix.node }}
+          path: dependency-preflight-snapshot.json
+          if-no-files-found: warn
       - if: matrix.packedProfile
         run: pnpm run test:profile-install
 

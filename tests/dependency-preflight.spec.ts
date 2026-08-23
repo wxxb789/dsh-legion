@@ -159,6 +159,22 @@ describe('dependency availability preflight', () => {
     )
   })
 
+  it('follows the resolution walk past the declared closure', () => {
+    const result = preflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture('transitive-gap.snapshot.json'),
+    ])
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain('dependency preflight: upstream-publish-gap')
+    // The failing package is not in the declared closure at all: an install
+    // reaches it through a declared line, and so does the preflight.
+    expect(result.stdout).toContain(
+      '@deepseek-ai/dsh-session-projection@0.1.1-rc.1'
+      + ' (required by @deepseek-ai/dsh-agent@0.1.1-rc.1)'
+      + ' requires @deepseek-ai/dsh-invariants@^0.1.1',
+    )
+  })
+
   it('classifies a self-contradicting contract as a local regression instead', () => {
     const result = preflight([
       '--policy', fixture('contradictory.policy.json'),

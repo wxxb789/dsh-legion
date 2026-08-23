@@ -29,10 +29,8 @@ import { fileURLToPath } from 'node:url'
 import {
   DSH_SCOPE,
   REGISTRY_SNAPSHOT_SCHEMA_VERSION,
-  compareVersions,
   evaluateDependencyPreflight,
   renderDependencyPreflightReport,
-  satisfies,
 } from './dependency-preflight.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -77,7 +75,7 @@ const fetchPackument = async (name) => {
   throw new Error(`could not query ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
 }
 
-const recordLiveSnapshot = async (packages, lines, peerRange) => {
+const recordLiveSnapshot = async (packages) => {
   const recorded = {}
   const queued = new Set(packages)
   const pending = [...packages]
@@ -86,16 +84,12 @@ const recordLiveSnapshot = async (packages, lines, peerRange) => {
     const answers = await Promise.all(batch.map(async name => [name, await fetchPackument(name)]))
     for (const [name, packument] of answers) {
       const versions = Object.keys(packument?.versions ?? {})
-      // A consumer who does not pin the closure installs the highest version
-      // the declared peer range admits, so that manifest is evidence too — the
-      // gap that broke the packed install lived there rather than on a
-      // declared line.
-      const admitted = versions
-        .filter(version => satisfies(version, peerRange) === true)
-        .sort(compareVersions)
-      const recordedLines = [...new Set([...lines, ...admitted.slice(-1)])]
+      // Every version's requirements are recorded, because the resolution walk
+      // follows ranges to whatever version satisfies them: the gap that broke
+      // the packed install sat on a version no declaration names, reached from
+      // one that does.
       const manifests = {}
-      for (const line of recordedLines) {
+      for (const line of versions) {
         const manifest = packument?.versions?.[line]
         if (manifest === undefined || manifest === null) continue
         const dependencies = scopedDependencies(manifest.dependencies)
@@ -142,17 +136,8 @@ let acquired
 try {
   const policy = JSON.parse(await readFile(policyPath, 'utf8'))
   const closure = Array.isArray(policy?.dshPackageClosure) ? policy.dshPackageClosure : []
-  const declaredLines = [...new Set([
-    policy?.minimumDshVersion,
-    policy?.latestTestedDshVersion,
-    ...(Array.isArray(policy?.assessedDshVersions) ? policy.assessedDshVersions : []),
-  ].filter(value => typeof value === 'string'))]
   const snapshot = snapshotPath === undefined
-    ? await recordLiveSnapshot(
-      closure.map(name => `${DSH_SCOPE}/${name}`),
-      declaredLines,
-      policy?.dshPeerRange,
-    )
+    ? await recordLiveSnapshot(closure.map(name => `${DSH_SCOPE}/${name}`))
     : await loadSnapshot(snapshotPath)
   if (recordPath !== undefined) {
     await writeFile(resolve(recordPath), `${JSON.stringify(snapshot, null, 2)}\n`)

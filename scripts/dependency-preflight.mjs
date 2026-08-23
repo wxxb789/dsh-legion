@@ -376,6 +376,7 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
 
   const findings = []
   const resolvable = []
+  const seeds = []
   let checkedLines = 0
   for (const name of declared.packages) {
     const entry = published(snapshot, name)
@@ -440,88 +441,119 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
           + (advertisesDeclaredLine ? ' and which this contract declares as a Host line' : ''),
       }))
     }
-    // What a package requires of its own siblings is part of whether it
-    // installs at all: an upstream package published with a stable-only range
-    // over a prerelease-only sibling cannot resolve, and that is invisible in
-    // the version list alone. Both the declared lines and the version the
-    // declared peer range actually resolves to have to be checked — a consumer
-    // who does not pin the closure gets the latter, which is the highest
-    // version the range admits rather than anything this contract names.
+    // Where a package's own requirements lead is decided by the resolution walk
+    // below, not here: an install that does not pin the closure resolves each
+    // range to the highest published version satisfying it and then follows
+    // that version's requirements, so the version that fails may be several
+    // hops from anything this contract names.
     const resolution = sortVersions(admitted).at(-1)
-    const requirementLines = [
-      ...exactLines.map(line => ({
+    for (const line of exactLines) {
+      if (!versionSet.has(line.version)) continue
+      seeds.push({
+        package: name,
         version: line.version,
         label: `the declared ${line.kinds.join('/')} line`,
-      })),
-      ...(resolution === undefined || exactLines.some(line => line.version === resolution)
-        ? []
-        : [{ version: resolution, label: 'the highest version the declared peer range admits' }]),
-    ]
-    for (const line of requirementLines) {
-      const manifest = object(entry.manifests[line.version])
-      if (manifest === null) {
-        if (versionSet.has(line.version)) {
-          findings.push(finding({
-            code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
-            classification: 'coverage',
-            package: name,
-            line: line.version,
-            detail: `the snapshot records no manifest for ${name}@${line.version}, ${line.label}`
-              + ', so what it requires of its siblings could not be checked',
-          }))
-        }
+      })
+    }
+    if (resolution !== undefined && !exactLines.some(line => line.version === resolution)) {
+      seeds.push({
+        package: name,
+        version: resolution,
+        label: 'the highest version the declared peer range admits',
+      })
+    }
+  }
+
+  // The resolution walk. Every seed is a version an install can actually pick:
+  // a declared line, or the top of the declared peer range for a consumer who
+  // pins nothing. From there the walk follows what each version requires,
+  // resolving each range the way a package manager does.
+  const visited = new Set()
+  const pending = [...seeds]
+  while (pending.length > 0) {
+    const current = pending.shift()
+    const key = `${current.package}@${current.version}`
+    if (visited.has(key)) continue
+    visited.add(key)
+    const entry = published(snapshot, current.package)
+    if (entry === null) {
+      findings.push(finding({
+        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+        classification: 'coverage',
+        package: current.package,
+        detail: `the snapshot records nothing for ${current.package}, reached as ${current.label}`,
+      }))
+      continue
+    }
+    const manifest = object(entry.manifests[current.version])
+    if (manifest === null) {
+      findings.push(finding({
+        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+        classification: 'coverage',
+        package: current.package,
+        line: current.version,
+        detail: `the snapshot records no manifest for ${key} (${current.label})`
+          + ', so what it requires of its siblings could not be checked',
+      }))
+      continue
+    }
+    const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
+    const required = {
+      ...(object(manifest.dependencies) ?? {}),
+      ...(object(manifest.peerDependencies) ?? {}),
+    }
+    for (const [target, range] of Object.entries(required)) {
+      if (!target.startsWith(`${DSH_SCOPE}/dsh-`)) continue
+      // An optional peer nothing publishes is not an install failure.
+      if (object(optionalPeers[target])?.optional === true) continue
+      const targetEntry = published(snapshot, target)
+      if (targetEntry === null) {
+        findings.push(finding({
+          code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+          classification: 'coverage',
+          package: current.package,
+          line: current.version,
+          target,
+          range,
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
+            + ` and the snapshot records nothing for ${target}`,
+        }))
         continue
       }
-      const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
-      const required = {
-        ...(object(manifest.dependencies) ?? {}),
-        ...(object(manifest.peerDependencies) ?? {}),
+      checkedLines += 1
+      if (!evaluatableRange(range)) {
+        findings.push(finding({
+          code: 'LEGION_REQUIRED_RANGE_UNPARSEABLE',
+          classification: 'coverage',
+          package: current.package,
+          line: current.version,
+          target,
+          range,
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
+            + ', which is not a range this preflight evaluates',
+        }))
+        continue
       }
-      for (const [target, range] of Object.entries(required)) {
-        if (!target.startsWith(`${DSH_SCOPE}/dsh-`)) continue
-        // An optional peer nothing publishes is not an install failure.
-        if (object(optionalPeers[target])?.optional === true) continue
-        const targetEntry = published(snapshot, target)
-        if (targetEntry === null) {
-          findings.push(finding({
-            code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
-            classification: 'coverage',
-            package: name,
-            line: line.version,
-            target,
-            range,
-            detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
-              + ` and the snapshot records nothing for ${target}`,
-          }))
-          continue
-        }
-        checkedLines += 1
-        if (!evaluatableRange(range)) {
-          findings.push(finding({
-            code: 'LEGION_REQUIRED_RANGE_UNPARSEABLE',
-            classification: 'coverage',
-            package: name,
-            line: line.version,
-            target,
-            range,
-            detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
-              + ', which is not a range this preflight evaluates',
-          }))
-          continue
-        }
-        if (targetEntry.versions.some(version => satisfies(version, range) === true)) continue
+      const candidates = targetEntry.versions.filter(version => satisfies(version, range) === true)
+      if (candidates.length === 0) {
         findings.push(finding({
           code: 'LEGION_REQUIRED_RANGE_UNSATISFIABLE',
           classification: 'upstream-publish-gap',
-          package: name,
-          line: line.version,
+          package: current.package,
+          line: current.version,
           target,
           range,
           publishedVersions: targetEntry.versions,
-          detail: `${name}@${line.version} (${line.label}) requires ${target}@${String(range)}`
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
             + ` and no published version of ${target} satisfies it; the registry offers ${offers(targetEntry.versions)}`,
         }))
+        continue
       }
+      pending.push({
+        package: target,
+        version: sortVersions(candidates).at(-1),
+        label: `required by ${key}`,
+      })
     }
   }
 
