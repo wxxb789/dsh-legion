@@ -588,6 +588,26 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
         + `; ${highestResolvable} is resolvable across the declared closure and inside the declared peer range`,
     }))
   }
+  // Every version in the DSH 0.1.x line is a prerelease, and a package manager
+  // that auto-installs peers may synthesize a stable-floored range (^0.1.1)
+  // for a prerelease it resolved (0.1.1-rc.2). No published version satisfies
+  // such a range, and none of it is visible in what upstream published: the
+  // packed profile install hit exactly this on 2026-08-23 while every declared
+  // line resolved. Reported, never failed on — the range is synthesized by the
+  // installer, not declared by anyone.
+  const resolutionPrerelease = highestResolvable === null
+    ? false
+    : (parseVersion(highestResolvable)?.prerelease.length ?? 0) > 0
+  if (resolutionPrerelease) {
+    findings.push(finding({
+      code: 'LEGION_PRERELEASE_ONLY_RESOLUTION',
+      classification: 'advisory',
+      line: highestResolvable,
+      detail: `the declared peer range resolves only to prereleases (highest ${String(highestResolvable)})`
+        + ', so an install that auto-installs peers can ask the registry for a stable floor of that line'
+        + ' that upstream has never published, even though every declared line resolves as published',
+    }))
+  }
   const ahead = resolvable
     .filter(entry => entry.versions.length > 0
       && highestResolvable !== null

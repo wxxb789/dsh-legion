@@ -196,6 +196,10 @@ describe('dependency availability preflight', () => {
     expect(result.stdout).toContain('LEGION_HOST_LINE_DRIFT')
     expect(result.stdout).toContain('host line drift: behind')
     expect(result.stdout).toContain('0.1.1-rc.2 is resolvable across the declared closure')
+    // A line that exists only as prereleases resolves as published and can
+    // still defeat an installer that asks for a stable floor of it.
+    expect(result.stdout).toContain('LEGION_PRERELEASE_ONLY_RESOLUTION')
+    expect(result.stdout).toContain('resolves only to prereleases (highest 0.1.1-rc.2)')
   })
 
   it('passes the shipped contract against a registry that publishes what it declares', () => {

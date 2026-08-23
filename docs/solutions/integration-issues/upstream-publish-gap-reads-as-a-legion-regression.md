@@ -56,6 +56,21 @@ peer range admits, which was a prerelease published after the declared latest-te
 declared lines therefore reports "satisfied" while the install still fails — the first live run of the preflight
 did exactly that, and the check had to be widened to the version the peer range resolves to.
 
+## What the preflight then proved
+
+The first three live runs of the preflight reported every declared line satisfied while the packed install kept
+failing. The recorded snapshot the gate now keeps as an artifact settles it: across 34 packages and 321
+published manifests, **not one `@deepseek-ai/dsh-*` range is stable-floored** — every published range carries a
+prerelease floor such as `^0.1.1-rc.2`, and every one of them resolves. The range in the install error,
+`>=0.1.1 <0.2.0-0`, is published by nobody: the package manager synthesised it while auto-installing a peer it
+had resolved to a prerelease.
+
+So the closure Legion declares does resolve as published, and the remaining install failure is a different
+defect: a prerelease-only Host line meeting an installer that asks the registry for a stable floor of it. The
+preflight reports that precondition as `LEGION_PRERELEASE_ONLY_RESOLUTION` and does not fail on it, because no
+declaration is wrong — the gate's job is to say which side owns the problem, and here neither the contract nor
+the registry does.
+
 ## What didn't work
 
 - **Reading the version list alone.** Every declared line was published. A preflight that only asks "does this
