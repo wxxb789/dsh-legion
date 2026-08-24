@@ -14,6 +14,13 @@ export type LegionCardKey =
   | 'invalidText' | 'invalidBytes'
   | 'save' | 'saving' | 'discard' | 'saveFailed'
 
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** Copy owned by Legion's plugin settings card. */
+    'settings.legion': LegionCardKey
+  }
+}
+
 /** English copy. */
 export const en: Record<LegionCardKey, string> = {
   title: 'Legion',

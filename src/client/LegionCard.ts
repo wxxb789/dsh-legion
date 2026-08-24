@@ -15,14 +15,15 @@
  * DSH's own cards use plain elements: those atoms are 36px capsules sized for
  * toolbars, not for a settings row's density.
  *
- * Written with `createElement` rather than JSX because Legion carries no React
- * toolchain: React is a platform module resolved from the Host's module table,
- * not a dependency of this package. Keeping to `createElement` also keeps the
- * hand-maintained React declaration in `dsh-client.d.ts` down to one function.
+ * Written with `createElement` rather than JSX because React is a platform
+ * module resolved from the Host's module table. The published React and slot
+ * types still check this component at build time without adding a JSX transform.
  */
 import { createElement as h, type ReactNode } from 'react'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { FieldState, FormShell } from './settings-form.ts'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { FieldState, FormActions, FormShell } from './settings-form.ts'
 
 /** What the Legion card renders. */
 export interface LegionCardState extends FormShell {
@@ -35,28 +36,21 @@ export interface LegionCardState extends FormShell {
   readonly enableStrategies: FieldState
 }
 
-/** Copy the card renders, resolved by the caller. */
-export interface LegionCardCopy {
-  (key: string): string
+/** The registration-side face the card's slot entry injects. */
+export interface LegionCardFace extends FormActions {
+  hooks: {
+    /** Card snapshot bound by the renderer as `useLegionCard`. */
+    legionCard: SnapshotStore<LegionCardState>
+  }
+  /** Disclose or collapse the card's controls. */
+  toggle: () => void
 }
 
-/** Props the slot renderer binds for this card. */
-export interface LegionCardProps {
-  /** Locale lookup bound to Legion's dictionary namespace. */
-  readonly t: LegionCardCopy
-  /** Card snapshot selector published by the controller. */
-  readonly useLegionCard: (select: (state: LegionCardState) => LegionCardState) => LegionCardState
-  /** Disclose or collapse the card's controls. */
-  readonly toggle: () => void
-  /** Stage draft text for one field. */
-  readonly edit: (field: string, text: string) => void
-  /** Stage a clear so the field re-inherits the composition layer. */
-  readonly resetField: (field: string) => void
-  /** Write every staged edit. */
-  readonly save: () => void
-  /** Drop every staged edit. */
-  readonly discard: () => void
-}
+/** Props the slot renderer composes from the published slot contracts. */
+export type LegionCardProps =
+  PropsRuntime<'settings.plugin.item'>
+  & PropsLocale<'settings.legion'>
+  & InjectFace<LegionCardFace>
 
 /** Copy every control row needs regardless of what it edits. */
 interface RowCopy {
@@ -151,7 +145,7 @@ function toggleControl(options: {
   readonly id: string
   readonly state: FieldState
   readonly disabled: boolean
-  readonly copy: LegionCardCopy
+  readonly copy: LegionCardProps['t']
   readonly onEdit: (text: string) => void
 }): ReactNode {
   return h('div', {

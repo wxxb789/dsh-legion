@@ -52,17 +52,15 @@ A negative discovery verdict is cached for the process lifetime, so a harness th
 
 Three DSH facts shape the implementation, and all three are worth knowing before editing it:
 
-1. **The artifact is a wire format.** The loader fetches the bundle outside any module graph and evaluates it as a lazy CJS factory that calls `window.__ModuleLoader__.load({ id, factory })`. The `id` must equal the package name. `tsdown.client.config.ts` reproduces that shape; DSH's own preset for it is unpublished, so the constants there are a hand-maintained mirror with no compile-time link to upstream.
+1. **The artifact is a wire format.** The loader fetches the bundle outside any module graph and evaluates it as a lazy CJS factory that calls `window.__ModuleLoader__.load({ id, factory })`. The `id` must equal the package name. `tsdown.client.config.ts` reproduces that shape; DSH's own preset for it is unpublished, so the constants there remain a hand-maintained mirror pinned by the loader-protocol test.
 
-2. **Platform modules are resolved by the Host, not installed.** React and the DSH client packages are answered by the Host's frozen module table at load time. A `require` the table cannot answer throws at load. That is why the bundle's externals list must stay exactly the module table, and why `tests/client-bundle.spec.ts` executes the artifact under the loader's own protocol and asserts every requested specifier.
+2. **Platform modules are resolved by the Host, but checked from published packages.** React, the client runtime, and UI primitives are answered by the Host's frozen module table at load time, while their published packages supply the build-time contracts. A `require` the table cannot answer still throws at load. That is why the bundle's externals list must stay exactly the module table, and why `tests/client-bundle.spec.ts` executes the artifact under the loader's own protocol and asserts every requested specifier.
 
 3. **A client bundle may not import another plugin's values.** Doing so either duplicates a runtime instance or requests a specifier the table cannot answer. So the card owns its chrome, its staged form, and its revision fencing rather than borrowing the ones DSH's own cards use. `PluginCard`, `ValueField`, and `CardForm` live in `@deepseek-ai/dsh-client-ui-settings-plugins`, which is not in the module table; `src/client/` mirrors their behaviour and geometry instead, and diverges only where upstream is wrong.
 
-Because none of those packages can be ordinary dependencies here, the surface Legion uses is declared locally in `src/client/dsh-client.d.ts`. That is a deliberate, minimal, hand-maintained coupling: an upstream change will not fail the build, it will fail the card at load time. The card keeps its React surface to `createElement` and holds its disclosure state in its own store rather than reaching for hooks, so that declaration stays one function wide.
+Legion now imports the published runtime, slot, locale, settings, and UI-primitives declarations directly. The card props are composed from the Host's `PropsRuntime`, `PropsLocale`, and `InjectFace` contracts, so an upstream surface change fails `typecheck` instead of the page. `@deepseek-ai/dsh-client-ui-renderer` is deliberately absent: it is boot-once shell machinery, not a plugin API. The removed schema-form and React-web package names are likewise absent because neither has a source package or manifest.
 
-## Upstream requests that would remove the hand-maintenance
+## Remaining upstream hand-maintenance
 
-1. Publish the `settings.plugin.item` slot declaration so it need not be re-declared.
-2. Publish the client bundle preset so the artifact format is versioned rather than copied.
-3. Publish the client packages on the same line as the Host so a third party can typecheck against the version it targets.
-4. Put the settings-card layout in the module table — `PluginCard` and the field controls, or their equivalent in `ui-primitives` — so a third-party card inherits the tab's chrome instead of re-deriving it from upstream source each release.
+1. Publish the client bundle preset so the artifact format is versioned rather than copied.
+2. Put the settings-card layout in the module table — `PluginCard` and the field controls, or their equivalent in `ui-primitives` — so a third-party card inherits the tab's chrome instead of re-deriving it from upstream source each release.

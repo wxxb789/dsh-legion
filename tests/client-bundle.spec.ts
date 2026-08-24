@@ -210,8 +210,11 @@ describe('client bundle artifact', () => {
     expect(source).not.toMatch(/import\.meta/)
   })
 
-  it('is declared for discovery by the client module registry', () => {
+  it('declares the exact web platform literal the client registry matches', () => {
     expect(manifest.dsh?.client?.platform).toBe('web')
+  })
+
+  it('exports the client bundle the registry loads', () => {
     const client = manifest.exports['./client'] as { default?: string } | string | undefined
     const resolved = typeof client === 'string' ? client : client?.default
     expect(resolved).toBe('./lib/client.js')

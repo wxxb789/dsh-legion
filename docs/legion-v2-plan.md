@@ -24,7 +24,7 @@ Measured, not claimed:
 | **Zero default Specialists ship.** A bare install registers no tool at all | `src/config.ts:190` (`profiles` is a required dict), `src/index.ts:960-961` |
 | `ContextManifest` is referenced 21 times, **all 21 inside `src/durable-run/`** | the ephemeral path has never used it |
 | Dev dependencies pinned DSH `0.1.0-rc.6` while the Host was at **`0.1.1-rc.2`** — closed by M1.1 | `package.json` devDependencies |
-| The client bundle hand-writes type declarations for packages that **are published** | `src/client/dsh-client.d.ts` vs 40 public packages under `packages/client/` |
+| The client bundle hand-wrote type declarations for packages that **are published** — closed by M1.2 | Published client contracts now drive `typecheck`; `src/client/dsh-client.d.ts` is gone |
 
 The diagnosis in one sentence: **Legion paid the full price of an evidence-gated design and
 collected none of the evidence.** The three capabilities the owner asked for — visible progress,
@@ -103,7 +103,7 @@ never overwrites a user preset.
 | # | Task | Detail |
 |---|---|---|
 | M1.1 ✅ | Track the latest Host | **Done.** devDependencies `0.1.0-rc.6` → `0.1.1-rc.2` with the lockfile regenerated, and the declared window moved with them to minimum `0.1.1-rc.1` / latest-tested `0.1.1-rc.2` / peer range `>=0.1.1-rc.1 <0.2.0`. Policy from here: always follow the latest DSH. See `docs/notes/dsh-0.1.1-rc.2-upgrade.md`. |
-| M1.2 | Delete hand-written client declarations | Remove `src/client/dsh-client.d.ts`; depend on the published `dsh-client-ui-slots`, `dsh-client-runtime`, `dsh-client-ui-primitives`. **Do not** plan against `dsh-client-ui-schema-form` or `dsh-client-web-react` — both directories hold only stale `lib/` residue with no `package.json` or source. **Do not import** `dsh-client-ui-renderer`: it is published but boot-once shell machinery whose `install()` throws on a second call. |
+| M1.2 ✅ | Depend on published client contracts | **Done.** Removed `src/client/dsh-client.d.ts`; the card now compiles against the published slot, runtime, locale, settings, React, and UI-primitives contracts. `dsh-client-ui-schema-form` and `dsh-client-web-react` remain absent because neither has a package manifest or source. `dsh-client-ui-renderer` remains unimported because it is boot-once shell machinery whose `install()` throws on a second call. |
 | M1.3 | Apply the renames | Config contract v3, dual-name window, deprecation diagnostics, pure migration, branded identity and compiled-IR updates, public contract documents. |
 | M1.4 | Wire `ctx.agents` | Subscribe-then-backfill: register `agent/status`, `agent/created`, `agent/disposed`, then backfill with `ctx.agents.list()`. Map a child by `ctx.agents.get(childId)` — `enter()` enforces `childId === agent.session.id`. Use `listChildren`/`listDescendants` for the cold tree. |
 | M1.5 | Run Receipt v0 | Three ingredients, three different truth sources: **stages** from the compiled Strategy IR (known before start), **participation** from `ctx.agents`, **tokens** from `ctx.tokenMeter.measure(childSession)`. Published as a session projection. |

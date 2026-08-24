@@ -11,14 +11,17 @@
  * runtime instance or require a specifier the Host's frozen module table cannot
  * answer — so nothing here is borrowed from the cards DSH ships.
  */
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type { ClientContext, SettingsScope, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 // Module scope: the loader claims plugin styles as soon as this factory
 // returns, so the tag must exist by then.
 import './styles.ts'
-import { LegionCard, type LegionCardState } from './LegionCard.ts'
+import { LegionCard, type LegionCardFace, type LegionCardState } from './LegionCard.ts'
 import {
-  SettingsForm, booleanField, numberField, textField, type FormActions,
+  SettingsForm, booleanField, numberField, textField,
 } from './settings-form.ts'
 import { en, zh } from './locales.ts'
 
@@ -57,26 +60,15 @@ export interface LegionCardSection {
   enableStrategies?: boolean
 }
 
-/** The face this card's slot registration injects. */
-export interface LegionCardFace extends FormActions {
-  hooks: {
-    /** Card snapshot bound by the renderer as `useLegionCard`. */
-    legionCard: unknown
-  }
-  /** Disclose or collapse the card's controls. */
-  toggle: () => void
-}
-
 /** Bridges the `legion` scope onto the card's staged form. */
 export class LegionCardController {
   private readonly form: SettingsForm<LegionCardSection>
-  private readonly store: ReturnType<typeof createSnapshotStore<LegionCardState>>
+  private readonly store: SnapshotStore<LegionCardState>
   /**
    * Which card a user has open is a reading gesture the Host has no stake in,
    * so it lives beside the drafts rather than in the document. It rides the
-   * card store rather than React state so the bundle's React surface stays at
-   * `createElement`, which is the whole of the hand-maintained declaration in
-   * `dsh-client.d.ts`.
+   * card store rather than component-local React state, so it survives slot
+   * renders and remains part of the same published snapshot.
    */
   private open = false
 
