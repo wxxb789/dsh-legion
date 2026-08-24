@@ -55,8 +55,8 @@ body:
     id: dsh-version
     attributes:
       label: DeepSeek Harness version
-      description: Supported peer range is >=0.1.0-rc.6 <0.2.0.
-      placeholder: 0.1.0-rc.6
+      description: Supported peer range is >=0.1.1-rc.1 <0.2.0.
+      placeholder: 0.1.1-rc.2
     validations:
       required: true
   - type: input

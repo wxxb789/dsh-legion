@@ -29,8 +29,8 @@ const checks = [
   ['compatibilityPolicy.peerRanges', [...new Set(Object.entries(manifest.peerDependencies)
     .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
     .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
-  ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.0-rc.6'],
-  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.1-rc.1'],
+  ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.1-rc.1'],
+  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.1-rc.2'],
   ['compatibilityPolicy.assessedDshVersions', compatibilityPolicy.assessedDshVersions, [
     compatibilityPolicy.minimumDshVersion,
     compatibilityPolicy.latestTestedDshVersion,

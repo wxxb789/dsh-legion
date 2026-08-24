@@ -23,7 +23,7 @@ Measured, not claimed:
 | Strategies are fully implemented and **invisible to the model by default** | `src/config.ts:416,429` (`enableStrategies ?? false`) |
 | **Zero default Specialists ship.** A bare install registers no tool at all | `src/config.ts:190` (`profiles` is a required dict), `src/index.ts:960-961` |
 | `ContextManifest` is referenced 21 times, **all 21 inside `src/durable-run/`** | the ephemeral path has never used it |
-| Dev dependencies pin DSH `0.1.0-rc.6`; the Host is at **`0.1.1-rc.2`** | `package.json` devDependencies |
+| Dev dependencies pinned DSH `0.1.0-rc.6` while the Host was at **`0.1.1-rc.2`** — closed by M1.1 | `package.json` devDependencies |
 | The client bundle hand-writes type declarations for packages that **are published** | `src/client/dsh-client.d.ts` vs 40 public packages under `packages/client/` |
 
 The diagnosis in one sentence: **Legion paid the full price of an evidence-gated design and
@@ -102,7 +102,7 @@ never overwrites a user preset.
 
 | # | Task | Detail |
 |---|---|---|
-| M1.1 | Track the latest Host | Bump devDependencies `0.1.0-rc.6` → `0.1.1-rc.2`, regenerate the lockfile against the public registry, fix fallout. Policy from here: always follow the latest DSH. |
+| M1.1 ✅ | Track the latest Host | **Done.** devDependencies `0.1.0-rc.6` → `0.1.1-rc.2` with the lockfile regenerated, and the declared window moved with them to minimum `0.1.1-rc.1` / latest-tested `0.1.1-rc.2` / peer range `>=0.1.1-rc.1 <0.2.0`. Policy from here: always follow the latest DSH. See `docs/notes/dsh-0.1.1-rc.2-upgrade.md`. |
 | M1.2 | Delete hand-written client declarations | Remove `src/client/dsh-client.d.ts`; depend on the published `dsh-client-ui-slots`, `dsh-client-runtime`, `dsh-client-ui-primitives`. **Do not** plan against `dsh-client-ui-schema-form` or `dsh-client-web-react` — both directories hold only stale `lib/` residue with no `package.json` or source. **Do not import** `dsh-client-ui-renderer`: it is published but boot-once shell machinery whose `install()` throws on a second call. |
 | M1.3 | Apply the renames | Config contract v3, dual-name window, deprecation diagnostics, pure migration, branded identity and compiled-IR updates, public contract documents. |
 | M1.4 | Wire `ctx.agents` | Subscribe-then-backfill: register `agent/status`, `agent/created`, `agent/disposed`, then backfill with `ctx.agents.list()`. Map a child by `ctx.agents.get(childId)` — `enter()` enforces `childId === agent.session.id`. Use `listChildren`/`listDescendants` for the cold tree. |

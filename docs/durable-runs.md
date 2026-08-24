@@ -4,7 +4,7 @@ Durable Strategy Runs are explicit, opt-in controllers anchored to one DSH Sessi
 
 ## Capability contract
 
-Mutation requires DSH Session flush, a projection registry, and Host-owned atomic run coordination with monotonic fences. Host-global admission and durable child receipts add stronger scheduling and recovery evidence when available. Missing mandatory capabilities fail closed before mutation. The npm package exports structural ports and pure logic only; it ships no Host service implementation. DSH 0.1.0-rc.6 therefore supports installation, compilation, validation, replay, and deterministic capability diagnostics, not production durable mutation.
+Mutation requires DSH Session flush, a projection registry, and Host-owned atomic run coordination with monotonic fences. Host-global admission and durable child receipts add stronger scheduling and recovery evidence when available. Missing mandatory capabilities fail closed before mutation. The npm package exports structural ports and pure logic only; it ships no Host service implementation. Every DSH release the declared peer range admits, through 0.1.1-rc.2, therefore supports installation, compilation, validation, replay, and deterministic capability diagnostics, not production durable mutation.
 
 ## Run control
 

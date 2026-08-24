@@ -81,11 +81,13 @@ describe('legion-run projection', () => {
     expect(disposed).toBe(true)
   })
 
-  it('satisfies every Host projection contract the peer range admits', () => {
+  it('satisfies the Host projection contract in both spellings', () => {
     const state = foldLegionProjection([runEvent])
 
-    // DSH 0.1.0-rc.6 through 0.1.0-rc.8: the registry validates `view` output
-    // through `schema`, and restores a checkpoint row the same way.
+    // DSH 0.1.0-rc.6 through 0.1.0-rc.8, below the declared floor: the registry
+    // validates `view` output through `schema`, and restores a checkpoint row
+    // the same way. The spelling is kept so a deployment that ignores its peer
+    // warning cannot silently defeat that Host's projection cache.
     expect(legionRunProjection.schema.parse(legionRunProjection.view(state))).toEqual(state)
 
     // DSH 0.1.1-rc.1: the registry seeds a fold from `stateSchema.parse(row.val)`.

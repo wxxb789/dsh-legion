@@ -22,9 +22,11 @@ export interface ForegroundResult {
  * Read the provider-authored failure detail DSH 0.1.0-rc.8 added to
  * `SubagentResult`.
  *
- * This is a real version boundary, not a convenience cast: Legion's peer range
- * still admits 0.1.0-rc.6, whose `SubagentResult` declares no `diagnostic`
- * member, so the field is read as `unknown` and validated instead of declared.
+ * The declared peer range no longer admits a Host without the member: the floor
+ * is 0.1.1-rc.1. The field is still read as `unknown` and validated rather than
+ * declared, because that also holds on a deployment that ignores the peer
+ * warning and mounts Legion on an older Host, where `SubagentResult` carries no
+ * `diagnostic` at all.
  * Providers cap it at 4096 UTF-8 bytes and keep it free of tool inputs, file
  * contents, environment values, and credentials.
  * @param result - the settled child result.

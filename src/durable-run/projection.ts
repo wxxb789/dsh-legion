@@ -294,8 +294,8 @@ export interface ProjectionSchema<Value> {
 }
 
 /**
- * The unit Legion hands `ctx.sessionProjections`, written to satisfy every
- * Host contract the declared peer range admits.
+ * The unit Legion hands `ctx.sessionProjections`, written to satisfy the Host
+ * contract the declared peer range admits and the one it no longer does.
  *
  * DSH 0.1.0-rc.6 through 0.1.0-rc.8 drive a unit through `schema` (which
  * validates the wire payload `view` produces) plus `view`. DSH 0.1.1-rc.1
@@ -308,7 +308,10 @@ export interface ProjectionSchema<Value> {
  * unit in the session, not just this one — the first time a checkpoint row for
  * this key is usable.
  *
- * Carrying both spellings is what keeps one build correct on both. Legion's
+ * The declared range now starts at 0.1.1-rc.1, so only the newer spelling is
+ * required. Both are still carried: the older one costs one member, and it is
+ * what keeps a build mounted on a pre-0.1.1 Host from defeating that Host's
+ * projection cache silently. Legion's
  * `view` is the identity, so one parser is both the state parser and the wire
  * parser and the two members share it. `wire` is deliberately absent: run
  * state is host-only, and no Legion surface reads it from a client snapshot.
@@ -317,12 +320,12 @@ export interface LegionProjectionDefinition {
   readonly key: typeof LEGION_RUN_PROJECTION_KEY
   /** DSH 0.1.1-rc.1 and later: validates persisted state before it seeds a fold. */
   readonly stateSchema: ProjectionSchema<LegionProjectionState>
-  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8: the same parser under its former name. */
+  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8, below the declared floor: the same parser under its former name. */
   readonly schema: ProjectionSchema<LegionProjectionState>
   readonly stateVersion: number
   init(): LegionProjectionState
   apply(state: LegionProjectionState, event: SessionEvent): LegionProjectionState
-  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8 only; 0.1.1-rc.1 reads a client view from `wire`, which a host-only unit omits. */
+  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8 only, below the declared floor; 0.1.1-rc.1 reads a client view from `wire`, which a host-only unit omits. */
   view(state: LegionProjectionState): LegionProjectionState
 }
 

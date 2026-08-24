@@ -4,7 +4,7 @@ The machine-readable contract is [`contracts/journal-v1.json`](../contracts/jour
 
 ## Ownership and availability
 
-DSH Session owns the physical append-only journal and persistence. Legion owns the eight typed event families and the pure `legion-run` projection at state version 6. This package does **not** provide DSH persistence, projection registry, atomic coordination, global admission, or child-receipt Host services. DSH 0.1.0-rc.6 can install and exercise the structural contracts and pure replay logic, but lacks the published coordination/projection services required for production durable mutation.
+DSH Session owns the physical append-only journal and persistence. Legion owns the eight typed event families and the pure `legion-run` projection at state version 6. This package does **not** provide DSH persistence, projection registry, atomic coordination, global admission, or child-receipt Host services. Every DSH release the declared peer range admits, through 0.1.1-rc.2, can install and exercise the structural contracts and pure replay logic, but lacks the published coordination service required for production durable mutation.
 
 Durable execution is opt-in. Before any mutation, Legion requires `sessions.flush`, `sessionProjections.register`, and atomic `legionRunCoordination` acquire/renew/assert/release operations. Missing mandatory capabilities produce deterministic diagnostics and fail closed. No process map, file lock, private WAL, or implicit single-process fallback satisfies this contract.
 

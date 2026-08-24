@@ -594,9 +594,9 @@ describe('dsh-legion', () => {
     await ctx.plugin(LlmRuntime)
     ctx.llm.registerAdapter(['models'], new RouteAdapter({}))
     ctx.subagents.registerProvider(provider('spawn', {
-      // `diagnostic` arrived in DSH 0.1.0-rc.8 and is absent from the 0.1.0-rc.6
-      // SubagentResult the peer floor still admits, so the literal is asserted
-      // rather than declared — the same version boundary settlement.ts reads across.
+      // `diagnostic` arrived in DSH 0.1.0-rc.8 and is absent below the declared
+      // floor, so the literal is asserted rather than declared — the same
+      // validated read settlement.ts performs on an untyped member.
       result: () => ({
         output: [],
         stopReason: 'error',

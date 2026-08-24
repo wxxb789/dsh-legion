@@ -1,6 +1,6 @@
 # Advanced durable Strategy example using only dsh-legion public config contracts.
-# DSH 0.1.0-rc.6 does not publish the Host projection and atomic coordination
-# services required for mutation; enabling this config there fails closed.
+# No DSH release through 0.1.1-rc.2 publishes the atomic coordination service
+# required for mutation; enabling this config there fails closed.
 configVersion: 2
 enableStrategies: true
 enableDurableRuns: true

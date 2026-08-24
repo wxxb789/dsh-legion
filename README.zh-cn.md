@@ -557,7 +557,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 兼容性、开发与发布
 
-Package 要求 Node.js `^22.19.0 || >=24.0.0`，并要求 DSH Peer 版本位于 `>=0.1.0-rc.6 <0.2.0 || >=0.1.1-rc.1 <0.2.0`。第二段并非冗余：semver 只在 comparator 与 prerelease 版本共享同一 `major.minor.patch` 时才接纳该 prerelease，因此仅靠第一段会拒绝所有 `0.1.1-rc.x` 的 DSH。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
+Package 要求 Node.js `^22.19.0 || >=24.0.0`，并要求 DSH Peer 版本位于 `>=0.1.1-rc.1 <0.2.0`。Legion 跟随当前 Host 发布线：[`contracts/compatibility.json`](contracts/compatibility.json) 中的 Peer range、声明的最低版本、最新测试版本与已评估版本列表一起推进，任何一项都不会单独推进。该 range 锚定在 `0.1.1` 的 prerelease comparator 上，因为 semver 只在 comparator 与 prerelease 版本共享同一 `major.minor.patch` 时才接纳该 prerelease；因此未来每条 `0.1.N-rc.x` Host 线都必须在完成评估后才进入 range。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
 
 ~~~bash
 pnpm install --frozen-lockfile
@@ -583,7 +583,7 @@ pnpm run check
 
 Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式启用后，Strategy caller 通过 `execution: { durability: 'journal' }` 选择 journal mode；省略该字段仍走 ephemeral executor。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 6。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
 
-本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。目前也没有任何构建绑定 durable Strategy activation adapter，因此 journal mode 在任何 Host 上都无法启动：`execution` 参数不会出现在模型可见的 Schema 中；以编程方式发起的 journal 请求则 fail closed——在 0.1.0-rc.6 这类版本上给出缺失的 Host capability 诊断码，在能力完备的 Host 上给出 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Session flush 与 projection registry 都是 DSH 的常规服务，base 组合已经挂载；真正缺的是原子 run coordination service——已发布的 DSH 版本都没有提供，因此 production durable mutation 仍不可用；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
+本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。目前也没有任何构建绑定 durable Strategy activation adapter，因此 journal mode 在任何 Host 上都无法启动：`execution` 参数不会出现在模型可见的 Schema 中；以编程方式发起的 journal 请求则 fail closed——在 0.1.1-rc.2 这类版本上给出缺失的 Host capability 诊断码，在能力完备的 Host 上给出 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Session flush 与 projection registry 都是 DSH 的常规服务，base 组合已经挂载；真正缺的是原子 run coordination service——已发布的 DSH 版本都没有提供，因此 production durable mutation 仍不可用；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
 
 ## 相关项目
 

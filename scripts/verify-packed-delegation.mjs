@@ -14,7 +14,9 @@ const compatibilityPolicy = JSON.parse(await readFile(
   join(projectRoot, 'contracts', 'compatibility.json'),
   'utf8',
 ))
-const dshVersionSpec = process.env.DSH_VERSION ?? '0.1.0-rc.6'
+// The fallback is the declared minimum rather than a second literal, so the
+// packed gate cannot target a line the compatibility policy no longer claims.
+const dshVersionSpec = process.env.DSH_VERSION ?? compatibilityPolicy.minimumDshVersion
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandboxRoot))
