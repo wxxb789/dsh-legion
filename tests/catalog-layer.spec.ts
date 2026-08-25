@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { CatalogLayer, StrategySpec, TeamSpec } from '../src/orchestration-contract.ts'
+import type { CatalogLayer, StrategySpec, CohortSpec } from '../src/orchestration-contract.ts'
 import { resolveCatalogLayers } from '../src/catalog-layer.ts'
 import { materializeConfig } from '../src/config.ts'
 
-const team: TeamSpec = {
+const team: CohortSpec = {
   description: 'Base team.',
   members: { executor: { profile: 'deep' } },
 }
@@ -50,10 +50,10 @@ describe('ordered catalog layering', () => {
     ]
     const resolved = resolveCatalogLayers(layers)
 
-    expect(Object.keys(resolved.profiles)).toEqual(['deep', 'quick'])
-    expect(resolved.teams.coding?.description).toBe('Package replacement.')
+    expect(Object.keys(resolved.specialists)).toEqual(['deep', 'quick'])
+    expect(resolved.cohorts.coding?.description).toBe('Package replacement.')
     expect(resolved.strategies.coding?.description).toBe('Revived.')
-    expect(resolved.provenance.teams.coding).toEqual({
+    expect(resolved.provenance.cohorts.coding).toEqual({
       sourceLayer: 'package',
       supersededLayers: ['defaults'],
     })
@@ -67,7 +67,7 @@ describe('ordered catalog layering', () => {
       id: 'defaults',
       disable: { teams: ['missing'] },
     }])
-    expect(disabled.disabled.teams.missing).toBe('defaults')
+    expect(disabled.disabled.cohorts.missing).toBe('defaults')
 
     expect(() => resolveCatalogLayers([
       { id: 'same' },
@@ -149,7 +149,7 @@ describe('ordered catalog layering', () => {
       { id: 'two', teams: { coding: { ...team, description: 'Two.' } } },
       { id: 'one', teams: { coding: team } },
     ])
-    expect(first.teams.coding?.description).toBe('Two.')
-    expect(reversed.teams.coding?.description).toBe('Base team.')
+    expect(first.cohorts.coding?.description).toBe('Two.')
+    expect(reversed.cohorts.coding?.description).toBe('Base team.')
   })
 })

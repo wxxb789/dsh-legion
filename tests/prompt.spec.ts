@@ -9,7 +9,7 @@ describe('compiler-owned coordinator guidance', () => {
   const input = {
     toolName: 'legion',
     enableRunInBackground: false,
-    profiles: {
+    specialists: {
       quick: {
         description: 'Quick work.',
         subagentProvider: 'spawn',

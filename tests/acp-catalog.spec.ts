@@ -239,7 +239,7 @@ describe('curated ACP agent catalog', () => {
       },
     )
     expect(catalog.diagnostics.filter(item => item.severity === 'error')).toEqual([])
-    expect(Object.keys(catalog.activeProfiles).sort()).toEqual(['quick', ...ids].sort())
+    expect(Object.keys(catalog.activeSpecialists).sort()).toEqual(['quick', ...ids].sort())
   })
 })
 
@@ -316,6 +316,6 @@ describe('ACP catalog against the real compiler', () => {
       },
     )
     expect(catalog.diagnostics.filter(item => item.severity === 'error')).toEqual([])
-    expect(Object.keys(catalog.activeProfiles).sort()).toEqual(['quick', 'sample-agent'])
+    expect(Object.keys(catalog.activeSpecialists).sort()).toEqual(['quick', 'sample-agent'])
   })
 })

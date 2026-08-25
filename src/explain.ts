@@ -16,12 +16,13 @@ import {
   ERROR_DIAGNOSTIC_CODES,
   WARNING_DIAGNOSTIC_CODES,
   compileCatalog,
-  type CompiledCatalog,
-  type Diagnostic,
-  type DiagnosticCode,
+  type CompiledSpecialistCatalog,
+  type SpecialistDiagnostic,
+  type SpecialistDiagnosticCode,
   type EffectiveMode,
-  type EffectiveProfile,
+  type EffectiveSpecialist,
   type RuntimeSnapshot,
+  type LegacyDiagnostic,
 } from './compiler.ts'
 import type { ResultContract } from './config.ts'
 import type { ResourceSnapshot } from './resources.ts'
@@ -61,7 +62,7 @@ export type ProfileExplainView =
   | ProfileExplainBase & {
       readonly kind: 'inactive-profile'
       readonly allowedModes: readonly EffectiveMode[]
-      readonly diagnosticCodes: readonly DiagnosticCode[]
+      readonly diagnosticCodes: readonly SpecialistDiagnosticCode[]
     }
 
 export interface ExplainViewV1 {
@@ -81,7 +82,7 @@ export interface ExplainViewV1 {
     readonly activeDefaultProfile?: ProfileName
   }
   readonly profiles: readonly ProfileExplainView[]
-  readonly diagnostics: readonly Diagnostic[]
+  readonly diagnostics: readonly LegacyDiagnostic[]
 }
 
 const routeSchema = {
@@ -356,7 +357,7 @@ export function compileExplainView(
   return explainCatalog(compileCatalog(config, snapshot, resources), options)
 }
 
-function route(profile: EffectiveProfile): ProfileRouteView {
+function route(profile: EffectiveSpecialist): ProfileRouteView {
   const authored = profile.routes?.[0] ?? profile.agentOptions
   return {
     ...authored?.provider === undefined ? {} : { provider: authored.provider },
@@ -365,27 +366,27 @@ function route(profile: EffectiveProfile): ProfileRouteView {
   }
 }
 
-function diagnosticCopy(diagnostic: Diagnostic): Diagnostic {
+function diagnosticCopy(diagnostic: SpecialistDiagnostic): LegacyDiagnostic {
   return diagnostic.severity === 'warning'
     ? {
         code: diagnostic.code,
         severity: 'warning',
         message: diagnostic.message,
-        profile: diagnostic.profile,
+        profile: diagnostic.specialist,
       }
     : {
         code: diagnostic.code,
         severity: 'error',
         message: diagnostic.message,
-        profile: diagnostic.profile,
+        profile: diagnostic.specialist,
       }
 }
 
 /** Project a compiled catalog into one deterministic, versioned, JSON-safe explain view. */
-export function explainCatalog(catalog: CompiledCatalog, options: ExplainOptions): ExplainViewV1 {
+export function explainCatalog(catalog: CompiledSpecialistCatalog, options: ExplainOptions): ExplainViewV1 {
   const diagnostics = catalog.diagnostics.map(diagnosticCopy)
-  const profiles = Object.keys(catalog.profiles).sort().map((key): ProfileExplainView => {
-    const profile = catalog.profiles[key]!
+  const profiles = Object.keys(catalog.specialists).sort().map((key): ProfileExplainView => {
+    const profile = catalog.specialists[key]!
     const base: ProfileExplainBase = {
       name: profile.name,
       subagentProvider: profile.subagentProvider,
@@ -435,10 +436,10 @@ export function explainCatalog(catalog: CompiledCatalog, options: ExplainOptions
       name: catalog.toolName,
       backgroundEnabled: catalog.enableRunInBackground,
       strategyExposureEnabled: catalog.enableStrategies,
-      ...catalog.configuredDefaultProfile === undefined
+      ...catalog.configuredDefaultSpecialist === undefined
         ? {}
-        : { configuredDefaultProfile: catalog.configuredDefaultProfile },
-      ...catalog.defaultProfile === undefined ? {} : { activeDefaultProfile: catalog.defaultProfile },
+        : { configuredDefaultProfile: catalog.configuredDefaultSpecialist },
+      ...catalog.defaultSpecialist === undefined ? {} : { activeDefaultProfile: catalog.defaultSpecialist },
     },
     profiles,
     diagnostics,

@@ -187,6 +187,6 @@ describe('explainCatalog', () => {
     ;(view.diagnostics as unknown as Array<{ message: string }>)[0]!.message = 'changed'
     ;(view.profiles as unknown[]).pop()
     expect(catalog.diagnostics[0]?.message).not.toBe('changed')
-    expect(Object.keys(catalog.profiles)).toHaveLength(2)
+    expect(Object.keys(catalog.specialists)).toHaveLength(2)
   })
 })

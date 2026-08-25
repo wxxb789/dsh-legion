@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto'
 import type { LlmResolvedModelInfo, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { RouteCandidate } from './config.ts'
-import type { DelegationPlan, EffectiveProfile } from './compiler.ts'
+import type { DelegationPlan, EffectiveSpecialist } from './compiler.ts'
 import {
   RoutePlanDigest,
   type PolicyDigest,
-  type ProfileName,
+  type SpecialistName,
   type RoutePlanDigest as RoutePlanDigestType,
 } from './identity.ts'
 
@@ -95,7 +95,7 @@ export type RouteDecision =
 
 interface RoutePlanBase {
   readonly version: 1
-  readonly profile: ProfileName
+  readonly profile: SpecialistName
   readonly policyDigest: PolicyDigest
   readonly planDigest: RoutePlanDigestType
   readonly liveAvailability: {
@@ -125,8 +125,8 @@ export interface UnroutableRoutePlan extends RoutePlanBase {
 }
 
 export type RoutePlan = SelectedRoutePlan | UnroutableRoutePlan
-export type RoutableProfile = EffectiveProfile & {
-  readonly routes: NonNullable<EffectiveProfile['routes']>
+export type RoutableSpecialist = EffectiveSpecialist & {
+  readonly routes: NonNullable<EffectiveSpecialist['routes']>
 }
 
 export class RoutePlanError extends Error {
@@ -456,7 +456,7 @@ function evidence(route: RouteCandidate, fact: ExactModelFact): RouteEvidence {
 
 /** Select the first candidate without a known static contradiction; unknown metadata remains admissible. */
 export function compileRoutePlan(
-  profile: RoutableProfile,
+  profile: RoutableSpecialist,
   policyDigest: PolicyDigest,
   facts: ModelFactsObservations,
 ): RoutePlan {
@@ -572,7 +572,7 @@ function assertSelectedRoutePlan(routePlan: SelectedRoutePlan): void {
 /** Apply one already-frozen selected route to a detached delegation plan. */
 export function applyRoutePlan(plan: DelegationPlan, routePlan: SelectedRoutePlan): DelegationPlan {
   assertSelectedRoutePlan(routePlan)
-  if (plan.profile !== routePlan.profile || plan.policyDigest !== routePlan.policyDigest) {
+  if (plan.specialist !== routePlan.profile || plan.policyDigest !== routePlan.policyDigest) {
     throw new Error('dsh-legion: route plan does not match delegation plan identity')
   }
   const persona = [plan.persona, routePlan.selected.instructions]

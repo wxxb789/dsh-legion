@@ -115,7 +115,7 @@ export async function settleForeground(
   const structured = materializeStructuredResult(plan.result, result.structured)
   return {
     kind: 'foreground',
-    profile: plan.profile,
+    profile: plan.specialist,
     runId: settlement.run.id,
     resultContract: plan.result,
     policyDigest: plan.policyDigest,

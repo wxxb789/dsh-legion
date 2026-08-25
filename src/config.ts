@@ -1,11 +1,11 @@
 import z from '@deepseek-ai/schemastery'
 import {
   StrategySpecSchema,
-  TeamSpecSchema,
+  CohortSpecSchema,
   assertKnownOrchestrationKeys,
   type CatalogLayer,
   type StrategySpec,
-  type TeamSpec,
+  type CohortSpec,
 } from './orchestration-contract.ts'
 import { resolveCatalogLayers } from './catalog-layer.ts'
 import { deepCopy, deepFreeze } from './internal/value.ts'
@@ -84,7 +84,7 @@ export interface RouteCandidate {
   readonly instructions?: string
 }
 
-export interface LegionProfile {
+export interface SpecialistSpec {
   /** Human-readable routing guidance shown to the coordinator. */
   readonly description: string
   /** Named ctx.subagents backend, for example spawn, fork, codex, or claude-code. */
@@ -122,7 +122,7 @@ export interface Config {
   /** Model-facing tool name. */
   readonly toolName: string
   /** Internally normalized Specialist namespace. */
-  readonly profiles: Record<string, LegionProfile>
+  readonly profiles: Record<string, SpecialistSpec>
   /** Profile used when the tool call omits profile. */
   readonly defaultProfile?: string
   /** Whether the tool exposes and accepts run_in_background. */
@@ -140,9 +140,9 @@ export interface Config {
   /** Maximum combined prompt-fragment bytes loaded for one profile. */
   readonly maxResourceBytes?: number
   /** Ordered installed/project catalog layers; the root maps form the final deployment layer. */
-  catalogLayers?: CatalogLayer<LegionProfile>[]
+  catalogLayers?: CatalogLayer<SpecialistSpec>[]
   /** Internally normalized Cohort namespace. */
-  teams?: Record<string, TeamSpec>
+  teams?: Record<string, CohortSpec>
   /** Named declarative Strategies in the final deployment layer. */
   strategies?: Record<string, StrategySpec>
 }
@@ -161,23 +161,23 @@ interface AuthoredCatalogLayer<Profile> extends Omit<
 > {
   readonly specialists?: Readonly<Record<string, Profile>>
   readonly profiles?: Readonly<Record<string, Profile>>
-  readonly cohorts?: Readonly<Record<string, TeamSpec>>
-  readonly teams?: Readonly<Record<string, TeamSpec>>
+  readonly cohorts?: Readonly<Record<string, CohortSpec>>
+  readonly teams?: Readonly<Record<string, CohortSpec>>
   readonly disable?: AuthoredCatalogDisableSpec
 }
 
 interface LegionConfigFields extends Omit<Config, 'profiles' | 'teams' | 'catalogLayers'> {
-  readonly specialists?: Record<string, LegionProfile>
-  readonly profiles?: Record<string, LegionProfile>
-  readonly cohorts?: Record<string, TeamSpec>
-  readonly teams?: Record<string, TeamSpec>
-  readonly catalogLayers?: AuthoredCatalogLayer<LegionProfile>[]
+  readonly specialists?: Record<string, SpecialistSpec>
+  readonly profiles?: Record<string, SpecialistSpec>
+  readonly cohorts?: Record<string, CohortSpec>
+  readonly teams?: Record<string, CohortSpec>
+  readonly catalogLayers?: AuthoredCatalogLayer<SpecialistSpec>[]
 }
 
 /** Authored Config Document accepted during the v1.2 dual-spelling window. */
 export type LegionConfig = LegionConfigFields & (
-  | { readonly specialists: Record<string, LegionProfile>; readonly profiles?: Record<string, LegionProfile> }
-  | { readonly specialists?: Record<string, LegionProfile>; readonly profiles: Record<string, LegionProfile> }
+  | { readonly specialists: Record<string, SpecialistSpec>; readonly profiles?: Record<string, SpecialistSpec> }
+  | { readonly specialists?: Record<string, SpecialistSpec>; readonly profiles: Record<string, SpecialistSpec> }
 )
 
 const PromptFileReferenceSchema: z<PromptFileReference> = z.object({
@@ -210,7 +210,7 @@ const ToolFilterSchema = z.object({
   deny: z.array(z.string().min(1)).default(undefined as unknown as string[]),
 }).default(undefined as unknown as { allow: string[]; deny: string[] })
 
-export const LegionProfileSchema: z<LegionProfile> = z.object({
+export const SpecialistSpecSchema: z<SpecialistSpec> = z.object({
   description: z.string().min(1).required(),
   subagentProvider: z.string().min(1).default('spawn'),
   agentOptions: AgentOptionsSchema,
@@ -240,28 +240,28 @@ const CatalogDisableSchema = z.object({
 
 const CatalogLayerSchema = z.object({
   id: z.string().pattern(PROFILE_NAME).required(),
-  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(LegionProfileSchema),
-  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(LegionProfileSchema)
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(SpecialistSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(SpecialistSpecSchema)
     .description('Deprecated: use "specialists" instead.')
     .deprecated(),
-  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(TeamSpecSchema),
-  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(TeamSpecSchema)
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(CohortSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(CohortSpecSchema)
     .description('Deprecated: use "cohorts" instead.')
     .deprecated(),
   strategies: z.dict(StrategySpecSchema),
   disable: CatalogDisableSchema,
-}) as unknown as z<AuthoredCatalogLayer<LegionProfile>>
+}) as unknown as z<AuthoredCatalogLayer<SpecialistSpec>>
 
 export interface MaterializedConfig extends Config {
   readonly configVersion: typeof CURRENT_CONFIG_VERSION
-  readonly profiles: Record<string, LegionProfile>
+  readonly profiles: Record<string, SpecialistSpec>
   readonly resourceRoots: Record<string, string>
   readonly maxResourceBytes: number
   readonly enableStrategies: boolean
   readonly enableDurableRuns: boolean
   readonly durableRunPolicy: Required<DurableRunPolicySpec>
   readonly catalogLayers: []
-  readonly teams: Record<string, TeamSpec>
+  readonly teams: Record<string, CohortSpec>
   readonly strategies: Record<string, StrategySpec>
 }
 
@@ -277,8 +277,8 @@ export const Config = z.object({
   // offer a change no row obeys.
   role: z.union(LEGION_ROW_ROLES).default('delegation').hidden(),
   toolName: z.string().min(1).default('legion'),
-  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(LegionProfileSchema),
-  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(LegionProfileSchema)
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(SpecialistSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(SpecialistSpecSchema)
     .description('Deprecated: use "specialists" instead.')
     .deprecated(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
@@ -290,8 +290,8 @@ export const Config = z.object({
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
   catalogLayers: z.array(CatalogLayerSchema).max(31),
-  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(TeamSpecSchema),
-  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(TeamSpecSchema)
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(CohortSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(CohortSpecSchema)
     .description('Deprecated: use "cohorts" instead.')
     .deprecated(),
   strategies: z.dict(StrategySpecSchema),
@@ -683,8 +683,8 @@ function materializeConfigInternal(
     enableStrategies: parsed.enableStrategies ?? false,
     enableDurableRuns: parsed.enableDurableRuns ?? false,
     durableRunPolicy: parsed.durableRunPolicy ?? {},
-    profiles: { ...resolved.profiles },
-    teams: { ...resolved.teams },
+    profiles: { ...resolved.specialists },
+    teams: { ...resolved.cohorts },
     strategies: { ...resolved.strategies },
     catalogLayers: [],
   }
@@ -750,10 +750,10 @@ function materializeConfigInternal(
         ...profile.promptFiles === undefined
           ? {}
           : { promptFiles: profile.promptFiles.map(reference => ({ ...reference })) },
-      } satisfies LegionProfile]
+      } satisfies SpecialistSpec]
     })),
     catalogLayers: [],
-    teams: { ...resolved.teams },
+    teams: { ...resolved.cohorts },
     strategies: { ...resolved.strategies },
   })
 }
@@ -768,6 +768,34 @@ export function materializeConfigWithDiagnostics(input: unknown): MaterializedCo
 /** Validate, materialize defaults, and detach one untrusted Legion config. */
 export function materializeConfig(input: unknown): MaterializedConfig {
   return materializeConfigWithDiagnostics(input).config
+}
+
+/** Canonical configuration consumed after the authored compatibility boundary. */
+export interface CompiledConfig extends Omit<MaterializedConfig, 'profiles' | 'defaultProfile' | 'teams'> {
+  readonly specialists: Readonly<Record<string, SpecialistSpec>>
+  readonly defaultSpecialist?: string
+  readonly cohorts: Readonly<Record<string, CohortSpec>>
+}
+
+export interface CompiledConfigResult {
+  readonly config: CompiledConfig
+  readonly diagnostics: readonly ConfigDeprecationDiagnostic[]
+}
+
+export function materializeCompiledConfigWithDiagnostics(input: unknown): CompiledConfigResult {
+  const materialized = materializeConfigWithDiagnostics(input)
+  const { profiles, defaultProfile, teams, ...rest } = materialized.config
+  const config = deepFreeze({
+    ...rest,
+    specialists: profiles,
+    cohorts: teams,
+    ...defaultProfile === undefined ? {} : { defaultSpecialist: defaultProfile },
+  })
+  return deepFreeze({ config, diagnostics: materialized.diagnostics })
+}
+
+export function materializeCompiledConfig(input: unknown): CompiledConfig {
+  return materializeCompiledConfigWithDiagnostics(input).config
 }
 
 /** Export one normalized current document or a rollback-compatible unversioned document. */

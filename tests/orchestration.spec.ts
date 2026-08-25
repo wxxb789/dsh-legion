@@ -63,7 +63,7 @@ describe('Team and Strategy compiler', () => {
   it('compiles the public default catalog to bounded DSH primitive IR', () => {
     const { orchestration } = compiled()
     expect(() => assertOrchestrationCatalogUsable(orchestration)).not.toThrow()
-    expect(Object.keys(orchestration.teams)).toEqual([
+    expect(Object.keys(orchestration.cohorts)).toEqual([
       'independent-review', 'plan-execute-review', 'research-panel',
     ])
     expect(Object.keys(orchestration.strategies)).toEqual([
@@ -71,10 +71,13 @@ describe('Team and Strategy compiler', () => {
     ])
     expect(orchestration.strategies['independent-review']).toMatchObject({
       primitives: [
-        { kind: 'dsh-delegate', stage: 'execute', profile: 'deep' },
-        { kind: 'dsh-delegate', stage: 'review', profile: 'review' },
+        { kind: 'dsh-delegate', stage: 'execute', specialist: 'deep' },
+        { kind: 'dsh-delegate', stage: 'review', specialist: 'review' },
       ],
     })
+    const firstPrimitive = orchestration.strategies['independent-review']!.primitives[0]!
+    expect(Object.keys(firstPrimitive)).toContain('specialist')
+    expect(Object.keys(firstPrimitive)).not.toContain('profile')
     expect(orchestration.strategies['research-panel']).toMatchObject({
       artifacts: {
         findings: { contract: 'text', collection: true, availability: 'degraded' },
@@ -181,7 +184,7 @@ describe('Team and Strategy compiler', () => {
     const recreated = compileOrchestrationCatalog(profileCatalog)
 
     expect(recreated.digest).toBe(layered.digest)
-    expect(recreated.teams).toEqual(layered.teams)
+    expect(recreated.cohorts).toEqual(layered.cohorts)
     expect(recreated.strategies).toEqual(layered.strategies)
   })
 
@@ -197,12 +200,14 @@ describe('Team and Strategy compiler', () => {
       plan: {
         kind: 'compiled-strategy-plan',
         strategy: 'independent-review',
-        team: 'independent-review',
+        cohort: 'independent-review',
         limits: { deadlineMs: 60_000, maxOutputBytes: 128_000 },
       },
     })
     if (!first.ok) throw new Error('expected compiled strategy')
     expect(first.plan.planDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(Object.keys(first.plan)).toContain('cohort')
+    expect(Object.keys(first.plan)).not.toContain('team')
     expect(() => assertCompiledStrategyPlan(first.plan)).not.toThrow()
     expect(() => assertCompiledStrategyPlan({
       ...first.plan,
@@ -328,7 +333,7 @@ describe('Team and Strategy compiler', () => {
     })
     const profileCatalog = compileCatalog(materialized, runtime)
     const orchestration = compileOrchestrationCatalog(profileCatalog)
-    expect(orchestration.teams.roomy).toMatchObject({
+    expect(orchestration.cohorts.roomy).toMatchObject({
       maxMembers: 4,
       maxConcurrentMembers: 1,
     })
@@ -650,10 +655,10 @@ describe('Team and Strategy compiler', () => {
     })
     const profiles = compileCatalog(materialized, { providers: {} })
     const orchestration = compileOrchestrationCatalog(profiles)
-    expect(orchestration.teams.required).toMatchObject({
+    expect(orchestration.cohorts.required).toMatchObject({
       members: { member: { active: false } },
     })
-    expect(orchestration.teams.optional).toMatchObject({
+    expect(orchestration.cohorts.optional).toMatchObject({
       members: { member: { active: false } },
     })
     expect(orchestration.diagnostics).toEqual(expect.arrayContaining([

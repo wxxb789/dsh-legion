@@ -26,7 +26,7 @@
  * outputs and stay frozen.
  */
 import yaml from 'js-yaml'
-import type { LegionProfile } from './config.ts'
+import type { SpecialistSpec } from './config.ts'
 import type { CatalogLayer } from './orchestration-contract.ts'
 import { ORCHESTRATION_NAME } from './orchestration-contract.ts'
 import { deepFreeze } from './internal/value.ts'
@@ -169,7 +169,7 @@ export function defineAcpAgent(spec: AcpAgentSpec): AcpAgentSpec {
  * @param spec - the agent descriptor.
  * @returns the Profile, ready for a catalog layer.
  */
-export function acpProfile(spec: AcpAgentSpec): LegionProfile {
+export function acpProfile(spec: AcpAgentSpec): SpecialistSpec {
   const agent = defineAcpAgent(spec)
   return {
     description: agent.description,
@@ -192,7 +192,7 @@ export function acpProfile(spec: AcpAgentSpec): LegionProfile {
  * @param name - the Profile name, for the diagnostic.
  * @param profile - the authored Profile.
  */
-export function assertAcpProfileCompatible(name: string, profile: LegionProfile): void {
+export function assertAcpProfileCompatible(name: string, profile: SpecialistSpec): void {
   const fields = profile as unknown as Record<string, unknown>
   for (const [field, reason] of Object.entries(ACP_FORBIDDEN_FIELDS)) {
     if (fields[field] !== undefined) {
@@ -225,8 +225,8 @@ export function assertAcpProfileCompatible(name: string, profile: LegionProfile)
 export function acpCatalogLayer(
   agents: readonly AcpAgentSpec[],
   options: AcpCatalogOptions = {},
-): CatalogLayer<LegionProfile> {
-  const profiles: Record<string, LegionProfile> = {}
+): CatalogLayer<SpecialistSpec> {
+  const profiles: Record<string, SpecialistSpec> = {}
   for (const agent of agents) {
     if (profiles[agent.id] !== undefined) {
       throw new AcpCatalogError(`duplicate ACP agent id "${agent.id}"`)

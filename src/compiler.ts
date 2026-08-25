@@ -1,11 +1,11 @@
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { DurableRunPolicySpec, LegionProfile, ResultContract, RouteCandidate } from './config.ts'
-import { materializeConfig } from './config.ts'
+import type { CompiledConfig, DurableRunPolicySpec, SpecialistSpec, ResultContract, RouteCandidate } from './config.ts'
+import { materializeCompiledConfig } from './config.ts'
 import { deepFreeze, sha256Digest } from './internal/value.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import type { SelectedRoutePlan } from './route.ts'
-import type { StrategySpec, TeamSpec } from './orchestration-contract.ts'
+import type { StrategySpec, CohortSpec } from './orchestration-contract.ts'
 import {
   EMPTY_RESOURCE_SNAPSHOT,
   assertResourceSnapshot,
@@ -16,10 +16,10 @@ import {
 import {
   CatalogDigest as catalogDigest,
   PolicyDigest as policyDigest,
-  ProfileName as profileName,
+  SpecialistName as specialistName,
   type CatalogDigest,
   type PolicyDigest,
-  type ProfileName,
+  type SpecialistName,
   type ResourceDigest,
 } from './identity.ts'
 
@@ -40,23 +40,39 @@ export const ERROR_DIAGNOSTIC_CODES = Object.freeze([
 ] as const)
 export type ErrorDiagnosticCode = (typeof ERROR_DIAGNOSTIC_CODES)[number]
 
-export type Diagnostic =
+export type SpecialistDiagnostic =
   | {
       readonly code: WarningDiagnosticCode
       readonly severity: 'warning'
       readonly message: string
-      readonly profile: ProfileName
+      readonly specialist: SpecialistName
     }
   | {
       readonly code: ErrorDiagnosticCode
       readonly severity: 'error'
       readonly message: string
-      readonly profile: ProfileName
+      readonly specialist: SpecialistName
     }
 
-export type DiagnosticCode = Diagnostic['code']
-export type DiagnosticSeverity = Diagnostic['severity']
-export type ErrorDiagnostic = Extract<Diagnostic, { severity: 'error' }>
+export type SpecialistDiagnosticCode = SpecialistDiagnostic['code']
+export type SpecialistDiagnosticSeverity = SpecialistDiagnostic['severity']
+export type SpecialistErrorDiagnostic = Extract<SpecialistDiagnostic, { severity: 'error' }>
+
+/** Published V1 diagnostic shape retained at the explain boundary. */
+export type LegacyDiagnostic =
+  | {
+      readonly code: WarningDiagnosticCode
+      readonly severity: 'warning'
+      readonly message: string
+      readonly profile: SpecialistName
+    }
+  | {
+      readonly code: ErrorDiagnosticCode
+      readonly severity: 'error'
+      readonly message: string
+      readonly profile: SpecialistName
+    }
+export type LegacyErrorDiagnostic = Extract<LegacyDiagnostic, { severity: 'error' }>
 
 export interface ProviderFacts {
   readonly capabilities: SubagentCapabilities
@@ -71,15 +87,15 @@ export interface RuntimeSnapshot {
 
 export type EffectiveMode = 'foreground' | 'continuable'
 
-export interface EffectiveProfile extends Omit<LegionProfile, 'agentOptions' | 'routes' | 'toolFilter' | 'promptFiles'> {
-  readonly name: ProfileName
-  readonly agentOptions?: Readonly<NonNullable<LegionProfile['agentOptions']>>
+export interface EffectiveSpecialist extends Omit<SpecialistSpec, 'agentOptions' | 'routes' | 'toolFilter' | 'promptFiles'> {
+  readonly name: SpecialistName
+  readonly agentOptions?: Readonly<NonNullable<SpecialistSpec['agentOptions']>>
   readonly routes?: readonly Readonly<RouteCandidate>[]
   readonly toolFilter?: {
     readonly allow?: readonly string[]
     readonly deny?: readonly string[]
   }
-  readonly promptFiles?: readonly Readonly<NonNullable<LegionProfile['promptFiles']>[number]>[]
+  readonly promptFiles?: readonly Readonly<NonNullable<SpecialistSpec['promptFiles']>[number]>[]
   readonly active: boolean
   readonly defaultMode: EffectiveMode
   readonly allowedModes: readonly EffectiveMode[]
@@ -88,9 +104,9 @@ export interface EffectiveProfile extends Omit<LegionProfile, 'agentOptions' | '
 }
 
 export class CatalogCompileError extends Error {
-  readonly diagnostics: ErrorDiagnostic[]
+  readonly diagnostics: SpecialistErrorDiagnostic[]
 
-  constructor(diagnostics: readonly ErrorDiagnostic[]) {
+  constructor(diagnostics: readonly SpecialistErrorDiagnostic[]) {
     super(`dsh-legion: invalid compiled catalog: ${diagnostics.map(item => `${item.code}: ${item.message}`).join('; ')}`)
     this.name = 'CatalogCompileError'
     this.diagnostics = diagnostics.map(item => ({ ...item }))
@@ -105,7 +121,7 @@ export interface DelegationInvocation {
 }
 
 export interface DelegationPlan {
-  readonly profile: ProfileName
+  readonly specialist: SpecialistName
   readonly mode: EffectiveMode
   readonly subagentProvider: string
   readonly label: string
@@ -115,9 +131,9 @@ export interface DelegationPlan {
   readonly catalogDigest: CatalogDigest
   readonly resourceDigest: ResourceDigest
   readonly promptFragments: readonly LoadedPromptFragment[]
-  readonly agentOptions?: LegionProfile['agentOptions']
+  readonly agentOptions?: SpecialistSpec['agentOptions']
   readonly persona?: string
-  readonly toolFilter?: LegionProfile['toolFilter']
+  readonly toolFilter?: SpecialistSpec['toolFilter']
   readonly maxDepth?: number
   readonly outputSchema?: ObjectJsonSchema
   readonly routePlan?: SelectedRoutePlan
@@ -133,20 +149,20 @@ export class DelegationPlanError extends Error {
   }
 }
 
-export interface CompiledCatalog {
+export interface CompiledSpecialistCatalog {
   readonly toolName: string
   readonly enableRunInBackground: boolean
   readonly enableStrategies: boolean
   readonly enableDurableRuns: boolean
   readonly durableRunPolicy: Readonly<Required<DurableRunPolicySpec>>
-  readonly configuredDefaultProfile?: ProfileName
-  readonly defaultProfile?: ProfileName
+  readonly configuredDefaultSpecialist?: SpecialistName
+  readonly defaultSpecialist?: SpecialistName
   readonly guidance?: string
-  readonly profiles: Readonly<Record<string, EffectiveProfile>>
-  readonly activeProfiles: Readonly<Record<string, EffectiveProfile>>
-  readonly teams: Readonly<Record<string, TeamSpec>>
+  readonly specialists: Readonly<Record<string, EffectiveSpecialist>>
+  readonly activeSpecialists: Readonly<Record<string, EffectiveSpecialist>>
+  readonly cohorts: Readonly<Record<string, CohortSpec>>
   readonly strategies: Readonly<Record<string, StrategySpec>>
-  readonly diagnostics: readonly Diagnostic[]
+  readonly diagnostics: readonly SpecialistDiagnostic[]
   /** Digest of authored policy after schema defaults, independent of live provider state. */
   readonly policyDigest: PolicyDigest
   /** Digest of policy plus the runtime provider snapshot used for this compilation. */
@@ -160,14 +176,14 @@ function copyPromptFragments(
   return Object.freeze(fragments.map(fragment => Object.freeze({ ...fragment })))
 }
 
-function copyProfile(
-  name: ProfileName,
-  profile: LegionProfile,
+function copySpecialist(
+  name: SpecialistName,
+  profile: SpecialistSpec,
   active: boolean,
   defaultMode: EffectiveMode,
   allowedModes: readonly EffectiveMode[],
   promptFragments: readonly LoadedPromptFragment[],
-): EffectiveProfile {
+): EffectiveSpecialist {
   const agentOptions = profile.agentOptions === undefined
     ? undefined
     : Object.freeze({ ...profile.agentOptions })
@@ -212,20 +228,20 @@ function copyProfile(
 }
 
 function providerError(
-  diagnostics: Diagnostic[],
-  profile: ProfileName,
+  diagnostics: SpecialistDiagnostic[],
+  specialist: SpecialistName,
   code: ErrorDiagnosticCode,
   message: string,
 ): void {
-  diagnostics.push({ code, severity: 'error', profile, message })
+  diagnostics.push({ code, severity: 'error', specialist, message })
 }
 
-function isErrorDiagnostic(diagnostic: Diagnostic): diagnostic is ErrorDiagnostic {
+function isErrorDiagnostic(diagnostic: SpecialistDiagnostic): diagnostic is SpecialistErrorDiagnostic {
   return diagnostic.severity === 'error'
 }
 
 /** Reject a catalog whose present providers cannot satisfy configured defaults. */
-export function assertCatalogUsable(catalog: CompiledCatalog): void {
+export function assertCatalogUsable(catalog: CompiledSpecialistCatalog): void {
   const errors = catalog.diagnostics.filter(isErrorDiagnostic)
   if (errors.length > 0) throw new CatalogCompileError(errors)
 }
@@ -239,19 +255,27 @@ export function compileCatalog(
   input: unknown,
   snapshot: RuntimeSnapshot,
   resources: ResourceSnapshot = EMPTY_RESOURCE_SNAPSHOT,
-): CompiledCatalog {
-  const config = materializeConfig(input)
+): CompiledSpecialistCatalog {
+  return compileSpecialistCatalog(materializeCompiledConfig(input), snapshot, resources)
+}
+
+/** Compile an already-normalized internal configuration without re-entering compatibility parsing. */
+export function compileSpecialistCatalog(
+  config: CompiledConfig,
+  snapshot: RuntimeSnapshot,
+  resources: ResourceSnapshot = EMPTY_RESOURCE_SNAPSHOT,
+): CompiledSpecialistCatalog {
   assertResourceSnapshot(config, resources)
-  const diagnostics: Diagnostic[] = []
+  const diagnostics: SpecialistDiagnostic[] = []
   const llmProviders = snapshot.llmProviders === undefined
     ? undefined
     : new Set(snapshot.llmProviders)
-  const profiles: Record<string, EffectiveProfile> = {}
-  const activeProfiles: Record<string, EffectiveProfile> = {}
+  const specialists: Record<string, EffectiveSpecialist> = {}
+  const activeSpecialists: Record<string, EffectiveSpecialist> = {}
 
-  for (const name of Object.keys(config.profiles).sort()) {
-    const identity = profileName(name)
-    const profile = config.profiles[name]!
+  for (const name of Object.keys(config.specialists).sort()) {
+    const identity = specialistName(name)
+    const profile = config.specialists[name]!
     const result = profile.result ?? 'text'
     const promptFragments = resources.profiles[name] ?? []
     const defaultMode: EffectiveMode = config.enableRunInBackground && profile.defaultRunInBackground
@@ -265,7 +289,7 @@ export function compileCatalog(
       diagnostics.push({
         code: 'PROFILE_LLM_ADAPTER_UNAVAILABLE',
         severity: 'warning',
-        profile: identity,
+        specialist: identity,
         message: `profile "${name}" has no Route Candidate with a registered LLM adapter`,
       })
     }
@@ -276,7 +300,7 @@ export function compileCatalog(
       diagnostics.push({
         code: 'PROFILE_PROVIDER_UNAVAILABLE',
         severity: 'warning',
-        profile: identity,
+        specialist: identity,
         message: `profile "${name}" requires unavailable subagent provider "${profile.subagentProvider}"`,
       })
     } else {
@@ -350,7 +374,7 @@ export function compileCatalog(
     const allowedModes: EffectiveMode[] = []
     if (foregroundSupported) allowedModes.push('foreground')
     if (continuableSupported) allowedModes.push('continuable')
-    const effective = copyProfile(
+    const effective = copySpecialist(
       identity,
       profile,
       allowedModes.includes(defaultMode),
@@ -358,16 +382,16 @@ export function compileCatalog(
       allowedModes,
       promptFragments,
     )
-    profiles[name] = effective
-    if (effective.active) activeProfiles[name] = effective
+    specialists[name] = effective
+    if (effective.active) activeSpecialists[name] = effective
   }
 
-  if (config.defaultProfile !== undefined && activeProfiles[config.defaultProfile] === undefined) {
+  if (config.defaultSpecialist !== undefined && activeSpecialists[config.defaultSpecialist] === undefined) {
     diagnostics.push({
       code: 'DEFAULT_PROFILE_INACTIVE',
       severity: 'warning',
-      profile: profileName(config.defaultProfile),
-      message: `default profile "${config.defaultProfile}" is not active in this runtime snapshot`,
+      specialist: specialistName(config.defaultSpecialist),
+      message: `default profile "${config.defaultSpecialist}" is not active in this runtime snapshot`,
     })
   }
 
@@ -378,12 +402,12 @@ export function compileCatalog(
     enableStrategies: config.enableStrategies,
     enableDurableRuns: config.enableDurableRuns,
     durableRunPolicy: config.durableRunPolicy,
-    ...config.defaultProfile === undefined ? {} : { defaultProfile: config.defaultProfile },
+    ...config.defaultSpecialist === undefined ? {} : { defaultProfile: config.defaultSpecialist },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
     resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
     maxResourceBytes: config.maxResourceBytes,
-    profiles: Object.fromEntries(Object.keys(config.profiles).sort().map(name => [name, config.profiles[name]])),
-    teams: Object.fromEntries(Object.keys(config.teams).sort().map(name => [name, config.teams[name]])),
+    profiles: Object.fromEntries(Object.keys(config.specialists).sort().map(name => [name, config.specialists[name]])),
+    teams: Object.fromEntries(Object.keys(config.cohorts).sort().map(name => [name, config.cohorts[name]])),
     strategies: Object.fromEntries(Object.keys(config.strategies).sort().map(name => [name, config.strategies[name]])),
   }
   const runtime = {
@@ -394,12 +418,12 @@ export function compileCatalog(
     resourceDigest: resources.digest,
   }
 
-  const activeDefaultProfile = config.defaultProfile === undefined
+  const activeDefaultSpecialist = config.defaultSpecialist === undefined
     ? undefined
-    : activeProfiles[config.defaultProfile]?.name
+    : activeSpecialists[config.defaultSpecialist]?.name
 
-  const frozenProfiles = Object.freeze({ ...profiles })
-  const frozenActiveProfiles = Object.freeze({ ...activeProfiles })
+  const frozenSpecialists = Object.freeze({ ...specialists })
+  const frozenActiveSpecialists = Object.freeze({ ...activeSpecialists })
   const frozenDiagnostics = Object.freeze(
     diagnostics.map(diagnostic => Object.freeze({ ...diagnostic })),
   )
@@ -409,14 +433,14 @@ export function compileCatalog(
     enableStrategies: config.enableStrategies,
     enableDurableRuns: config.enableDurableRuns,
     durableRunPolicy: deepFreeze({ ...config.durableRunPolicy }),
-    ...config.defaultProfile === undefined
+    ...config.defaultSpecialist === undefined
       ? {}
-      : { configuredDefaultProfile: profileName(config.defaultProfile) },
-    ...activeDefaultProfile === undefined ? {} : { defaultProfile: activeDefaultProfile },
+      : { configuredDefaultSpecialist: specialistName(config.defaultSpecialist) },
+    ...activeDefaultSpecialist === undefined ? {} : { defaultSpecialist: activeDefaultSpecialist },
     ...config.guidance === undefined ? {} : { guidance: config.guidance },
-    profiles: frozenProfiles,
-    activeProfiles: frozenActiveProfiles,
-    teams: deepFreeze({ ...config.teams }),
+    specialists: frozenSpecialists,
+    activeSpecialists: frozenActiveSpecialists,
+    cohorts: deepFreeze({ ...config.cohorts }),
     strategies: deepFreeze({ ...config.strategies }),
     diagnostics: frozenDiagnostics,
     policyDigest: policyDigest(sha256Digest({ version: 1, kind: 'legion-policy', policy })),
@@ -427,7 +451,7 @@ export function compileCatalog(
 
 /** Compile one invocation into detached plain data before crossing the live DSH start edge. */
 export function compileDelegationPlan(
-  catalog: CompiledCatalog,
+  catalog: CompiledSpecialistCatalog,
   invocation: DelegationInvocation,
 ): DelegationPlan {
   if (typeof invocation !== 'object' || invocation === null || Array.isArray(invocation)) {
@@ -462,15 +486,15 @@ export function compileDelegationPlan(
       'description and prompt must be non-empty bounded strings',
     )
   }
-  const selected = invocation.profile ?? catalog.defaultProfile
+  const selected = invocation.profile ?? catalog.defaultSpecialist
   if (selected === undefined) {
     throw new DelegationPlanError('PROFILE_REQUIRED', 'profile is required because no active default is configured')
   }
-  const known = catalog.profiles[selected]
+  const known = catalog.specialists[selected]
   if (known === undefined) {
     throw new DelegationPlanError('PROFILE_UNKNOWN', `unknown profile "${selected}"`)
   }
-  const profile = catalog.activeProfiles[selected]
+  const profile = catalog.activeSpecialists[selected]
   if (profile === undefined) {
     throw new DelegationPlanError('PROFILE_INACTIVE', `profile "${selected}" is inactive in this runtime snapshot`)
   }
@@ -498,7 +522,7 @@ export function compileDelegationPlan(
     .filter((value): value is string => value !== undefined && value.length > 0)
     .join('\n\n') || undefined
   return deepFreeze({
-    profile: profile.name,
+    specialist: profile.name,
     mode,
     subagentProvider: profile.subagentProvider,
     label: invocation.description,

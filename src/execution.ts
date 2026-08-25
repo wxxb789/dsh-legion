@@ -4,7 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { settleChildRun } from './child-run.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-tools'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
-import type { CompiledCatalog, DelegationPlan } from './compiler.ts'
+import type { CompiledSpecialistCatalog, DelegationPlan } from './compiler.ts'
 import { compileDelegationPlan } from './compiler.ts'
 import { assertCompiledStrategyPlan } from './orchestration.ts'
 import type {
@@ -14,18 +14,18 @@ import type {
   DshPrimitive,
   FanoutPrimitive,
 } from './orchestration.ts'
-import { TeamRunId, type TeamRunId as TeamRunIdType } from './identity.ts'
+import { CohortRunId, type CohortRunId as CohortRunIdType } from './identity.ts'
 import { deepFreeze } from './internal/value.ts'
 import { materializeStructuredResult } from './result-contract.ts'
 import { applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
-export const TEAM_RUN_OUTCOMES = Object.freeze(['completed', 'degraded', 'cancelled', 'failed'] as const)
+export const COHORT_RUN_OUTCOMES = Object.freeze(['completed', 'degraded', 'cancelled', 'failed'] as const)
 
 export interface StrategyExecutionSnapshot {
   readonly kind: 'strategy-execution-snapshot'
   readonly generationId: CompiledOrchestrationCatalog['generationId']
-  readonly profiles: CompiledCatalog
+  readonly specialists: CompiledSpecialistCatalog
   readonly orchestration: CompiledOrchestrationCatalog
 }
 
@@ -46,17 +46,17 @@ export interface StrategyMemberFailure {
   readonly message: string
 }
 
-export type TeamRunOutcome =
+export type CohortRunOutcome =
   | {
       readonly kind: 'completed'
-      readonly runId: TeamRunIdType
+      readonly runId: CohortRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly final: MaterializedStrategyArtifact
     }
   | {
       readonly kind: 'degraded'
-      readonly runId: TeamRunIdType
+      readonly runId: CohortRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly final: MaterializedStrategyArtifact
@@ -64,20 +64,20 @@ export type TeamRunOutcome =
     }
   | {
       readonly kind: 'cancelled'
-      readonly runId: TeamRunIdType
+      readonly runId: CohortRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly reason: string
     }
   | {
       readonly kind: 'failed'
-      readonly runId: TeamRunIdType
+      readonly runId: CohortRunIdType
       readonly planDigest: string
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly failure: StrategyMemberFailure
     }
 
-type TerminalClaim = TeamRunOutcome['kind']
+type TerminalClaim = CohortRunOutcome['kind']
 
 class TerminalArbiter {
   private claimed: TerminalClaim | undefined
@@ -101,17 +101,17 @@ class PrimitiveFailure extends Error {
 }
 
 export function createStrategyExecutionSnapshot(
-  profiles: CompiledCatalog,
+  specialists: CompiledSpecialistCatalog,
   orchestration: CompiledOrchestrationCatalog,
 ): StrategyExecutionSnapshot {
-  if (orchestration.profilePolicyDigest !== profiles.policyDigest
-    || orchestration.profileCatalogDigest !== profiles.catalogDigest) {
+  if (orchestration.specialistPolicyDigest !== specialists.policyDigest
+    || orchestration.specialistCatalogDigest !== specialists.catalogDigest) {
     throw new Error('dsh-legion: orchestration catalog does not match Profile catalog generation')
   }
   return deepFreeze({
     kind: 'strategy-execution-snapshot',
     generationId: orchestration.generationId,
-    profiles,
+    specialists,
     orchestration,
   })
 }
@@ -162,19 +162,19 @@ function selectedAdapterPresent(ctx: Context, plan: DelegationPlan): boolean {
 
 async function delegationPlan(
   ctx: Context,
-  catalog: CompiledCatalog,
+  catalog: CompiledSpecialistCatalog,
   primitive: DshPrimitive,
   prompt: string,
   signal: AbortSignal,
 ): Promise<DelegationPlan> {
   let plan = compileDelegationPlan(catalog, {
-    profile: String(primitive.profile),
+    profile: String(primitive.specialist),
     description: `${primitive.stage} ${primitive.member}`,
     prompt,
     runInBackground: false,
   })
-  const profile = catalog.activeProfiles[primitive.profile]
-  if (profile === undefined) throw new Error(`profile "${primitive.profile}" is inactive`)
+  const profile = catalog.activeSpecialists[primitive.specialist]
+  if (profile === undefined) throw new Error(`profile "${primitive.specialist}" is inactive`)
   if (profile.routes !== undefined) {
     const facts = await observeModelRoutes(ctx.get('llm'), profile.routes, signal)
     const route = compileRoutePlan({ ...profile, routes: profile.routes }, catalog.policyDigest, facts)
@@ -256,7 +256,7 @@ function materializedArtifact(
 
 async function executeOne(
   ctx: Context,
-  catalog: CompiledCatalog,
+  catalog: CompiledSpecialistCatalog,
   primitive: DshPrimitive,
   prompt: string,
   parent: Agent,
@@ -291,20 +291,20 @@ async function executeOne(
   if (settlement.cleanup.kind === 'failed') errors.push(settlement.cleanup.error)
   if (settlement.cleanup.kind === 'pending') errors.push(new Error('subagent cleanup is still pending'))
   if (errors.length > 0) {
-    throw new AggregateError(errors, `profile "${plan.profile}" child execution or cleanup failed`)
+    throw new AggregateError(errors, `profile "${plan.specialist}" child execution or cleanup failed`)
   }
   if (settlement.execution.kind === 'cancelled') {
     throw new Error(boundedMessage(settlement.execution.reason))
   }
   if (settlement.execution.kind !== 'completed') {
-    throw new Error(`profile "${plan.profile}" child did not complete`)
+    throw new Error(`profile "${plan.specialist}" child did not complete`)
   }
   return artifactValue(primitive.output, settlement.execution.result)
 }
 
 async function executeFanout(
   ctx: Context,
-  catalog: CompiledCatalog,
+  catalog: CompiledSpecialistCatalog,
   primitive: FanoutPrimitive,
   prompt: string,
   parent: Agent,
@@ -391,19 +391,19 @@ export async function executeStrategyPlan(
   plan: CompiledStrategyPlan,
   parent: Agent,
   parentSignal: AbortSignal,
-): Promise<TeamRunOutcome> {
-  const { profiles: catalog, orchestration } = snapshot
+): Promise<CohortRunOutcome> {
+  const { specialists: catalog, orchestration } = snapshot
   if (snapshot.kind !== 'strategy-execution-snapshot'
     || snapshot.generationId !== orchestration.generationId
-    || orchestration.profilePolicyDigest !== catalog.policyDigest
-    || orchestration.profileCatalogDigest !== catalog.catalogDigest) {
+    || orchestration.specialistPolicyDigest !== catalog.policyDigest
+    || orchestration.specialistCatalogDigest !== catalog.catalogDigest) {
     throw new Error('dsh-legion: invalid Strategy execution snapshot generation')
   }
   assertCompiledStrategyPlan(plan)
   if (plan.generationId !== snapshot.generationId) {
     throw new Error('dsh-legion: Strategy Plan generation does not match execution snapshot')
   }
-  const runId = TeamRunId(`team-run-${randomUUID()}`)
+  const runId = CohortRunId(`team-run-${randomUUID()}`)
   const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
   const terminal = new TerminalArbiter()
   const claimCancellation = () => { terminal.claim('cancelled') }

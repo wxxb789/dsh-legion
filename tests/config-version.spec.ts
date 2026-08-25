@@ -3,6 +3,7 @@ import {
   CURRENT_CONFIG_VERSION,
   Config as ConfigSchema,
   exportConfigDocument,
+  materializeCompiledConfig,
   materializeConfig,
   materializeConfigWithDiagnostics,
   type Config,
@@ -81,6 +82,17 @@ describe('versioned config migration and rollback', () => {
       configVersion: 2,
       teams: { reviewers: cohort },
     }))
+  })
+
+  it('normalizes authored aliases into canonical internal namespaces', () => {
+    const compiled = materializeCompiledConfig(authored)
+
+    expect(compiled.specialists.deep).toMatchObject(authored.profiles.deep!)
+    expect(compiled.defaultSpecialist).toBe('deep')
+    expect(compiled.cohorts).toEqual({})
+    expect(compiled).not.toHaveProperty('profiles')
+    expect(compiled).not.toHaveProperty('defaultProfile')
+    expect(compiled).not.toHaveProperty('teams')
   })
 
   it('merges disjoint spellings but rejects the same entry under both', () => {

@@ -43,12 +43,12 @@ describe('compileCatalog', () => {
       profiles: { review: base.profiles.review!, quick: base.profiles.quick! },
     }, spawn)
 
-    expect(Object.keys(first.activeProfiles)).toEqual(['quick', 'review'])
-    expect(first.profiles.quick).toMatchObject({
+    expect(Object.keys(first.activeSpecialists)).toEqual(['quick', 'review'])
+    expect(first.specialists.quick).toMatchObject({
       name: 'quick', active: true, defaultMode: 'continuable',
       allowedModes: ['foreground', 'continuable'], result: 'text',
     })
-    expect(first.profiles.review).toMatchObject({
+    expect(first.specialists.review).toMatchObject({
       name: 'review', active: true, defaultMode: 'foreground',
       allowedModes: ['foreground'], result: 'review-v1',
     })
@@ -59,11 +59,11 @@ describe('compileCatalog', () => {
     expect(first.diagnostics).toEqual([])
 
     expect(Object.isFrozen(first)).toBe(true)
-    expect(Object.isFrozen(first.profiles)).toBe(true)
-    expect(Object.isFrozen(first.profiles.review)).toBe(true)
-    expect(Object.isFrozen(first.profiles.review?.toolFilter?.deny)).toBe(true)
+    expect(Object.isFrozen(first.specialists)).toBe(true)
+    expect(Object.isFrozen(first.specialists.review)).toBe(true)
+    expect(Object.isFrozen(first.specialists.review?.toolFilter?.deny)).toBe(true)
     expect(() => {
-      ;(first.profiles.review!.toolFilter!.deny as string[]).push('edit')
+      ;(first.specialists.review!.toolFilter!.deny as string[]).push('edit')
     }).toThrow(TypeError)
     expect(base.profiles.review?.toolFilter?.deny).toEqual(['write'])
   })
@@ -125,23 +125,23 @@ describe('compileCatalog', () => {
       profiles: { ...base.profiles, quick: legacyQuick },
     }, spawn)
 
-    expect(legacy.profiles.quick?.result).toBe('text')
+    expect(legacy.specialists.quick?.result).toBe('text')
     expect(legacy.policyDigest).toBe(explicit.policyDigest)
   })
 
   it('keeps an unavailable provider as an inactive warning without failing the catalog', () => {
     const catalog = compileCatalog(base, { providers: {} })
 
-    expect(catalog.activeProfiles).toEqual({})
+    expect(catalog.activeSpecialists).toEqual({})
     expect(catalog.diagnostics).toEqual([
       expect.objectContaining({
-        code: 'PROFILE_PROVIDER_UNAVAILABLE', severity: 'warning', profile: 'quick',
+        code: 'PROFILE_PROVIDER_UNAVAILABLE', severity: 'warning', specialist: 'quick',
       }),
       expect.objectContaining({
-        code: 'PROFILE_PROVIDER_UNAVAILABLE', severity: 'warning', profile: 'review',
+        code: 'PROFILE_PROVIDER_UNAVAILABLE', severity: 'warning', specialist: 'review',
       }),
       expect.objectContaining({
-        code: 'DEFAULT_PROFILE_INACTIVE', severity: 'warning', profile: 'quick',
+        code: 'DEFAULT_PROFILE_INACTIVE', severity: 'warning', specialist: 'quick',
       }),
     ])
   })
@@ -156,8 +156,8 @@ describe('compileCatalog', () => {
       },
     })
 
-    expect(catalog.profiles.quick?.active).toBe(true)
-    expect(catalog.profiles.review?.active).toBe(false)
+    expect(catalog.specialists.quick?.active).toBe(true)
+    expect(catalog.specialists.review?.active).toBe(false)
     expect(catalog.diagnostics.map(item => item.code)).toEqual([
       'PROFILE_DEPTH_UNSUPPORTED',
       'PROFILE_TOOL_FILTER_UNSUPPORTED',
@@ -179,7 +179,7 @@ describe('compileCatalog', () => {
       },
     })
 
-    expect(catalog.activeProfiles.quick?.allowedModes).toEqual(['continuable'])
+    expect(catalog.activeSpecialists.quick?.allowedModes).toEqual(['continuable'])
     expect(() => compileDelegationPlan(catalog, {
       description: 'force foreground',
       prompt: 'Work.',
@@ -196,7 +196,7 @@ describe('compileCatalog', () => {
       defaultProfile: 'review',
     }, spawn)
 
-    expect(catalog.activeProfiles).toEqual({})
+    expect(catalog.activeSpecialists).toEqual({})
     expect(catalog.diagnostics.map(item => item.code)).toEqual([
       'PROFILE_STRUCTURED_BACKGROUND_UNSUPPORTED',
       'DEFAULT_PROFILE_INACTIVE',
@@ -242,7 +242,7 @@ describe('compileCatalog', () => {
     })
 
     expect(plan).toMatchObject({
-      profile: 'review',
+      specialist: 'review',
       mode: 'foreground',
       subagentProvider: 'spawn',
       label: 'review change',
@@ -258,7 +258,7 @@ describe('compileCatalog', () => {
     expect(() => {
       plan.toolFilter!.deny!.push('edit')
     }).toThrow(TypeError)
-    expect(catalog.activeProfiles.review?.toolFilter?.deny).toEqual(['write'])
+    expect(catalog.activeSpecialists.review?.toolFilter?.deny).toEqual(['write'])
   })
 
   it('refuses a structured profile when invocation forces background execution', () => {
@@ -354,7 +354,7 @@ describe('compileCatalog', () => {
     expect(catalog.diagnostics).toContainEqual(expect.objectContaining({
       code: 'PROFILE_PERSONA_UNSUPPORTED',
       severity: 'error',
-      profile: 'quick',
+      specialist: 'quick',
     }))
 
     const continuable = compileCatalog({
@@ -370,8 +370,8 @@ describe('compileCatalog', () => {
         },
       },
     }, resources)
-    expect(continuable.activeProfiles.quick?.defaultMode).toBe('continuable')
-    expect(continuable.activeProfiles.quick?.allowedModes).toEqual(['continuable'])
+    expect(continuable.activeSpecialists.quick?.defaultMode).toBe('continuable')
+    expect(continuable.activeSpecialists.quick?.allowedModes).toEqual(['continuable'])
   })
 
   it('uses explicit LLM adapter topology to activate routed profiles without inventing offline facts', () => {
@@ -386,18 +386,18 @@ describe('compileCatalog', () => {
       },
     }
     const offlineUnknown = compileCatalog(routed, spawn)
-    expect(offlineUnknown.activeProfiles.quick).toBeDefined()
+    expect(offlineUnknown.activeSpecialists.quick).toBeDefined()
 
     const missing = compileCatalog(routed, { ...spawn, llmProviders: [] })
-    expect(missing.activeProfiles.quick).toBeUndefined()
+    expect(missing.activeSpecialists.quick).toBeUndefined()
     expect(missing.diagnostics).toContainEqual(expect.objectContaining({
       code: 'PROFILE_LLM_ADAPTER_UNAVAILABLE',
       severity: 'warning',
-      profile: 'quick',
+      specialist: 'quick',
     }))
 
     const registered = compileCatalog(routed, { ...spawn, llmProviders: ['models'] })
-    expect(registered.activeProfiles.quick).toBeDefined()
+    expect(registered.activeSpecialists.quick).toBeDefined()
     expect(registered.policyDigest).toBe(missing.policyDigest)
     expect(registered.catalogDigest).not.toBe(missing.catalogDigest)
   })
@@ -426,7 +426,7 @@ describe('compileCatalog', () => {
     })
     expect(catalog.diagnostics).toContainEqual(expect.objectContaining({
       code: 'PROFILE_PERSONA_UNSUPPORTED',
-      profile: 'quick',
+      specialist: 'quick',
     }))
   })
 

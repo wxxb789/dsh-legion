@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
@@ -253,6 +253,20 @@ describe('the Host-plane settings row', () => {
     await ctx.plugin(legion, settingsEntry as unknown as legion.LegionConfig)
     expect([...settings.registrations.keys()]).toEqual(['legion'])
     expect(toolNames(ctx)).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it.each([
+    ['legacy', { profiles: { quick } }, 1],
+    ['canonical', { specialists: { quick } }, 1],
+    ['mixed', { profiles: { quick }, specialists: { deep: quick } }, 2],
+  ] as const)('warns for %s catalog aliases on a settings row', async (_name, catalog, count) => {
+    const ctx = await host()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    await ctx.plugin(legion, { role: 'settings', ...catalog } as unknown as legion.LegionConfig)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(
+      `the ${String(count)} Profile, Team, and Strategy entries it declares are ignored`,
+    ))
     await ctx.fiber.dispose()
   })
 

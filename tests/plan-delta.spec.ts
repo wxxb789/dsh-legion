@@ -14,7 +14,7 @@ function node(id: string, profile = 'default', effectClass: TaskSpec['effectClas
     kind: 'invoke', taskId: TaskId(id), label: id,
     primitive: {
       kind: 'dsh-delegate', stage: id, member: 'worker' as never,
-      profile: profile as never, inputs: [],
+      specialist: profile as never, profile: profile as never, inputs: [],
       output: { name: (id + '-out') as never, contract: 'text', collection: false, availability: 'required', producer: id },
       prompt: id, mode: 'foreground', after: [],
     },

@@ -1,14 +1,14 @@
-import type { LegionProfile } from './config.ts'
+import type { SpecialistSpec } from './config.ts'
 
 const coordinatorCatalogBrand: unique symbol = Symbol('dsh-legion.coordinator-catalog')
 
-export interface CoordinatorProfile extends Omit<LegionProfile, 'routes' | 'toolFilter' | 'promptFiles'> {
-  readonly routes?: readonly Readonly<NonNullable<LegionProfile['routes']>[number]>[]
+export interface CoordinatorSpecialist extends Omit<SpecialistSpec, 'routes' | 'toolFilter' | 'promptFiles'> {
+  readonly routes?: readonly Readonly<NonNullable<SpecialistSpec['routes']>[number]>[]
   readonly toolFilter?: {
     readonly allow?: readonly string[]
     readonly deny?: readonly string[]
   }
-  readonly promptFiles?: readonly Readonly<NonNullable<LegionProfile['promptFiles']>[number]>[]
+  readonly promptFiles?: readonly Readonly<NonNullable<SpecialistSpec['promptFiles']>[number]>[]
   readonly allowedModes?: readonly ('foreground' | 'continuable')[]
 }
 
@@ -16,9 +16,9 @@ export interface CoordinatorCatalog {
   readonly [coordinatorCatalogBrand]: true
   readonly toolName: string
   readonly enableRunInBackground: boolean
-  readonly defaultProfile?: string
+  readonly defaultSpecialist?: string
   readonly guidance?: string
-  readonly profiles: Readonly<Record<string, CoordinatorProfile>>
+  readonly specialists: Readonly<Record<string, CoordinatorSpecialist>>
 }
 
 type CoordinatorCatalogInput = Omit<CoordinatorCatalog, typeof coordinatorCatalogBrand>
@@ -35,7 +35,7 @@ export function createCoordinatorCatalog(input: CoordinatorCatalogInput): Coordi
   return Object.freeze(catalog)
 }
 
-function routeLabel(profile: Pick<CoordinatorProfile, 'agentOptions' | 'routes'>): string {
+function routeLabel(profile: Pick<CoordinatorSpecialist, 'agentOptions' | 'routes'>): string {
   if (profile.routes !== undefined) {
     return profile.routes.map(route => `${route.id}=${route.provider}/${route.model}`).join(' -> ')
   }
@@ -60,7 +60,7 @@ export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
     'Configured profiles:',
   ]
 
-  for (const [name, profile] of Object.entries(config.profiles)) {
+  for (const [name, profile] of Object.entries(config.specialists)) {
     const background = profile.allowedModes === undefined
       ? !config.enableRunInBackground
         ? 'foreground only'
@@ -83,8 +83,8 @@ export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
     'A profile is a fixed capability policy: do not ask a child to widen its tools, model route, or depth.',
   )
 
-  if (config.defaultProfile !== undefined) {
-    lines.push(`Omitting profile selects \`${config.defaultProfile}\`.`)
+  if (config.defaultSpecialist !== undefined) {
+    lines.push(`Omitting profile selects \`${config.defaultSpecialist}\`.`)
   }
   if (config.guidance?.trim()) lines.push('', config.guidance.trim())
   return lines.join('\n')

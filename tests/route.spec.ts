@@ -90,7 +90,7 @@ function catalog() {
 }
 
 function routableProfile(compiled = catalog()) {
-  const profile = compiled.activeProfiles.deep
+  const profile = compiled.activeSpecialists.deep
   if (profile?.routes === undefined) throw new Error('expected routable deep profile')
   return { ...profile, routes: profile.routes }
 }
@@ -253,7 +253,7 @@ describe('exact route planning', () => {
         },
       },
     })
-    const profile = compiled.activeProfiles.deep
+    const profile = compiled.activeSpecialists.deep
     if (profile?.routes === undefined) throw new Error('expected routable profile')
     const facts: ModelFactsObservations = {
       facts: [{

@@ -21,15 +21,15 @@ export interface MemberSlotSpec {
   readonly tags?: readonly string[]
 }
 
-export interface TeamLimits {
+export interface CohortLimits {
   readonly maxMembers?: number
   readonly maxConcurrentMembers?: number
 }
 
-export interface TeamSpec {
+export interface CohortSpec {
   readonly description: string
   readonly members: Readonly<Record<string, MemberSlotSpec>>
-  readonly limits?: TeamLimits
+  readonly limits?: CohortLimits
 }
 
 export interface ArtifactInputRef {
@@ -124,7 +124,7 @@ export interface CatalogDisableSpec {
 export interface CatalogLayer<Profile> {
   readonly id: string
   readonly profiles?: Readonly<Record<string, Profile>>
-  readonly teams?: Readonly<Record<string, TeamSpec>>
+  readonly teams?: Readonly<Record<string, CohortSpec>>
   readonly strategies?: Readonly<Record<string, StrategySpec>>
   readonly disable?: CatalogDisableSpec
 }
@@ -136,16 +136,16 @@ const MemberSlotSchema = z.object({
   tags: z.array(z.string().pattern(ORCHESTRATION_NAME)),
 }) as unknown as z<MemberSlotSpec>
 
-const TeamLimitsSchema: z<TeamLimits> = z.object({
+const CohortLimitsSchema: z<CohortLimits> = z.object({
   maxMembers: z.number().step(1).min(1).max(16),
   maxConcurrentMembers: z.number().step(1).min(1).max(16),
 })
 
-export const TeamSpecSchema = z.object({
+export const CohortSpecSchema = z.object({
   description: z.string().min(1).required(),
   members: z.dict(MemberSlotSchema).required(),
-  limits: TeamLimitsSchema,
-}) as unknown as z<TeamSpec>
+  limits: CohortLimitsSchema,
+}) as unknown as z<CohortSpec>
 
 const ArtifactInputSchema: z<ArtifactInputRef> = z.object({
   artifact: z.string().pattern(ORCHESTRATION_NAME).required(),
@@ -433,15 +433,15 @@ type ValidStrategySpec<Spec extends StrategySpec> =
         : never
     : never
 
-export interface DefinedTeam<Name extends string, Spec extends TeamSpec> {
+export interface DefinedCohort<Name extends string, Spec extends CohortSpec> {
   readonly name: Name
   readonly spec: Spec
 }
 
-export function defineTeam<const Name extends string, const Spec extends TeamSpec>(
+export function defineCohort<const Name extends string, const Spec extends CohortSpec>(
   name: Name,
   spec: Spec,
-): DefinedTeam<Name, Spec> {
+): DefinedCohort<Name, Spec> {
   return { name, spec }
 }
 
@@ -450,9 +450,9 @@ type MemberMinimum<Member> = Member extends { readonly minParticipants: infer Va
   ? Value : 0
 type MemberMaximum<Member> = Member extends { readonly maxParticipants: infer Value extends number }
   ? Value : 1
-type InvalidMemberStage<Team extends TeamSpec, Stage> = Stage extends {
-  readonly member: infer Name extends keyof Team['members'] & string
-} ? Team['members'][Name] extends infer Member
+type InvalidMemberStage<Cohort extends CohortSpec, Stage> = Stage extends {
+  readonly member: infer Name extends keyof Cohort['members'] & string
+} ? Cohort['members'][Name] extends infer Member
   ? Stage extends {
       readonly kind: 'fanout'
       readonly count: infer Count extends number
@@ -468,15 +468,15 @@ type InvalidMemberStage<Team extends TeamSpec, Stage> = Stage extends {
     : LessThan<1, MemberMinimum<Member>> extends true ? Stage : never
   : Stage
 : Stage
-type InvalidMemberStages<Team extends TeamSpec, Stages extends readonly StrategyStageSpec[]> =
-  Stages[number] extends infer Stage ? InvalidMemberStage<Team, Stage> : never
-type RequiredTeamMembers<Team extends TeamSpec> = {
-  [Name in keyof Team['members'] & string]: MemberMinimum<Team['members'][Name]> extends 0
+type InvalidMemberStages<Cohort extends CohortSpec, Stages extends readonly StrategyStageSpec[]> =
+  Stages[number] extends infer Stage ? InvalidMemberStage<Cohort, Stage> : never
+type RequiredTeamMembers<Cohort extends CohortSpec> = {
+  [Name in keyof Cohort['members'] & string]: MemberMinimum<Cohort['members'][Name]> extends 0
     ? never
     : Name
-}[keyof Team['members'] & string]
-type MissingRequiredMembers<Team extends TeamSpec, Stages extends readonly StrategyStageSpec[]> =
-  Exclude<RequiredTeamMembers<Team>, StageMembers<Stages>>
+}[keyof Cohort['members'] & string]
+type MissingRequiredMembers<Cohort extends CohortSpec, Stages extends readonly StrategyStageSpec[]> =
+  Exclude<RequiredTeamMembers<Cohort>, StageMembers<Stages>>
 
 /** Type-level authoring helper; runtime data still crosses the normal schema/compiler seam. */
 export function defineStrategy<const Spec extends StrategySpec>(
@@ -486,24 +486,24 @@ export function defineStrategy<const Spec extends StrategySpec>(
 }
 
 export function defineStrategyFor<
-  const Team extends DefinedTeam<string, TeamSpec>,
+  const Cohort extends DefinedCohort<string, CohortSpec>,
   const Spec extends StrategySpec,
 >(
-  _team: Team,
+  _team: Cohort,
   spec: Spec
     & ValidStrategySpec<Spec>
-    & (Spec['team'] extends Team['name'] ? unknown : never)
-    & (Exclude<StageMembers<Spec['stages']>, keyof Team['spec']['members'] & string> extends never
+    & (Spec['team'] extends Cohort['name'] ? unknown : never)
+    & (Exclude<StageMembers<Spec['stages']>, keyof Cohort['spec']['members'] & string> extends never
       ? unknown
       : never)
-    & (InvalidMemberStages<Team['spec'], Spec['stages']> extends never ? unknown : never)
-    & (MissingRequiredMembers<Team['spec'], Spec['stages']> extends never ? unknown : never),
+    & (InvalidMemberStages<Cohort['spec'], Spec['stages']> extends never ? unknown : never)
+    & (MissingRequiredMembers<Cohort['spec'], Spec['stages']> extends never ? unknown : never),
 ): Spec {
   return spec
 }
 
 /** Profiles currently expose these artifact contracts directly. */
-export function profileResultMatchesArtifact(
+export function specialistResultMatchesArtifact(
   result: ResultContract,
   artifact: Exclude<ArtifactContract, 'objective-v1'>,
 ): boolean {

@@ -1,4 +1,4 @@
-import type { CompiledCatalog, EffectiveProfile } from './compiler.ts'
+import type { CompiledSpecialistCatalog, EffectiveSpecialist } from './compiler.ts'
 import { deepFreeze, sha256Digest } from './internal/value.ts'
 import type {
   ArtifactContract,
@@ -6,7 +6,7 @@ import type {
   StrategySpec,
   StairStepPolicySpec,
   StrategyStageSpec,
-  TeamSpec,
+  CohortSpec,
 } from './orchestration-contract.ts'
 import {
   ArtifactName,
@@ -14,14 +14,14 @@ import {
   StrategyGenerationId,
   StrategyName,
   StrategyPlanDigest,
-  TeamName,
+  CohortName,
   type ArtifactName as ArtifactNameType,
   type MemberSlotName as MemberSlotNameType,
-  type ProfileName,
+  type SpecialistName,
   type StrategyGenerationId as StrategyGenerationIdType,
   type StrategyName as StrategyNameType,
   type StrategyPlanDigest as StrategyPlanDigestType,
-  type TeamName as TeamNameType,
+  type CohortName as CohortNameType,
 } from './identity.ts'
 
 export type OrchestrationDiagnosticCode =
@@ -73,15 +73,15 @@ export interface OrchestrationDiagnostic {
 
 export interface CompiledMemberSlot {
   readonly name: MemberSlotNameType
-  readonly profile: ProfileName
+  readonly specialist: SpecialistName
   readonly minParticipants: number
   readonly maxParticipants: number
   readonly tags: readonly string[]
   readonly active: boolean
 }
 
-export interface CompiledTeam {
-  readonly name: TeamNameType
+export interface CompiledCohort {
+  readonly name: CohortNameType
   readonly description: string
   readonly members: Readonly<Record<string, CompiledMemberSlot>>
   readonly maxMembers: number
@@ -98,10 +98,15 @@ export interface CompiledArtifact {
   readonly producer?: string
 }
 
-interface PrimitiveBase {
+/** Non-enumerable compatibility read used only by the frozen durable V1 adapter. */
+interface DurablePrimitiveV1Compatibility {
+  readonly profile: SpecialistName
+}
+
+interface PrimitiveBase extends DurablePrimitiveV1Compatibility {
   readonly stage: string
   readonly member: MemberSlotNameType
-  readonly profile: ProfileName
+  readonly specialist: SpecialistName
   readonly inputs: readonly ArtifactNameType[]
   readonly output: CompiledArtifact
   readonly prompt: string
@@ -122,10 +127,51 @@ export interface FanoutPrimitive extends PrimitiveBase {
 
 export type DshPrimitive = DelegatePrimitive | FanoutPrimitive
 
+function durableCompatiblePrimitive<Value extends { readonly specialist: SpecialistName }>(
+  value: Value,
+): Value & DurablePrimitiveV1Compatibility {
+  const primitive = { ...value } as Value & DurablePrimitiveV1Compatibility
+  Object.defineProperty(primitive, 'profile', {
+    value: value.specialist,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  })
+  return deepFreeze(primitive)
+}
+
+function serializeLegacyPrimitives(primitives: readonly DshPrimitive[]): readonly Record<string, unknown>[] {
+  return primitives.map(primitive => primitive.kind === 'dsh-subagent-fanout'
+    ? {
+        kind: primitive.kind,
+        stage: primitive.stage,
+        member: primitive.member,
+        profile: primitive.specialist,
+        inputs: primitive.inputs,
+        output: primitive.output,
+        prompt: primitive.prompt,
+        count: primitive.count,
+        minSuccess: primitive.minSuccess,
+        allowDegraded: primitive.allowDegraded,
+        after: primitive.after,
+      }
+    : {
+        kind: primitive.kind,
+        stage: primitive.stage,
+        member: primitive.member,
+        profile: primitive.specialist,
+        inputs: primitive.inputs,
+        output: primitive.output,
+        prompt: primitive.prompt,
+        mode: primitive.mode,
+        after: primitive.after,
+      })
+}
+
 export interface CompiledStrategyTemplate {
   readonly name: StrategyNameType
   readonly description: string
-  readonly team: TeamNameType
+  readonly cohort: CohortNameType
   readonly primitives: readonly DshPrimitive[]
   readonly artifacts: Readonly<Record<string, CompiledArtifact>>
   readonly completion: {
@@ -152,13 +198,13 @@ export class OrchestrationCompileError extends Error {
 }
 
 export interface CompiledOrchestrationCatalog {
-  readonly teams: Readonly<Record<string, CompiledTeam>>
+  readonly cohorts: Readonly<Record<string, CompiledCohort>>
   readonly strategies: Readonly<Record<string, CompiledStrategyTemplate>>
   readonly diagnostics: readonly OrchestrationDiagnostic[]
   readonly digest: `sha256:${string}`
   readonly generationId: StrategyGenerationIdType
-  readonly profilePolicyDigest: string
-  readonly profileCatalogDigest: string
+  readonly specialistPolicyDigest: string
+  readonly specialistCatalogDigest: string
 }
 
 export interface StrategyCompileRequest {
@@ -176,11 +222,16 @@ const compiledStrategyPlans = existingCompiledStrategyPlans instanceof WeakSet
   : new WeakSet<object>()
 globalRegistry[compiledStrategyPlansKey] = compiledStrategyPlans
 
-export interface CompiledStrategyPlan {
+/** Non-enumerable compatibility read used only by the frozen durable V1 adapter. */
+interface DurablePlanV1Compatibility {
+  readonly team: CohortNameType
+}
+
+export interface CompiledStrategyPlan extends DurablePlanV1Compatibility {
   readonly [compiledStrategyPlanBrand]: true
   readonly kind: 'compiled-strategy-plan'
   readonly strategy: StrategyNameType
-  readonly team: TeamNameType
+  readonly cohort: CohortNameType
   readonly objective: string
   readonly objectiveDigest: `sha256:${string}`
   readonly generationId: StrategyGenerationIdType
@@ -214,12 +265,12 @@ function push(
   diagnostics.push({ code, severity, message, ...location })
 }
 
-function compiledTeam(
+function compiledCohort(
   name: string,
-  spec: TeamSpec,
-  profiles: CompiledCatalog,
+  spec: CohortSpec,
+  profiles: CompiledSpecialistCatalog,
   diagnostics: OrchestrationDiagnostic[],
-): CompiledTeam | undefined {
+): CompiledCohort | undefined {
   const startErrors = diagnostics.length
   const members: Record<string, CompiledMemberSlot> = {}
   const entries = Object.entries(spec.members).sort(([left], [right]) => left.localeCompare(right))
@@ -227,7 +278,7 @@ function compiledTeam(
   let sumMin = 0
   let sumMax = 0
   for (const [slot, authored] of entries) {
-    let profile: EffectiveProfile | undefined = profiles.profiles[authored.profile]
+    let profile: EffectiveSpecialist | undefined = profiles.specialists[authored.profile]
     if (profile === undefined) {
       push(
         diagnostics,
@@ -263,7 +314,7 @@ function compiledTeam(
     sumMax += max
     members[slot] = deepFreeze({
       name: MemberSlotName(slot),
-      profile: profile.name,
+      specialist: profile.name,
       minParticipants: min,
       maxParticipants: max,
       tags: [...new Set(authored.tags ?? [])].sort(),
@@ -292,7 +343,7 @@ function compiledTeam(
   }
   if (diagnostics.slice(startErrors).some(item => item.severity === 'error')) return undefined
   return deepFreeze({
-    name: TeamName(name),
+    name: CohortName(name),
     description: spec.description,
     members,
     maxMembers,
@@ -358,8 +409,8 @@ function hasStrategyDependencyCycle(spec: StrategySpec): boolean {
 function compileStrategyTemplate(
   name: string,
   spec: StrategySpec,
-  team: CompiledTeam | undefined,
-  profiles: CompiledCatalog,
+  team: CompiledCohort | undefined,
+  profiles: CompiledSpecialistCatalog,
   diagnostics: OrchestrationDiagnostic[],
 ): CompiledStrategyTemplate | undefined {
   const startErrors = diagnostics.length
@@ -522,13 +573,13 @@ function compileStrategyTemplate(
       )
       continue
     }
-    const profile = profiles.profiles[member.profile]
+    const profile = profiles.specialists[member.specialist]
     if (profile === undefined || profile.result !== stage.output.contract) {
       push(
         diagnostics,
         'STRATEGY_PROFILE_RESULT_MISMATCH',
         'error',
-        `strategy "${name}" stage "${stage.id}" output ${stage.output.contract} does not match profile "${member.profile}" result`,
+        `strategy "${name}" stage "${stage.id}" output ${stage.output.contract} does not match profile "${member.specialist}" result`,
         location,
       )
     }
@@ -586,11 +637,11 @@ function compileStrategyTemplate(
     artifacts[stage.output.artifact] = output
     agents += expectedAgentCount(stage)
     if (stage.kind === 'fanout') {
-      primitives.push(deepFreeze({
+      primitives.push(durableCompatiblePrimitive({
         kind: 'dsh-subagent-fanout',
         stage: stage.id,
         member: member.name,
-        profile: member.profile,
+        specialist: member.specialist,
         inputs: inputNames,
         output,
         prompt: stage.prompt,
@@ -600,11 +651,11 @@ function compileStrategyTemplate(
         after,
       }))
     } else {
-      primitives.push(deepFreeze({
+      primitives.push(durableCompatiblePrimitive({
         kind: 'dsh-delegate',
         stage: stage.id,
         member: member.name,
-        profile: member.profile,
+        specialist: member.specialist,
         inputs: inputNames,
         output,
         prompt: stage.prompt,
@@ -708,7 +759,7 @@ function compileStrategyTemplate(
   return deepFreeze({
     name: StrategyName(name),
     description: spec.description,
-    team: team.name,
+    cohort: team.name,
     primitives,
     artifacts,
     completion: { artifact: completion.name, contract: completion.contract },
@@ -726,18 +777,18 @@ export function assertOrchestrationCatalogUsable(catalog: CompiledOrchestrationC
 
 /** Compile layered Team/Strategy data against one already-compiled Profile catalog. */
 export function compileOrchestrationCatalog(
-  profiles: CompiledCatalog,
+  profiles: CompiledSpecialistCatalog,
 ): CompiledOrchestrationCatalog {
   const diagnostics: OrchestrationDiagnostic[] = []
-  const teams: Record<string, CompiledTeam> = {}
-  for (const name of Object.keys(profiles.teams).sort()) {
-    const team = compiledTeam(name, profiles.teams[name]!, profiles, diagnostics)
-    if (team !== undefined) teams[name] = team
+  const cohorts: Record<string, CompiledCohort> = {}
+  for (const name of Object.keys(profiles.cohorts).sort()) {
+    const team = compiledCohort(name, profiles.cohorts[name]!, profiles, diagnostics)
+    if (team !== undefined) cohorts[name] = team
   }
   const strategies: Record<string, CompiledStrategyTemplate> = {}
   for (const name of Object.keys(profiles.strategies).sort()) {
     const spec = profiles.strategies[name]!
-    const strategy = compileStrategyTemplate(name, spec, teams[spec.team], profiles, diagnostics)
+    const strategy = compileStrategyTemplate(name, spec, cohorts[spec.team], profiles, diagnostics)
     if (strategy !== undefined) strategies[name] = strategy
   }
   const identity = {
@@ -745,18 +796,18 @@ export function compileOrchestrationCatalog(
     kind: 'legion-orchestration-catalog',
     profilePolicyDigest: profiles.policyDigest,
     profileCatalogDigest: profiles.catalogDigest,
-    teams,
+    teams: cohorts,
     strategies,
   }
   const catalogDigest = sha256Digest(identity)
   return deepFreeze({
-    teams,
+    cohorts,
     strategies,
     diagnostics,
     digest: catalogDigest,
     generationId: StrategyGenerationId(catalogDigest),
-    profilePolicyDigest: profiles.policyDigest,
-    profileCatalogDigest: profiles.catalogDigest,
+    specialistPolicyDigest: profiles.policyDigest,
+    specialistCatalogDigest: profiles.catalogDigest,
   })
 }
 
@@ -809,7 +860,7 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
     'Configured bounded Team Strategies (use the strategy argument instead of profile):',
     ...strategies.map(strategy =>
       `- \`${strategy.name}\`: ${strategy.description} `
-      + `(team: ${strategy.team}; max agents: ${String(strategy.limits.maxAgents)}; foreground)`),
+      + `(team: ${strategy.cohort}; max agents: ${String(strategy.limits.maxAgents)}; foreground)`),
     'Strategy calls are foreground and return completed, degraded, cancelled, or failed outcomes.',
   ].join('\n')
 }
@@ -826,9 +877,9 @@ export function assertCompiledStrategyPlan(plan: CompiledStrategyPlan): void {
     kind: 'legion-strategy-plan',
     generationId: plan.generationId,
     strategy: plan.strategy,
-    team: plan.team,
+    team: plan.cohort,
     objectiveDigest,
-    primitives: plan.primitives,
+    primitives: serializeLegacyPrimitives(plan.primitives),
     artifacts: plan.artifacts,
     completion: plan.completion,
     ...plan.advancement === undefined ? {} : { advancement: plan.advancement },
@@ -936,9 +987,9 @@ export function compileStrategy(
     kind: 'legion-strategy-plan',
     generationId: catalog.generationId,
     strategy: strategy.name,
-    team: strategy.team,
+    team: strategy.cohort,
     objectiveDigest,
-    primitives: strategy.primitives,
+    primitives: serializeLegacyPrimitives(strategy.primitives),
     artifacts: strategy.artifacts,
     completion: strategy.completion,
     ...strategy.advancement === undefined ? {} : { advancement: strategy.advancement },
@@ -948,7 +999,7 @@ export function compileStrategy(
   const plan = {
     kind: 'compiled-strategy-plan',
     strategy: strategy.name,
-    team: strategy.team,
+    cohort: strategy.cohort,
     objective,
     objectiveDigest,
     generationId: catalog.generationId,
@@ -960,6 +1011,12 @@ export function compileStrategy(
     limits,
     memberFailure: strategy.memberFailure,
   } as unknown as CompiledStrategyPlan
+  Object.defineProperty(plan, 'team', {
+    value: strategy.cohort,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  })
   compiledStrategyPlans.add(plan)
   deepFreeze(plan)
   return deepFreeze({ ok: true, plan, diagnostics })

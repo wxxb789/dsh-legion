@@ -7,10 +7,10 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import {
   Config,
   materializeConfig,
-  materializeConfigWithDiagnostics,
+  materializeCompiledConfigWithDiagnostics,
   validateSettingsSection,
   type LegionConfig,
-  type MaterializedConfig,
+  type CompiledConfig,
 } from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
@@ -22,8 +22,8 @@ import {
 } from './durable-run/capabilities.ts'
 import {
   assertCatalogUsable,
-  compileCatalog,
   compileDelegationPlan,
+  compileSpecialistCatalog,
   type DelegationPlan,
   type RuntimeSnapshot,
 } from './compiler.ts'
@@ -42,7 +42,7 @@ import {
 } from './execution.ts'
 import type { StrategyLimits } from './orchestration-contract.ts'
 import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
-import { EMPTY_RESOURCE_SNAPSHOT, loadProfileResources, type ResourceSnapshot } from './resources.ts'
+import { EMPTY_RESOURCE_SNAPSHOT, loadSpecialistResources, type ResourceSnapshot } from './resources.ts'
 import {
   LEGION_SETTINGS_NAMESPACE,
   detectSettingsCapabilities,
@@ -56,7 +56,7 @@ import {
 export {
   CURRENT_CONFIG_VERSION,
   Config,
-  LegionProfileSchema,
+  SpecialistSpecSchema as LegionProfileSchema,
   PROFILE_NAME,
   RESULT_CONTRACTS,
   exportConfigDocument,
@@ -68,7 +68,7 @@ export type {
   ConfigExportTarget,
   ConfigVersion,
   DurableRunPolicySpec,
-  LegionProfile,
+  SpecialistSpec as LegionProfile,
   MaterializedConfig,
   PromptFileReference,
   ResultContract,
@@ -85,16 +85,16 @@ export {
   compileDelegationPlan,
 } from './compiler.ts'
 export type {
-  CompiledCatalog,
+  CompiledSpecialistCatalog as CompiledCatalog,
   DelegationInvocation,
   DelegationPlan,
-  Diagnostic,
-  DiagnosticCode,
-  DiagnosticSeverity,
-  ErrorDiagnostic,
+  LegacyDiagnostic as Diagnostic,
+  SpecialistDiagnosticCode as DiagnosticCode,
+  SpecialistDiagnosticSeverity as DiagnosticSeverity,
+  LegacyErrorDiagnostic as ErrorDiagnostic,
   ErrorDiagnosticCode,
   WarningDiagnosticCode,
-  EffectiveProfile,
+  EffectiveSpecialist as EffectiveProfile,
   ProviderFacts,
   RuntimeSnapshot,
 } from './compiler.ts'
@@ -106,10 +106,10 @@ export {
 } from './result-contract.ts'
 export {
   EMPTY_RESOURCE_SNAPSHOT,
-  ProfileResourceError,
+  SpecialistResourceError as ProfileResourceError,
   assertResourceSnapshot,
   createResourceSnapshot,
-  loadProfileResources,
+  loadSpecialistResources as loadProfileResources,
   promptContentDigest,
   renderPromptFragments,
 } from './resources.ts'
@@ -136,7 +136,7 @@ export type {
   RoutePlan,
   RouteRejectCode,
   RouteUnknownCode,
-  RoutableProfile,
+  RoutableSpecialist as RoutableProfile,
   SelectedRoutePlan,
   UnroutableRoutePlan,
 } from './route.ts'
@@ -179,10 +179,10 @@ export {
   STRATEGY_STAGE_KINDS,
   StairStepPolicySpecSchema,
   StrategySpecSchema,
-  TeamSpecSchema,
+  CohortSpecSchema as TeamSpecSchema,
   defineStrategy,
   defineStrategyFor,
-  defineTeam,
+  defineCohort as defineTeam,
 } from './orchestration-contract.ts'
 export type {
   ArtifactContract,
@@ -190,7 +190,7 @@ export type {
   ArtifactOutputSpec,
   CatalogDisableSpec,
   CatalogLayer,
-  DefinedTeam,
+  DefinedCohort as DefinedTeam,
   DelegateStageSpec,
   FanoutStageSpec,
   MemberSlotSpec,
@@ -200,8 +200,8 @@ export type {
   StrategySpec,
   StrategyStageSpec,
   SynthesizeStageSpec,
-  TeamLimits,
-  TeamSpec,
+  CohortLimits as TeamLimits,
+  CohortSpec as TeamSpec,
 } from './orchestration-contract.ts'
 export {
   OrchestrationCompileError,
@@ -218,7 +218,7 @@ export type {
   CompiledOrchestrationCatalog,
   CompiledStrategyPlan,
   CompiledStrategyTemplate,
-  CompiledTeam,
+  CompiledCohort as CompiledTeam,
   DelegatePrimitive,
   DshPrimitive,
   FanoutPrimitive,
@@ -264,7 +264,7 @@ export type {
   SettingsSectionHooks,
 } from './settings.ts'
 export {
-  TEAM_RUN_OUTCOMES,
+  COHORT_RUN_OUTCOMES as TEAM_RUN_OUTCOMES,
   createStrategyExecutionSnapshot,
   executeStrategyPlan,
 } from './execution.ts'
@@ -272,7 +272,7 @@ export type {
   MaterializedStrategyArtifact,
   StrategyExecutionSnapshot,
   StrategyMemberFailure,
-  TeamRunOutcome,
+  CohortRunOutcome as TeamRunOutcome,
 } from './execution.ts'
 
 export * from './durable-run/contract.ts'
@@ -441,9 +441,9 @@ function parseToolArgs(
   }
 }
 
-function runtimeSnapshot(ctx: Context, config: Config): RuntimeSnapshot {
+function runtimeSnapshot(ctx: Context, config: CompiledConfig): RuntimeSnapshot {
   const providers = Object.fromEntries(
-    [...new Set(Object.values(config.profiles).map(profile => profile.subagentProvider))]
+    [...new Set(Object.values(config.specialists).map(profile => profile.subagentProvider))]
       .sort()
       .flatMap((name) => {
         const provider = ctx.subagents.getProvider(name)
@@ -465,35 +465,35 @@ function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
   const provider = ctx.subagents.getProvider(plan.subagentProvider)
   if (provider === undefined) {
     throw new Error(
-      `dsh-legion: profile "${plan.profile}" requires unavailable subagent provider "${plan.subagentProvider}"`,
+      `dsh-legion: profile "${plan.specialist}" requires unavailable subagent provider "${plan.subagentProvider}"`,
     )
   }
   if (plan.mode === 'continuable') {
     if (provider.prepareContinuable === undefined) {
       throw new Error(
-        `dsh-legion: profile "${plan.profile}" cannot run in the background because provider "${provider.name}" is not continuable`,
+        `dsh-legion: profile "${plan.specialist}" cannot run in the background because provider "${provider.name}" is not continuable`,
       )
     }
     return provider
   }
   if (plan.maxDepth !== undefined && !provider.capabilities.depthLimit) {
     throw new Error(
-      `dsh-legion: profile "${plan.profile}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
+      `dsh-legion: profile "${plan.specialist}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
     )
   }
   if (plan.persona !== undefined && !provider.capabilities.persona) {
     throw new Error(
-      `dsh-legion: profile "${plan.profile}" sets persona but provider "${provider.name}" does not support it`,
+      `dsh-legion: profile "${plan.specialist}" sets persona but provider "${provider.name}" does not support it`,
     )
   }
   if (plan.toolFilter !== undefined && !provider.capabilities.toolFilter) {
     throw new Error(
-      `dsh-legion: profile "${plan.profile}" sets toolFilter but provider "${provider.name}" does not support it`,
+      `dsh-legion: profile "${plan.specialist}" sets toolFilter but provider "${provider.name}" does not support it`,
     )
   }
   if (plan.outputSchema !== undefined && !provider.capabilities.outputSchema) {
     throw new Error(
-      `dsh-legion: profile "${plan.profile}" requires structured output but provider "${provider.name}" does not support it`,
+      `dsh-legion: profile "${plan.specialist}" requires structured output but provider "${provider.name}" does not support it`,
     )
   }
   return provider
@@ -562,8 +562,8 @@ function createToolDefinition(
     readonly capabilities: DurableCapabilitySnapshot
   },
 ): ToolDefinition {
-  const { profiles: catalog, orchestration } = snapshot
-  const profileNames = Object.keys(catalog.activeProfiles)
+  const { specialists: catalog, orchestration } = snapshot
+  const profileNames = Object.keys(catalog.activeSpecialists)
   const strategyNames = catalog.enableStrategies
     ? Object.values(orchestration.strategies)
         .filter(strategy => strategy.active)
@@ -573,10 +573,10 @@ function createToolDefinition(
   const hasStrategySurface = strategyNames.length > 0
   const durableExecutionExposed = durable.enabled
     && durableActivationAvailable(durable.capabilities)
-  const profileRequired = catalog.defaultProfile === undefined && !hasStrategySurface
-  const profileDescription = catalog.defaultProfile === undefined
+  const profileRequired = catalog.defaultSpecialist === undefined && !hasStrategySurface
+  const profileDescription = catalog.defaultSpecialist === undefined
     ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
-    : `Configured semantic profile. Defaults to ${catalog.defaultProfile}.`
+    : `Configured semantic profile. Defaults to ${catalog.defaultSpecialist}.`
 
   const definition = defineTool({
     name: catalog.toolName,
@@ -742,7 +742,7 @@ function createToolDefinition(
         prompt: args.prompt,
         ...args.run_in_background === undefined ? {} : { runInBackground: args.run_in_background },
       })
-      const profile = catalog.activeProfiles[plan.profile]!
+      const profile = catalog.activeSpecialists[plan.specialist]!
       if (profile.routes !== undefined) {
         const facts = await observeModelRoutes(ctx.get('llm'), profile.routes, exec.signal)
         const routePlan = compileRoutePlan(
@@ -766,7 +766,7 @@ function createToolDefinition(
         })
         return {
           kind: 'continuable' as const,
-          profile: plan.profile,
+          profile: plan.specialist,
           subagentId: started.childId,
           policyDigest: plan.policyDigest,
           catalogDigest: plan.catalogDigest,
@@ -856,8 +856,8 @@ function delegatingToolDefinition(
   }
 }
 
-function profileResourceBase(ctx: Context, config: Config): string | undefined {
-  const hasReferences = Object.values(config.profiles).some(profile => (profile.promptFiles?.length ?? 0) > 0)
+function profileResourceBase(ctx: Context, config: CompiledConfig): string | undefined {
+  const hasReferences = Object.values(config.specialists).some(profile => (profile.promptFiles?.length ?? 0) > 0)
   if (!hasReferences) return undefined
   if (ctx.baseUrl === undefined) {
     throw new Error('dsh-legion: prompt file references require a file-based plugin context')
@@ -877,7 +877,7 @@ function profileResourceBase(ctx: Context, config: Config): string | undefined {
  * different revision.
  */
 interface ConfigGeneration {
-  readonly config: MaterializedConfig
+  readonly config: CompiledConfig
   readonly resources: ResourceSnapshot
 }
 
@@ -979,7 +979,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
   let stopped = false
 
   const materializeGeneration = async (authored: LegionConfig): Promise<ConfigGeneration> => {
-    const materialized = materializeConfigWithDiagnostics(authored)
+    const materialized = materializeCompiledConfigWithDiagnostics(authored)
     for (const diagnostic of materialized.diagnostics) {
       ctx.logger.warn(`${diagnostic.code}: ${diagnostic.message}`)
     }
@@ -987,7 +987,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     const resourceBase = profileResourceBase(ctx, resolved)
     const resources: ResourceSnapshot = resourceBase === undefined
       ? EMPTY_RESOURCE_SNAPSHOT
-      : await loadProfileResources(resolved, { baseDirectory: resourceBase })
+      : await loadSpecialistResources(authored, { baseDirectory: resourceBase })
     return { config: resolved, resources }
   }
 
@@ -1012,7 +1012,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     )
   }
 
-  const announceDurableGap = (resolved: MaterializedConfig): void => {
+  const announceDurableGap = (resolved: CompiledConfig): void => {
     const gap = resolved.enableDurableRuns && !durableCapabilities.durableMutation
     if (!gap || warnedDurableGap) {
       warnedDurableGap = gap
@@ -1079,12 +1079,12 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     registrationFailed = false
     try {
       const { config: resolved, resources } = generation
-      const nextProfiles = compileCatalog(resolved, runtimeSnapshot(ctx, resolved), resources)
+      const nextProfiles = compileSpecialistCatalog(resolved, runtimeSnapshot(ctx, resolved), resources)
       assertCatalogUsable(nextProfiles)
       const nextOrchestration = compileOrchestrationCatalog(nextProfiles)
       assertOrchestrationCatalogUsable(nextOrchestration)
       const nextSnapshot = createStrategyExecutionSnapshot(nextProfiles, nextOrchestration)
-      const nextDefinition = Object.keys(nextProfiles.activeProfiles).length === 0
+      const nextDefinition = Object.keys(nextProfiles.activeSpecialists).length === 0
         ? undefined
         : createToolDefinition(ctx, nextSnapshot, {
             enabled: resolved.enableDurableRuns,
@@ -1168,10 +1168,10 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
   }
 
   ctx.on('subagent/provider-added', (provider) => {
-    if (Object.values(generation.config.profiles).some(profile => profile.subagentProvider === provider.name)) refresh()
+    if (Object.values(generation.config.specialists).some(profile => profile.subagentProvider === provider.name)) refresh()
   })
   ctx.on('subagent/provider-removed', (providerName) => {
-    if (Object.values(generation.config.profiles).some(profile => profile.subagentProvider === providerName)) refresh()
+    if (Object.values(generation.config.specialists).some(profile => profile.subagentProvider === providerName)) refresh()
   })
   ctx.on('llm/adapters-updated', refresh)
   ctx.on('tools/change', () => {
@@ -1191,13 +1191,13 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     order: PROMPT_ORDER,
     text: () => {
       if (activeSnapshot === undefined
-        || Object.keys(activeSnapshot.profiles.activeProfiles).length === 0) return ''
-      const catalog = activeSnapshot.profiles
+        || Object.keys(activeSnapshot.specialists.activeSpecialists).length === 0) return ''
+      const catalog = activeSnapshot.specialists
       const profileGuidance = renderCoordinatorGuidance(createCoordinatorCatalog({
         toolName: catalog.toolName,
         enableRunInBackground: catalog.enableRunInBackground,
-        profiles: catalog.activeProfiles,
-        ...catalog.defaultProfile === undefined ? {} : { defaultProfile: catalog.defaultProfile },
+        specialists: catalog.activeSpecialists,
+        ...catalog.defaultSpecialist === undefined ? {} : { defaultSpecialist: catalog.defaultSpecialist },
         ...catalog.guidance === undefined ? {} : { guidance: catalog.guidance },
       }))
       const strategyGuidance = catalog.enableStrategies

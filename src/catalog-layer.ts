@@ -1,5 +1,5 @@
 import { deepCopy, deepFreeze } from './internal/value.ts'
-import type { CatalogLayer, StrategySpec, TeamSpec } from './orchestration-contract.ts'
+import type { CatalogLayer, StrategySpec, CohortSpec } from './orchestration-contract.ts'
 import { ORCHESTRATION_NAME } from './orchestration-contract.ts'
 
 export type CatalogNamespace = 'profiles' | 'teams' | 'strategies'
@@ -9,18 +9,18 @@ export interface CatalogEntryProvenance {
   readonly supersededLayers: readonly string[]
 }
 
-export interface ResolvedCatalogLayers<Profile> {
-  readonly profiles: Readonly<Record<string, Profile>>
-  readonly teams: Readonly<Record<string, TeamSpec>>
+export interface ResolvedCatalogLayers<Specialist> {
+  readonly specialists: Readonly<Record<string, Specialist>>
+  readonly cohorts: Readonly<Record<string, CohortSpec>>
   readonly strategies: Readonly<Record<string, StrategySpec>>
   readonly provenance: {
-    readonly profiles: Readonly<Record<string, CatalogEntryProvenance>>
-    readonly teams: Readonly<Record<string, CatalogEntryProvenance>>
+    readonly specialists: Readonly<Record<string, CatalogEntryProvenance>>
+    readonly cohorts: Readonly<Record<string, CatalogEntryProvenance>>
     readonly strategies: Readonly<Record<string, CatalogEntryProvenance>>
   }
   readonly disabled: {
-    readonly profiles: Readonly<Record<string, string>>
-    readonly teams: Readonly<Record<string, string>>
+    readonly specialists: Readonly<Record<string, string>>
+    readonly cohorts: Readonly<Record<string, string>>
     readonly strategies: Readonly<Record<string, string>>
   }
 }
@@ -69,37 +69,37 @@ function applyNamespace<Value>(
 }
 
 /** Internal resolver for schema-validated layers; external callers cross materializeConfig(). */
-export function resolveCatalogLayers<Profile>(
-  layers: readonly CatalogLayer<Profile>[],
-): ResolvedCatalogLayers<Profile> {
+export function resolveCatalogLayers<Specialist>(
+  layers: readonly CatalogLayer<Specialist>[],
+): ResolvedCatalogLayers<Specialist> {
   if (layers.length === 0 || layers.length > 32) {
     throw new Error('dsh-legion: catalog must contain between 1 and 32 layers')
   }
   const ids = new Set<string>()
-  const profiles: MutableState<Profile> = { values: {}, provenance: {}, disabled: {} }
-  const teams: MutableState<TeamSpec> = { values: {}, provenance: {}, disabled: {} }
+  const specialists: MutableState<Specialist> = { values: {}, provenance: {}, disabled: {} }
+  const cohorts: MutableState<CohortSpec> = { values: {}, provenance: {}, disabled: {} }
   const strategies: MutableState<StrategySpec> = { values: {}, provenance: {}, disabled: {} }
   for (const layer of layers) {
     if (!ORCHESTRATION_NAME.test(layer.id) || ids.has(layer.id)) {
       throw new Error(`dsh-legion: invalid or duplicate catalog layer id "${layer.id}"`)
     }
     ids.add(layer.id)
-    applyNamespace('profiles', layer.id, layer.profiles, layer.disable?.profiles, profiles)
-    applyNamespace('teams', layer.id, layer.teams, layer.disable?.teams, teams)
+    applyNamespace('profiles', layer.id, layer.profiles, layer.disable?.profiles, specialists)
+    applyNamespace('teams', layer.id, layer.teams, layer.disable?.teams, cohorts)
     applyNamespace('strategies', layer.id, layer.strategies, layer.disable?.strategies, strategies)
   }
   return deepFreeze({
-    profiles: profiles.values,
-    teams: teams.values,
+    specialists: specialists.values,
+    cohorts: cohorts.values,
     strategies: strategies.values,
     provenance: {
-      profiles: profiles.provenance,
-      teams: teams.provenance,
+      specialists: specialists.provenance,
+      cohorts: cohorts.provenance,
       strategies: strategies.provenance,
     },
     disabled: {
-      profiles: profiles.disabled,
-      teams: teams.disabled,
+      specialists: specialists.disabled,
+      cohorts: cohorts.disabled,
       strategies: strategies.disabled,
     },
   })
