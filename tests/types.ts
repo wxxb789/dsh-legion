@@ -73,6 +73,13 @@ const routedConfig: LegionConfig = {
   },
 }
 
+const currentNounConfig: LegionConfig = {
+  toolName: 'legion',
+  enableRunInBackground: true,
+  specialists: routedConfig.profiles,
+  cohorts: {},
+}
+
 const invocation: DelegationInvocation = {
   profile: 'quick',
   description: 'fast work',
@@ -88,6 +95,7 @@ const teamRun: TeamRunIdType = TeamRunId('team-run-123e4567-e89b-42d3-a456-42661
 const profileAsString: string = profile
 void config
 void routedConfig
+void currentNounConfig
 void invocation
 void profileAsString
 void team

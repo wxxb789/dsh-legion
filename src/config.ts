@@ -17,6 +17,28 @@ export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1', 'plan-delta-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
+/** Current and retired Config Document namespace keys for the v1.2 expansion window. */
+const CONFIG_NAMESPACE_VOCABULARY = Object.freeze({
+  specialist: Object.freeze({ current: 'specialists', retired: 'profiles' }),
+  cohort: Object.freeze({ current: 'cohorts', retired: 'teams' }),
+} as const)
+
+const CONFIG_NAMESPACE_KEYS = Object.freeze(Object.values(CONFIG_NAMESPACE_VOCABULARY)
+  .flatMap(({ current, retired }) => [current, retired]))
+
+export interface ConfigDeprecationDiagnostic {
+  readonly code: 'LEGION_CONFIG_KEY_DEPRECATED'
+  readonly severity: 'warning'
+  readonly path: string
+  readonly replacement: string
+  readonly message: string
+}
+
+export interface MaterializedConfigResult {
+  readonly config: MaterializedConfig
+  readonly diagnostics: readonly ConfigDeprecationDiagnostic[]
+}
+
 /**
  * What one composed Legion row contributes.
  *
@@ -99,7 +121,7 @@ export interface Config {
   readonly role?: LegionRowRole
   /** Model-facing tool name. */
   readonly toolName: string
-  /** Semantic profiles selected by the coordinator instead of raw model ids. */
+  /** Internally normalized Specialist namespace. */
   readonly profiles: Record<string, LegionProfile>
   /** Profile used when the tool call omits profile. */
   readonly defaultProfile?: string
@@ -119,11 +141,44 @@ export interface Config {
   readonly maxResourceBytes?: number
   /** Ordered installed/project catalog layers; the root maps form the final deployment layer. */
   catalogLayers?: CatalogLayer<LegionProfile>[]
-  /** Named declarative Teams in the final deployment layer. */
+  /** Internally normalized Cohort namespace. */
   teams?: Record<string, TeamSpec>
   /** Named declarative Strategies in the final deployment layer. */
   strategies?: Record<string, StrategySpec>
 }
+
+interface AuthoredCatalogDisableSpec {
+  readonly specialists?: readonly string[]
+  readonly profiles?: readonly string[]
+  readonly cohorts?: readonly string[]
+  readonly teams?: readonly string[]
+  readonly strategies?: readonly string[]
+}
+
+interface AuthoredCatalogLayer<Profile> extends Omit<
+  CatalogLayer<Profile>,
+  'profiles' | 'teams' | 'disable'
+> {
+  readonly specialists?: Readonly<Record<string, Profile>>
+  readonly profiles?: Readonly<Record<string, Profile>>
+  readonly cohorts?: Readonly<Record<string, TeamSpec>>
+  readonly teams?: Readonly<Record<string, TeamSpec>>
+  readonly disable?: AuthoredCatalogDisableSpec
+}
+
+interface LegionConfigFields extends Omit<Config, 'profiles' | 'teams' | 'catalogLayers'> {
+  readonly specialists?: Record<string, LegionProfile>
+  readonly profiles?: Record<string, LegionProfile>
+  readonly cohorts?: Record<string, TeamSpec>
+  readonly teams?: Record<string, TeamSpec>
+  readonly catalogLayers?: AuthoredCatalogLayer<LegionProfile>[]
+}
+
+/** Authored Config Document accepted during the v1.2 dual-spelling window. */
+export type LegionConfig = LegionConfigFields & (
+  | { readonly specialists: Record<string, LegionProfile>; readonly profiles?: Record<string, LegionProfile> }
+  | { readonly specialists?: Record<string, LegionProfile>; readonly profiles: Record<string, LegionProfile> }
+)
 
 const PromptFileReferenceSchema: z<PromptFileReference> = z.object({
   root: z.string().pattern(PROFILE_NAME).required(),
@@ -172,21 +227,34 @@ export const LegionProfileSchema: z<LegionProfile> = z.object({
 })
 
 const CatalogDisableSchema = z.object({
-  profiles: z.array(z.string().pattern(PROFILE_NAME)),
-  teams: z.array(z.string().pattern(PROFILE_NAME)),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.array(z.string().pattern(PROFILE_NAME)),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.array(z.string().pattern(PROFILE_NAME))
+    .description('Deprecated: use "specialists" instead.')
+    .deprecated(),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.array(z.string().pattern(PROFILE_NAME)),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.array(z.string().pattern(PROFILE_NAME))
+    .description('Deprecated: use "cohorts" instead.')
+    .deprecated(),
   strategies: z.array(z.string().pattern(PROFILE_NAME)),
-})
+}) as unknown as z<AuthoredCatalogDisableSpec>
 
 const CatalogLayerSchema = z.object({
   id: z.string().pattern(PROFILE_NAME).required(),
-  profiles: z.dict(LegionProfileSchema),
-  teams: z.dict(TeamSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(LegionProfileSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(LegionProfileSchema)
+    .description('Deprecated: use "specialists" instead.')
+    .deprecated(),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(TeamSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(TeamSpecSchema)
+    .description('Deprecated: use "cohorts" instead.')
+    .deprecated(),
   strategies: z.dict(StrategySpecSchema),
   disable: CatalogDisableSchema,
-}) as unknown as z<CatalogLayer<LegionProfile>>
+}) as unknown as z<AuthoredCatalogLayer<LegionProfile>>
 
 export interface MaterializedConfig extends Config {
   readonly configVersion: typeof CURRENT_CONFIG_VERSION
+  readonly profiles: Record<string, LegionProfile>
   readonly resourceRoots: Record<string, string>
   readonly maxResourceBytes: number
   readonly enableStrategies: boolean
@@ -202,14 +270,17 @@ const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
   maxConcurrentTasks: z.number().step(1).min(1).max(16),
 })
 
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
   // Hidden from configuration surfaces on purpose: the role is read from the
   // row entry, so a control offering to change it in the stored document would
   // offer a change no row obeys.
   role: z.union(LEGION_ROW_ROLES).default('delegation').hidden(),
   toolName: z.string().min(1).default('legion'),
-  profiles: z.dict(LegionProfileSchema).required(),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.dict(LegionProfileSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(LegionProfileSchema)
+    .description('Deprecated: use "specialists" instead.')
+    .deprecated(),
   defaultProfile: z.string().pattern(PROFILE_NAME),
   enableRunInBackground: z.boolean().default(true),
   enableStrategies: z.boolean(),
@@ -219,9 +290,12 @@ export const Config: z<Config> = z.object({
   resourceRoots: z.dict(z.string().min(1)).default({}),
   maxResourceBytes: z.number().step(1).min(1).max(4 * 1024 * 1024).default(64 * 1024),
   catalogLayers: z.array(CatalogLayerSchema).max(31),
-  teams: z.dict(TeamSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.current]: z.dict(TeamSpecSchema),
+  [CONFIG_NAMESPACE_VOCABULARY.cohort.retired]: z.dict(TeamSpecSchema)
+    .description('Deprecated: use "cohorts" instead.')
+    .deprecated(),
   strategies: z.dict(StrategySpecSchema),
-})
+}) as unknown as z<LegionConfig>
 
 function cloneAuthoredValue(
   value: unknown,
@@ -261,6 +335,137 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return prototype === Object.prototype || prototype === null
     ? value as Record<string, unknown>
     : undefined
+}
+
+function appendDeprecationDiagnostic(
+  retiredValue: unknown,
+  keys: { readonly current: string; readonly retired: string },
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): void {
+  if (retiredValue === undefined) return
+  const path = `${at}.${keys.retired}`
+  const replacement = `${at}.${keys.current}`
+  diagnostics.push({
+    code: 'LEGION_CONFIG_KEY_DEPRECATED',
+    severity: 'warning',
+    path,
+    replacement,
+    message: `dsh-legion: ${path} is deprecated; use ${replacement} instead`,
+  })
+}
+
+function mergeNamespaceEntries(
+  source: Record<string, unknown>,
+  keys: { readonly current: string; readonly retired: string },
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): Record<string, unknown> | undefined {
+  const currentValue = source[keys.current]
+  const retiredValue = source[keys.retired]
+  appendDeprecationDiagnostic(retiredValue, keys, at, diagnostics)
+  const current = currentValue === undefined ? undefined : record(currentValue)
+  const retired = retiredValue === undefined ? undefined : record(retiredValue)
+  if (currentValue !== undefined && current === undefined) {
+    throw new Error(`dsh-legion: ${at}.${keys.current} must be a plain object`)
+  }
+  if (retiredValue !== undefined && retired === undefined) {
+    throw new Error(`dsh-legion: ${at}.${keys.retired} must be a plain object`)
+  }
+  const duplicate = Object.keys(current ?? {}).find(name => Object.hasOwn(retired ?? {}, name))
+  if (duplicate !== undefined) {
+    throw new Error(
+      `dsh-legion: ${at} entry "${duplicate}" cannot use both "${keys.current}" and retired "${keys.retired}"`,
+    )
+  }
+  if (current === undefined && retired === undefined) return undefined
+  return { ...retired, ...current }
+}
+
+function mergeNamespaceNames(
+  source: Record<string, unknown>,
+  keys: { readonly current: string; readonly retired: string },
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): readonly unknown[] | undefined {
+  const currentValue = source[keys.current]
+  const retiredValue = source[keys.retired]
+  appendDeprecationDiagnostic(retiredValue, keys, at, diagnostics)
+  if (currentValue !== undefined && !Array.isArray(currentValue)) {
+    throw new Error(`dsh-legion: ${at}.${keys.current} must be an array`)
+  }
+  if (retiredValue !== undefined && !Array.isArray(retiredValue)) {
+    throw new Error(`dsh-legion: ${at}.${keys.retired} must be an array`)
+  }
+  const current = currentValue as readonly unknown[] | undefined
+  const retired = retiredValue as readonly unknown[] | undefined
+  const duplicate = current?.find(name => retired?.includes(name))
+  if (duplicate !== undefined) {
+    throw new Error(
+      `dsh-legion: ${at} entry "${String(duplicate)}" cannot use both "${keys.current}" and retired "${keys.retired}"`,
+    )
+  }
+  if (current === undefined && retired === undefined) return undefined
+  return [...retired ?? [], ...current ?? []]
+}
+
+function normalizeCatalogDisable(
+  input: unknown,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const profiles = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
+  const teams = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics)
+  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, ...rest } = source
+  return {
+    ...rest,
+    ...profiles === undefined ? {} : { profiles },
+    ...teams === undefined ? {} : { teams },
+  }
+}
+
+function normalizeCatalogLayer(
+  input: unknown,
+  index: number,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const at = `config.catalogLayers[${String(index)}]`
+  const profiles = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
+  const teams = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics)
+  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, disable, ...rest } = source
+  return {
+    ...rest,
+    ...profiles === undefined ? {} : { profiles },
+    ...teams === undefined ? {} : { teams },
+    ...disable === undefined ? {} : { disable: normalizeCatalogDisable(disable, `${at}.disable`, diagnostics) },
+  }
+}
+
+function normalizeConfigNamespaces(
+  input: unknown,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const profiles = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, 'config', diagnostics)
+  const teams = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.cohort, 'config', diagnostics)
+  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, catalogLayers, ...rest } = source
+  return {
+    ...rest,
+    ...profiles === undefined ? {} : { profiles },
+    ...teams === undefined ? {} : { teams },
+    ...catalogLayers === undefined
+      ? {}
+      : {
+          catalogLayers: Array.isArray(catalogLayers)
+            ? catalogLayers.map((layer, index) => normalizeCatalogLayer(layer, index, diagnostics))
+            : catalogLayers,
+        },
+  }
 }
 
 function assertNoNull(value: unknown, at = 'config'): void {
@@ -315,6 +520,7 @@ function assertKnownConfigKeys(input: unknown): void {
   if (authoredVersion === 1
     && (Array.isArray(source?.catalogLayers) && source.catalogLayers.length > 0
       || Object.keys(record(source?.teams) ?? {}).length > 0
+      || Object.keys(record(source?.cohorts) ?? {}).length > 0
       || Object.keys(record(source?.strategies) ?? {}).length > 0
       || source?.enableStrategies === true
       || source?.enableDurableRuns === true
@@ -329,7 +535,7 @@ function assertKnownConfigKeys(input: unknown): void {
       'configVersion',
       'role',
       'toolName',
-      'profiles',
+      ...CONFIG_NAMESPACE_KEYS,
       'defaultProfile',
       'enableRunInBackground',
       'enableStrategies',
@@ -345,80 +551,118 @@ function assertKnownConfigKeys(input: unknown): void {
     'config',
   )
   assertKnownKeys(source?.durableRunPolicy, ['maxStartsPerActivation', 'maxConcurrentTasks'], 'durableRunPolicy')
-  const profiles = record(source?.profiles)
-  if (source?.profiles !== undefined && profiles === undefined) {
-    throw new Error('dsh-legion: profiles must be a plain object')
-  }
-  if (profiles !== undefined) for (const [name, profile] of Object.entries(profiles)) {
-    assertKnownKeys(
-      profile,
-      [
-        'description',
-        'subagentProvider',
-        'agentOptions',
-        'routes',
-        'persona',
-        'toolFilter',
-        'maxDepth',
-        'defaultRunInBackground',
-        'result',
-        'promptFiles',
-      ],
-      `profiles.${name}`,
-    )
-    const profileRecord = record(profile)
-    assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `profiles.${name}.agentOptions`)
-    assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `profiles.${name}.toolFilter`)
-    if (Array.isArray(profileRecord?.routes)) {
-      profileRecord.routes.forEach((route, index) => {
-        assertKnownKeys(
-          route,
-          ['id', 'provider', 'model', 'maxTokens', 'constraints', 'instructions'],
-          `profiles.${name}.routes[${String(index)}]`,
-        )
-        assertKnownKeys(
-          record(route)?.constraints,
-          ['minContextTokens', 'minEffectiveOutputTokens'],
-          `profiles.${name}.routes[${String(index)}].constraints`,
-        )
-      })
+  for (const namespace of [
+    CONFIG_NAMESPACE_VOCABULARY.specialist.retired,
+    CONFIG_NAMESPACE_VOCABULARY.specialist.current,
+  ]) {
+    const profiles = record(source?.[namespace])
+    if (source?.[namespace] !== undefined && profiles === undefined) {
+      throw new Error(`dsh-legion: ${namespace} must be a plain object`)
     }
-    if (Array.isArray(profileRecord?.promptFiles)) {
-      profileRecord.promptFiles.forEach((reference, index) => {
-        assertKnownKeys(reference, ['root', 'path'], `profiles.${name}.promptFiles[${String(index)}]`)
-      })
+    if (profiles === undefined) continue
+    for (const [name, profile] of Object.entries(profiles)) {
+      const at = `${namespace}.${name}`
+      assertKnownKeys(
+        profile,
+        [
+          'description',
+          'subagentProvider',
+          'agentOptions',
+          'routes',
+          'persona',
+          'toolFilter',
+          'maxDepth',
+          'defaultRunInBackground',
+          'result',
+          'promptFiles',
+        ],
+        at,
+      )
+      const profileRecord = record(profile)
+      assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `${at}.agentOptions`)
+      assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `${at}.toolFilter`)
+      if (Array.isArray(profileRecord?.routes)) {
+        profileRecord.routes.forEach((route, index) => {
+          assertKnownKeys(
+            route,
+            ['id', 'provider', 'model', 'maxTokens', 'constraints', 'instructions'],
+            `${at}.routes[${String(index)}]`,
+          )
+          assertKnownKeys(
+            record(route)?.constraints,
+            ['minContextTokens', 'minEffectiveOutputTokens'],
+            `${at}.routes[${String(index)}].constraints`,
+          )
+        })
+      }
+      if (Array.isArray(profileRecord?.promptFiles)) {
+        profileRecord.promptFiles.forEach((reference, index) => {
+          assertKnownKeys(reference, ['root', 'path'], `${at}.promptFiles[${String(index)}]`)
+        })
+      }
     }
   }
   assertKnownOrchestrationKeys(source?.teams, source?.strategies)
+  assertKnownOrchestrationKeys(source?.cohorts, undefined)
   if (Array.isArray(source?.catalogLayers)) {
     source.catalogLayers.forEach((layer, index) => {
       const layerRecord = record(layer)
       assertKnownKeys(
         layer,
-        ['id', 'profiles', 'teams', 'strategies', 'disable'],
+        ['id', ...CONFIG_NAMESPACE_KEYS, 'strategies', 'disable'],
         `catalogLayers[${String(index)}]`,
       )
       assertKnownKeys(
         layerRecord?.disable,
-        ['profiles', 'teams', 'strategies'],
+        [...CONFIG_NAMESPACE_KEYS, 'strategies'],
         `catalogLayers[${String(index)}].disable`,
       )
       assertKnownConfigKeys({
         configVersion: 2,
-        profiles: layerRecord?.profiles ?? {},
-        teams: layerRecord?.teams ?? {},
+        ...layerRecord?.profiles === undefined ? {} : { profiles: layerRecord.profiles },
+        ...layerRecord?.specialists === undefined ? {} : { specialists: layerRecord.specialists },
+        ...layerRecord?.teams === undefined ? {} : { teams: layerRecord.teams },
+        ...layerRecord?.cohorts === undefined ? {} : { cohorts: layerRecord.cohorts },
         strategies: layerRecord?.strategies ?? {},
       })
     })
   }
 }
 
-/** Validate, materialize defaults, and detach one untrusted Legion config. */
-export function materializeConfig(input: unknown): MaterializedConfig {
+function materializeConfigInternal(
+  input: unknown,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): MaterializedConfig {
   const authored = cloneAuthoredValue(input)
   assertNoNull(authored)
   assertKnownConfigKeys(authored)
-  const parsed = Config(authored as Config | null | undefined)
+  const normalized = normalizeConfigNamespaces(authored, diagnostics)
+  const parsedDocument = Config(normalized as LegionConfig | null | undefined)
+  const { catalogLayers, specialists: _specialists, cohorts: _cohorts, ...parsedFields } = parsedDocument
+  const parsed: Config = {
+    ...parsedFields,
+    profiles: parsedDocument.profiles ?? {},
+    teams: parsedDocument.teams ?? {},
+    ...catalogLayers === undefined
+      ? {}
+      : {
+          catalogLayers: catalogLayers.map((layer) => ({
+            id: layer.id,
+            ...layer.profiles === undefined ? {} : { profiles: layer.profiles },
+            ...layer.teams === undefined ? {} : { teams: layer.teams },
+            ...layer.strategies === undefined ? {} : { strategies: layer.strategies },
+            ...layer.disable === undefined
+              ? {}
+              : {
+                  disable: {
+                    ...layer.disable.profiles === undefined ? {} : { profiles: layer.disable.profiles },
+                    ...layer.disable.teams === undefined ? {} : { teams: layer.disable.teams },
+                    ...layer.disable.strategies === undefined ? {} : { strategies: layer.disable.strategies },
+                  },
+                },
+          })),
+        },
+  }
   const layerIds = new Set((parsed.catalogLayers ?? []).map(layer => layer.id))
   let deploymentLayerId = 'deployment'
   for (let suffix = 2; layerIds.has(deploymentLayerId); suffix += 1) {
@@ -514,6 +758,18 @@ export function materializeConfig(input: unknown): MaterializedConfig {
   })
 }
 
+/** Validate, materialize defaults, and report pure Config Document migration diagnostics. */
+export function materializeConfigWithDiagnostics(input: unknown): MaterializedConfigResult {
+  const diagnostics: ConfigDeprecationDiagnostic[] = []
+  const config = materializeConfigInternal(input, diagnostics)
+  return deepFreeze({ config, diagnostics })
+}
+
+/** Validate, materialize defaults, and detach one untrusted Legion config. */
+export function materializeConfig(input: unknown): MaterializedConfig {
+  return materializeConfigWithDiagnostics(input).config
+}
+
 /** Export one normalized current document or a rollback-compatible unversioned document. */
 export function exportConfigDocument(
   input: unknown,
@@ -561,7 +817,7 @@ export function exportConfigDocument(
  * effective catalog.
  * @param config - a schema-resolved section or entry.
  */
-export function validateSettingsSection(config: Config): void {
+export function validateSettingsSection(config: LegionConfig): void {
   if (config.durableRunPolicy?.maxConcurrentTasks !== undefined
     && config.durableRunPolicy.maxStartsPerActivation !== undefined
     && config.durableRunPolicy.maxConcurrentTasks > config.durableRunPolicy.maxStartsPerActivation) {

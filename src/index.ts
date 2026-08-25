@@ -4,7 +4,14 @@ import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/ds
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { Config, materializeConfig, validateSettingsSection, type MaterializedConfig } from './config.ts'
+import {
+  Config,
+  materializeConfig,
+  materializeConfigWithDiagnostics,
+  validateSettingsSection,
+  type LegionConfig,
+  type MaterializedConfig,
+} from './config.ts'
 import { registerLegionRunProjection, type HostProjectionContext } from './durable-run/projection.ts'
 import {
   assertDurableMutationAvailable,
@@ -57,7 +64,7 @@ export {
   validateConfig,
 } from './config.ts'
 export type {
-  Config as LegionConfig,
+  LegionConfig,
   ConfigExportTarget,
   ConfigVersion,
   DurableRunPolicySpec,
@@ -888,9 +895,11 @@ interface ConfigGeneration {
  * @param ctx - the settings row plugin context.
  * @param config - the row entry, layered under the stored user section.
  */
-async function applySettingsRow(ctx: Context, config: Config): Promise<void> {
-  const declared = Object.keys(config.profiles).length
+async function applySettingsRow(ctx: Context, config: LegionConfig): Promise<void> {
+  const declared = Object.keys(config.profiles ?? {}).length
+    + Object.keys(config.specialists ?? {}).length
     + Object.keys(config.teams ?? {}).length
+    + Object.keys(config.cohorts ?? {}).length
     + Object.keys(config.strategies ?? {}).length
   if (declared > 0) {
     // Catalog data on this row would be silently unreachable, which is exactly
@@ -941,12 +950,12 @@ const delegationRow = {
   apply: applyDelegationRow,
 }
 
-export async function apply(ctx: Context, config: Config): Promise<void> {
+export async function apply(ctx: Context, config: LegionConfig): Promise<void> {
   if (config.role === 'settings') return applySettingsRow(ctx, config)
   await ctx.plugin(delegationRow, config)
 }
 
-async function applyDelegationRow(ctx: Context, config: Config): Promise<void> {
+async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,
@@ -957,7 +966,7 @@ async function applyDelegationRow(ctx: Context, config: Config): Promise<void> {
 
   // The composition entry is the authoritative source until a settings service
   // attaches, and becomes authoritative again the moment one detaches.
-  let configSource: () => Config = () => config
+  let configSource: () => LegionConfig = () => config
   let warnedDurableGap = false
   // These guards are read by `republish`, which the settings attach can call
   // before the publication state below exists, so they are bound first.
@@ -969,8 +978,12 @@ async function applyDelegationRow(ctx: Context, config: Config): Promise<void> {
   let published = false
   let stopped = false
 
-  const materializeGeneration = async (authored: Config): Promise<ConfigGeneration> => {
-    const resolved = materializeConfig(authored)
+  const materializeGeneration = async (authored: LegionConfig): Promise<ConfigGeneration> => {
+    const materialized = materializeConfigWithDiagnostics(authored)
+    for (const diagnostic of materialized.diagnostics) {
+      ctx.logger.warn(`${diagnostic.code}: ${diagnostic.message}`)
+    }
+    const resolved = materialized.config
     const resourceBase = profileResourceBase(ctx, resolved)
     const resources: ResourceSnapshot = resourceBase === undefined
       ? EMPTY_RESOURCE_SNAPSHOT

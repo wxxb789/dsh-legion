@@ -4,6 +4,7 @@ import {
   Config as ConfigSchema,
   exportConfigDocument,
   materializeConfig,
+  materializeConfigWithDiagnostics,
   type Config,
 } from '../src/config.ts'
 import { compileCatalog } from '../src/compiler.ts'
@@ -60,6 +61,110 @@ describe('versioned config migration and rollback', () => {
       enableDurableRuns: true,
       durableRunPolicy: { maxStartsPerActivation: 3 },
     }, runtime).policyDigest).not.toBe(compileCatalog(explicit, runtime).policyDigest)
+  })
+
+  it('accepts Specialist and Cohort namespace spellings without changing behavior', () => {
+    const cohort = {
+      description: 'Reviewers.',
+      members: { reviewer: { profile: 'deep' } },
+      limits: { maxMembers: 1, maxConcurrentMembers: 1 },
+    }
+    const { profiles, ...base } = authored
+
+    expect(materializeConfig({
+      ...base,
+      configVersion: 2,
+      specialists: profiles,
+      cohorts: { reviewers: cohort },
+    })).toEqual(materializeConfig({
+      ...authored,
+      configVersion: 2,
+      teams: { reviewers: cohort },
+    }))
+  })
+
+  it('merges disjoint spellings but rejects the same entry under both', () => {
+    const quick = {
+      description: 'Quick work.',
+      subagentProvider: 'spawn',
+      maxDepth: 1,
+      defaultRunInBackground: false,
+    }
+    const cohort = {
+      description: 'Reviewers.',
+      members: { reviewer: { profile: 'deep' } },
+    }
+
+    expect(materializeConfig({
+      ...authored,
+      configVersion: 2,
+      specialists: { quick },
+      teams: { reviewers: cohort },
+      cohorts: { auditors: cohort },
+    })).toMatchObject({
+      profiles: { deep: authored.profiles.deep, quick },
+      teams: { reviewers: cohort, auditors: cohort },
+    })
+    expect(() => materializeConfig({
+      ...authored,
+      specialists: { deep: authored.profiles.deep! },
+    })).toThrow(/entry "deep" cannot use both "specialists" and retired "profiles"/)
+    expect(() => materializeConfig({
+      ...authored,
+      configVersion: 2,
+      teams: { reviewers: cohort },
+      cohorts: { reviewers: cohort },
+    })).toThrow(/entry "reviewers" cannot use both "cohorts" and retired "teams"/)
+  })
+
+  it('accepts current namespace spellings inside catalog layers', () => {
+    const extra = {
+      description: 'Quick work.',
+      subagentProvider: 'spawn',
+      maxDepth: 1,
+      defaultRunInBackground: false,
+    }
+
+    expect(materializeConfig({
+      ...authored,
+      configVersion: 2,
+      catalogLayers: [{
+        id: 'extension',
+        specialists: { quick: extra },
+        cohorts: {
+          reviewers: {
+            description: 'Reviewers.',
+            members: { reviewer: { profile: 'quick' } },
+          },
+        },
+      }],
+    })).toMatchObject({
+      profiles: { deep: authored.profiles.deep, quick: extra },
+      teams: { reviewers: { members: { reviewer: { profile: 'quick' } } } },
+    })
+  })
+
+  it('returns a pure deprecation diagnostic that names the replacement spelling', () => {
+    const before = structuredClone(authored)
+    const result = materializeConfigWithDiagnostics(authored)
+
+    expect(result.config).toEqual(materializeConfig(authored))
+    expect(result.diagnostics).toEqual([{
+      code: 'LEGION_CONFIG_KEY_DEPRECATED',
+      severity: 'warning',
+      path: 'config.profiles',
+      replacement: 'config.specialists',
+      message: 'dsh-legion: config.profiles is deprecated; use config.specialists instead',
+    }])
+    expect(materializeConfigWithDiagnostics({ ...authored, configVersion: 2, teams: {} }).diagnostics)
+      .toContainEqual({
+        code: 'LEGION_CONFIG_KEY_DEPRECATED',
+        severity: 'warning',
+        path: 'config.teams',
+        replacement: 'config.cohorts',
+        message: 'dsh-legion: config.teams is deprecated; use config.cohorts instead',
+      })
+    expect(authored).toEqual(before)
   })
 
   it('validates bounded opt-in durable activation policy without exposing execution', () => {

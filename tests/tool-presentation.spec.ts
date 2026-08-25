@@ -202,6 +202,14 @@ describe('Code Mode is composed from the official row, never owned', () => {
     expect(withRuntime.filter(line => line.includes('codeRuntime'))).toEqual([])
   })
 
+  it('warns config authors about retired keys and names the replacement', async () => {
+    const warnings = await warningsFromMount(true)
+    const diagnostic = warnings.find(line => line.includes('LEGION_CONFIG_KEY_DEPRECATED'))
+
+    expect(diagnostic).toContain('config.profiles')
+    expect(diagnostic).toContain('config.specialists')
+  })
+
   it('exposes no presentation knob in its own configuration surface', async () => {
     // Legion's config is the customization surface users read first. A
     // `toolPresentation`-shaped key here would look authoritative and would
