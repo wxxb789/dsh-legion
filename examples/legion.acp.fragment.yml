@@ -4,8 +4,8 @@
 # belong in the DSH agent preset that already mounts dsh-legion, NOT in Legion
 # config: registering a ctx.subagents provider is DSH's job, not Legion's.
 #
-# legionCatalogLayer gives each registered provider a Profile. Append it to
-# Legion's catalogLayers; it requires configVersion 2. A Profile whose provider
+# legionCatalogLayer gives each registered provider a Specialist. Append it to
+# Legion's catalogLayers; it requires configVersion 2. A Specialist whose provider
 # is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,
 # never a hard failure, so you can adopt these one at a time.
 #
@@ -16,7 +16,7 @@
 #
 # No portable spawn command exists for: zcode.
 # Mount those yourself with @deepseek-ai/dsh-subagent-acp, using a providerName
-# equal to the Profile name.
+# equal to the Specialist name.
 acpProviderRows:
   - name: '@deepseek-ai/dsh-subagent-acp'
     config:
@@ -80,7 +80,7 @@ acpProviderRows:
       permission: reject
 legionCatalogLayer:
   id: legion-acp-v1
-  profiles:
+  specialists:
     codex:
       description: Delegate to OpenAI Codex in its own workspace process.
       subagentProvider: codex

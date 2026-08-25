@@ -7,7 +7,7 @@ problem_type: integration_issue
 component: tooling
 symptoms:
   - The main branch goes red on a commit set that changed only Markdown
-  - The failure is ERR_PNPM_NO_MATCHING_VERSION inside the packed profile install, minutes into the slowest job
+  - The failure is ERR_PNPM_NO_MATCHING_VERSION inside the packed Host `profile` install, minutes into the slowest job
   - The named package and range belong to the Host, not to anything this repository declares
   - The packed E2E jobs stay green while the quality job fails, so the break looks arbitrary
 root_cause: dependency_issue
@@ -23,7 +23,7 @@ tags: [dsh, compatibility, registry, semver, prerelease, ci, preflight]
 ## Problem
 
 The compatibility policy contract declares which Host versions Legion claims, but nothing checked that those
-declarations are actually installable. The first gate to find out was the packed profile install, which resolves
+declarations are actually installable. The first gate to find out was the packed Host `profile` install, which resolves
 the Host live from the public registry with no lockfile. An upstream publish gap therefore arrived as a raw
 package-manager resolution error, minutes into the slowest job in the matrix, naming a package and a range that
 appear nowhere in this repository — so it read as if Legion had broken. It did break main this way, on a commit

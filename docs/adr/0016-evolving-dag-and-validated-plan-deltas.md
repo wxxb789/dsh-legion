@@ -1,5 +1,7 @@
 # Evolving DAGs change only through validated Plan Deltas
 
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
+
 - Status: Accepted
 - Date: 2026-08-16
 
@@ -19,7 +21,7 @@ A Plan Delta may add bounded nodes and edges, refine or supersede pending work, 
 - Plan evolution is monotonic with respect to history, authority, limits, and accepted evidence.
 - Completed work and running attempt identity are never rewritten.
 - Authored and generated identities cannot collide; reserved generated namespaces are hygienic.
-- Artifact contracts, dependencies, Profiles, routes, effects, completion, and all hard limits validate before commit.
+- Artifact contracts, dependencies, Specialists, routes, effects, completion, and all hard limits validate before commit.
 - The same proposal, base plan, authority, and environment inputs produce the same decision.
 - Ready-frontier and result ordering remain canonical rather than arrival-driven.
 
@@ -33,7 +35,7 @@ A Plan Delta may add bounded nodes and edges, refine or supersede pending work, 
 
 ## Compatibility
 
-Existing v1.0 Strategies continue to compile and execute as frozen ephemeral plans. Durable compilation may lower the same declarative catalog data to an initial DAG, but Plan Delta support is opt-in and adds no strategy-name privilege. Existing Route Plan and Profile rules remain authoritative for each attempt.
+Existing v1.0 Strategies continue to compile and execute as frozen ephemeral plans. Durable compilation may lower the same declarative catalog data to an initial DAG, but Plan Delta support is opt-in and adds no strategy-name privilege. Existing Route Plan and Specialist rules remain authoritative for each attempt.
 
 ## Failure semantics
 

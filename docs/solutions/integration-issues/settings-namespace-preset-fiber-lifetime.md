@@ -50,7 +50,7 @@ Split the package by *plane* through an explicit composition field, and make the
          name: dsh-legion
          config:
            role: settings
-           profiles: {}
+           specialists: {}
    ```
 
 2. **Add a composition-only role to the config schema.** A `settings` row registers the namespace and contributes nothing else — no tool, no prompt section, no projection, no service. The role is read from the row's own entry, never from the settings layer, is not carried into the materialized config, and is hidden from configuration surfaces, so a stored section can never flip a row and withdraw a deployment's tooling.
@@ -61,7 +61,7 @@ Split the package by *plane* through an explicit composition field, and make the
 
 5. **Attach unconditionally, await conditionally.** Host rows activate on service availability rather than in file order, so gating registration on a synchronous `ctx.get('settings')` probe at apply time loses to a provider composed later. Attach through the injected scope always; await it only when a provider is already there, because awaiting a wait that may never resolve holds the row pending forever.
 
-6. **Split validation along the same seam.** The row that owns a process-wide namespace may judge only what holds for any catalog. A cross-reference such as `defaultProfile` is valid for the row that defines that Profile and invalid for the row beside it, so it is left to each consuming row, which keeps its last publishable generation and logs.
+6. **Split validation along the same seam.** The row that owns a process-wide namespace may judge only what holds for any catalog. A cross-reference such as `defaultProfile` is valid for the row that defines that Specialist and invalid for the row beside it, so it is left to each consuming row, which keeps its last publishable generation and logs.
 
 ## Why This Works
 

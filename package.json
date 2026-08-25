@@ -1,7 +1,7 @@
 {
   "name": "dsh-legion",
   "version": "1.2.0",
-  "description": "Multi-agent orchestration and LLM model routing for DeepSeek Harness (DSH): semantic AI agent Profiles, exact model routes, declarative Teams and Strategies, and bounded subagent delegation.",
+  "description": "Multi-agent orchestration and LLM model routing for DeepSeek Harness (DSH): semantic AI agent Specialists, exact model routes, declarative Cohorts and Strategies, and bounded subagent delegation.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

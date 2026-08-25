@@ -79,7 +79,7 @@ describe('ACP agent specs', () => {
   })
 })
 
-describe('ACP Profiles', () => {
+describe('ACP Specialists', () => {
   it('fixes every constraint an out-of-process child cannot honor', () => {
     const profile = legion.acpProfile(sample)
     expect(profile.subagentProvider).toBe('sample-agent')
@@ -98,7 +98,7 @@ describe('ACP Profiles', () => {
     ['routes', { routes: [{ id: 'primary', provider: 'p', model: 'm' }] }],
     ['agentOptions', { agentOptions: { provider: 'p', model: 'm' } }],
     ['promptFiles', { promptFiles: [{ root: 'bundled', path: 'x.md' }] }],
-  ])('refuses an authored Profile that sets %s', (_field, extra) => {
+  ])('refuses an authored Specialist that sets %s', (_field, extra) => {
     expect(() => legion.assertAcpProfileCompatible('x', {
       ...legion.acpProfile(sample),
       ...extra,
@@ -117,7 +117,7 @@ describe('ACP Profiles', () => {
 })
 
 describe('ACP catalog layer and mount rows', () => {
-  it('derives Profiles and mount rows from one descriptor list', () => {
+  it('derives Specialists and mount rows from one descriptor list', () => {
     const agents = [sample]
     const layer = legion.acpCatalogLayer(agents)
     const rows = legion.acpMountRows(agents)
@@ -138,7 +138,7 @@ describe('ACP catalog layer and mount rows', () => {
       entrypoint: 'unverified',
     })
     expect(legion.acpMountRows([unverified])).toEqual([])
-    // The Profile still exists so the agent is nameable and documentable.
+    // The Specialist still exists so the agent is nameable and documentable.
     expect(Object.keys(legion.acpCatalogLayer([unverified]).profiles ?? {})).toEqual(['unknown-agent'])
   })
 
@@ -183,7 +183,7 @@ describe('curated ACP agent catalog', () => {
     expect(claude?.args?.some(arg => arg.includes('@zed-industries/'))).toBe(false)
   })
 
-  it('compiles into a layer whose every Profile is ACP-compatible', () => {
+  it('compiles into a layer whose every Specialist is ACP-compatible', () => {
     const layer = legion.acpCatalogLayer(legion.ACP_AGENT_CATALOG)
     expect(Object.keys(layer.profiles ?? {}).sort()).toEqual([...ids].sort())
     for (const [name, profile] of Object.entries(layer.profiles ?? {})) {
@@ -197,7 +197,7 @@ describe('curated ACP agent catalog', () => {
     expect(rows).toHaveLength(verified.length)
     expect(rows.map(row => row.config.providerName).sort())
       .toEqual(verified.map(agent => agent.id).sort())
-    // Every generated row names a Profile that exists in the generated layer.
+    // Every generated row names a Specialist that exists in the generated layer.
     const layer = legion.acpCatalogLayer(legion.ACP_AGENT_CATALOG)
     for (const row of rows) {
       expect(layer.profiles?.[row.config.providerName]?.subagentProvider)
@@ -215,7 +215,7 @@ describe('curated ACP agent catalog', () => {
     const catalog = legion.compileCatalog(
       legion.materializeConfig({
         configVersion: 2,
-        profiles: {
+        specialists: {
           quick: {
             description: 'Local delegation.',
             subagentProvider: 'spawn',
@@ -259,7 +259,7 @@ describe('ACP catalog against the real compiler', () => {
   // catalogLayers is a config v2 field; the ACP layer is opt-in v2 data.
   const config = {
     configVersion: 2,
-    profiles: {
+    specialists: {
       quick: {
         description: 'Local delegation.',
         subagentProvider: 'spawn',
@@ -293,7 +293,7 @@ describe('ACP catalog against the real compiler', () => {
     await ctx.fiber.dispose()
   })
 
-  it('activates the ACP Profile once its provider is registered', async () => {
+  it('activates the ACP Specialist once its provider is registered', async () => {
     const ctx = await setup([localProvider('spawn'), acpProvider('sample-agent')])
     expect(specialistEnum(ctx)).toEqual(['quick', 'sample-agent'])
     await ctx.fiber.dispose()

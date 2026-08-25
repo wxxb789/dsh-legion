@@ -1,5 +1,7 @@
 # Context Manifests are ordered immutable cache-stable arenas
 
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
+
 - Status: Accepted
 - Date: 2026-08-16
 
@@ -9,7 +11,7 @@ Durable DAG tasks need bounded, inspectable context assembled from policy, goals
 
 ## Decision
 
-Legion represents each task context as a versioned immutable Context Manifest of digest-addressed Context Pages. Pages carry source artifact references, semantic slots, stable order keys, trust, freshness, pinning, estimated size, and lineage. Rendering uses one canonical slot order: DSH system/tool material, Profile policy, Strategy and shared-run policy, Goal, task intent, then task-specific evidence and mail; DSH owns the live model/tool tail.
+Legion represents each task context as a versioned immutable Context Manifest of digest-addressed Context Pages. Pages carry source artifact references, semantic slots, stable order keys, trust, freshness, pinning, estimated size, and lineage. Rendering uses one canonical slot order: DSH system/tool material, Specialist policy, Strategy and shared-run policy, Goal, task intent, then task-specific evidence and mail; DSH owns the live model/tool tail.
 
 Shared immutable pages form a cache-stable prefix arena. Task-specific and volatile material follows that prefix. Compaction or selection creates a new manifest generation and digest rather than mutating or reordering an existing generation. The controller journal stores metadata, references, and digests—not prompt copies or child transcripts.
 
@@ -34,7 +36,7 @@ Shared immutable pages form a cache-stable prefix arena. Task-specific and volat
 
 ## Compatibility
 
-V1.0 prompt composition and ephemeral Strategy execution remain the default and unchanged. Context Manifests are additive durable-run semantics and continue to honor existing Profile, Prompt Fragment, Skill, tool, and Route Plan authority. They do not transfer DSH ownership of system prompts, tools, or child histories.
+V1.0 prompt composition and ephemeral Strategy execution remain the default and unchanged. Context Manifests are additive durable-run semantics and continue to honor existing Specialist, Prompt Fragment, Skill, tool, and Route Plan authority. They do not transfer DSH ownership of system prompts, tools, or child histories.
 
 ## Failure semantics
 

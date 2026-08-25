@@ -1,14 +1,14 @@
 # ACP delegation to external coding agents
 
-DSH ships `@deepseek-ai/dsh-subagent-acp`, a generic [Agent Client Protocol](https://agentclientprotocol.com) backend. It spawns one subprocess per run and drives it over ACP, so mounting it once per external agent turns any ACP-speaking CLI into an ordinary `ctx.subagents` provider. Legion contributes the delegation policy: one Profile per agent, constrained to what an out-of-process child can actually honor.
+DSH ships `@deepseek-ai/dsh-subagent-acp`, a generic [Agent Client Protocol](https://agentclientprotocol.com) backend. It spawns one subprocess per run and drives it over ACP, so mounting it once per external agent turns any ACP-speaking CLI into an ordinary `ctx.subagents` provider. Legion contributes the delegation policy: one Specialist per agent, constrained to what an out-of-process child can actually honor.
 
 Nothing here is on by default.
 
 ## What an ACP child is, and is not
 
-An ACP child has its **own process, session, model, credentials, and tools**. Nothing of this conversation crosses the boundary except the workspace directory. That is the whole point — and it is also why an ACP Profile is more constrained than a local one:
+An ACP child has its **own process, session, model, credentials, and tools**. Nothing of this conversation crosses the boundary except the workspace directory. That is the whole point — and it is also why an ACP Specialist is more constrained than a local one:
 
-| Legion Profile field | ACP | Why |
+| Legion Specialist field | ACP | Why |
 |---|---|---|
 | `maxDepth` | must be `provider-managed` | this process cannot enforce a depth limit inside another runtime |
 | `defaultRunInBackground` | must be `false` | the ACP backend registers no continuable activation |
@@ -17,11 +17,11 @@ An ACP child has its **own process, session, model, credentials, and tools**. No
 | `toolFilter` | forbidden | the child owns its own tool registry |
 | `routes`, `agentOptions` | forbidden | the child picks its own model; it has no DSH LLM route |
 
-`acpProfile()` fixes all of these by construction, and `assertAcpProfileCompatible()` rejects an authored Profile that violates them — at the authoring site, rather than as a provider-capability error once the provider is finally mounted.
+`acpProfile()` fixes all of these by construction, and `assertAcpProfileCompatible()` rejects an authored Specialist that violates them — at the authoring site, rather than as a provider-capability error once the provider is finally mounted.
 
 ## Supported agents
 
-| Profile | Agent | Spawns |
+| Specialist | Agent | Spawns |
 |---|---|---|
 | `codex` | OpenAI Codex CLI | `npx -y @agentclientprotocol/codex-acp` |
 | `claude-code` | Anthropic Claude Code | `npx -y @agentclientprotocol/claude-agent-acp` |
@@ -35,12 +35,12 @@ An ACP child has its **own process, session, model, credentials, and tools**. No
 
 Two details worth keeping:
 
-- **`gh` is not an ACP agent.** The GitHub *CLI* does not speak ACP; the GitHub *Copilot* CLI (`copilot`) does, behind `--acp`. The Profile is named `github-copilot` for that reason.
+- **`gh` is not an ACP agent.** The GitHub *CLI* does not speak ACP; the GitHub *Copilot* CLI (`copilot`) does, behind `--acp`. The Specialist is named `github-copilot` for that reason.
 - **Claude Code's adapter moved.** `@zed-industries/claude-code-acp` is deprecated and renamed to `@agentclientprotocol/claude-agent-acp`. Legion ships the current one.
 
 ### zcode
 
-ZCode speaks its own app-server protocol, and its ACP bridge is a third-party adapter you build locally and run by absolute path. There is no portable command to ship, so `zcode` is marked `deployment-specific`: it gets a Profile so the agent is nameable and documentable, but no generated mount row. Write that row yourself, with `providerName: zcode`.
+ZCode speaks its own app-server protocol, and its ACP bridge is a third-party adapter you build locally and run by absolute path. There is no portable command to ship, so `zcode` is marked `deployment-specific`: it gets a Specialist so the agent is nameable and documentable, but no generated mount row. Write that row yourself, with `providerName: zcode`.
 
 ## Setting it up
 
@@ -60,13 +60,13 @@ ZCode speaks its own app-server protocol, and its ACP bridge is a third-party ad
 
 3. **Append the catalog layer** to Legion's `catalogLayers` (requires `configVersion: 2`).
 
-The `providerName` in step 2 must equal the Profile name in step 3. Generating both from one descriptor list is exactly what `acpMountRows()` and `acpCatalogLayer()` are for — a mismatch produces a Profile that is silently inactive rather than an error.
+The `providerName` in step 2 must equal the Specialist name in step 3. Generating both from one descriptor list is exactly what `acpMountRows()` and `acpCatalogLayer()` are for — a mismatch produces a Specialist that is silently inactive rather than an error.
 
 ## Adopting one agent at a time
 
-A Profile whose provider is not mounted is **not** a failure. It compiles to a `PROFILE_PROVIDER_UNAVAILABLE` warning and stays inactive, so it never reaches the model and never breaks the rest of the catalog. Add the whole layer, then mount backends as you install agents.
+A Specialist whose provider is not mounted is **not** a failure. It compiles to a `PROFILE_PROVIDER_UNAVAILABLE` warning and stays inactive, so it never reaches the model and never breaks the rest of the catalog. Add the whole layer, then mount backends as you install agents.
 
-`dsh-legion doctor` reports which Profiles are inactive and why.
+`dsh-legion doctor` reports which Specialists are inactive and why.
 
 ## Permissions and trust
 

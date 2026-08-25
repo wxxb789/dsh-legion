@@ -1,5 +1,7 @@
 # Optional Host settings are a configuration source, not a second config system
 
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
+
 - Status: Accepted
 - Date: 2026-08-17
 
@@ -7,7 +9,7 @@ DSH 0.1.0-rc.7 serves every registered settings namespace to configuration surfa
 
 The seam is detected structurally rather than imported. `detectSettingsCapabilities` reads the `settings` service the same way `detectDurableCapabilities` reads coordination services (ADR 0020), so Legion takes no peer dependency on `@deepseek-ai/dsh-settings` and a deployment that never mounts a settings provider runs none of this code and keeps its composition entry verbatim. A settings provider that detaches restores the entry as the source; a stored section Legion cannot materialize fails the registration, is reported once, and leaves the entry authoritative.
 
-Publication stays exactly as ADR 0014 defines it. `PublishedGeneration` already swapped an immutable definition and snapshot when provider or adapter facts changed; this ADR only widens the inputs of a generation from runtime facts to *(configuration, prompt-fragment resources, runtime facts)*. Configuration and its ADR 0006 resource snapshot move together, because a Profile's fragments are named by the same document that names the Profile.
+Publication stays exactly as ADR 0014 defines it. `PublishedGeneration` already swapped an immutable definition and snapshot when provider or adapter facts changed; this ADR only widens the inputs of a generation from runtime facts to *(configuration, prompt-fragment resources, runtime facts)*. Configuration and its ADR 0006 resource snapshot move together, because a Specialist's fragments are named by the same document that names the Specialist.
 
 Republication is asynchronous because loading fragments is, so it is serialized: one pass in flight, one pending follow-up, last commit wins. A failed reload degrades to staleness — the last publishable generation stays registered — instead of withdrawing the delegation surface. Renaming the tool is the one case the atomic swap cannot cover, since the Host keys registrations by name; the old name is withdrawn before the new one is registered, and the system-prompt section keeps the identity it was registered under.
 

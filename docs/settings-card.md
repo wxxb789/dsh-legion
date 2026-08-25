@@ -13,12 +13,12 @@ Five scalar policies, the ones worth changing while the harness runs:
 | Control | Field | Effect |
 |---|---|---|
 | Tool name | `toolName` | Renames the delegation tool; the tool is republished under the new name. |
-| Default profile | `defaultProfile` | Profile used when a call omits one. |
-| Prompt fragment budget | `maxResourceBytes` | Maximum combined prompt-fragment bytes loaded for one profile. |
+| Default specialist | `defaultProfile` | Specialist used when a call omits one. |
+| Prompt fragment budget | `maxResourceBytes` | Maximum combined prompt-fragment bytes loaded for one specialist. |
 | Background delegation | `enableRunInBackground` | Whether the tool accepts `run_in_background`. |
 | Model-callable Strategies | `enableStrategies` | The explicit authority gate; off by default. |
 
-Profiles, routes, Teams, Strategies, and catalog layers stay in the configuration document on purpose. They are structured data whose validity depends on other entries, and a form that let them be edited field-by-field would publish half-built catalogs.
+Specialists, routes, Cohorts, Strategies, and catalog layers stay in the configuration document on purpose. They are structured data whose validity depends on other entries, and a form that let them be edited field-by-field would publish half-built catalogs.
 
 ## How editing behaves
 

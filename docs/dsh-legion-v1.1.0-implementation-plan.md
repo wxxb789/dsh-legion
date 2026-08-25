@@ -27,7 +27,7 @@ The release must add:
 - ordered, immutable `ContextManifest`s inspired by arenas, generational memory, page tables, and working sets while preserving prefix-cache stability;
 - bounded, one-shot, delimited continuations represented as data, not captured JavaScript stacks;
 - environment snapshots and pre-start revalidation;
-- multi-model execution through the existing Profile and Route Plan architecture;
+- multi-model execution through the existing Specialist and Route Plan architecture;
 - hierarchical parallel patterns and context sharding inspired by Kimi Agent Swarm;
 - replay and inspection projections optimized by the existing DSH projection cache.
 
@@ -52,7 +52,7 @@ The central architectural statement is:
 
 `dsh-legion` v1.0.0 already provides a strong static foundation:
 
-- customization-first Profiles, Teams, and Strategies;
+- customization-first Specialists, Cohorts, and Strategies;
 - exact pre-start Route Plans with multiple model/provider candidates;
 - type-driven authored, effective, and compiled representations;
 - artifact wiring and bounded `delegate`, `fanout`, and `synthesize` stages;
@@ -69,7 +69,7 @@ The useful maximum of OMO and Kimi Agent Swarm is not one feature. It is the com
 
 - OMO-like coordination correctness: dependencies, atomic ownership, recovery, mailbox delivery state, and stale cleanup;
 - Kimi-like orchestration quality: wide parallel decomposition, hierarchical reduction, context sharding, real-parallelism measurement, and long-horizon adaptation;
-- Legion's existing advantages: multiple models/providers, semantic Profiles, typed compilation, explainable exact routes, customization-first contracts, and DSH-native lifecycle ownership.
+- Legion's existing advantages: multiple models/providers, semantic Specialists, typed compilation, explainable exact routes, customization-first contracts, and DSH-native lifecycle ownership.
 
 v1.1.0 should combine these without copying their storage layout or creating a second runtime.
 
@@ -91,7 +91,7 @@ It does **not** mean that v1.1.0 may claim empirically higher throughput or qual
 
 ## 3. Required change to repository architecture instructions
 
-The current repository instructions and roadmap state that a Legion scheduler, mailbox, live Team runtime, and task store are non-goals. The human owner has now authorized a narrower replacement rule.
+The current repository instructions and roadmap state that a Legion scheduler, mailbox, live Cohort runtime, and task store are non-goals. The human owner has now authorized a narrower replacement rule.
 
 The first implementation change MUST update `AGENTS.md`, `CONTEXT.md`, `docs/roadmap.md`, and the relevant ADRs to say:
 
@@ -133,7 +133,7 @@ v1.1.0 is complete only when it can:
 5. Accept a validated `PlanDelta` that extends or supersedes pending work without rewriting committed history.
 6. Stop at a durable semantic boundary, return a continuation handle, and later resume without capturing process state.
 7. Recover incomplete runs after a process crash and reject results from expired owners or earlier generations.
-8. Route every attempt through an immutable Profile and exact Route Plan.
+8. Route every attempt through an immutable Specialist and exact Route Plan.
 9. Build deterministic, ordered context manifests whose common prefixes remain byte-stable across sibling tasks where possible.
 10. Deliver and reclaim task-addressed messages with at-least-once delivery and idempotent incorporation.
 11. Implement `stair-step` as a public, replaceable policy contract rather than a privileged built-in strategy name.
@@ -197,9 +197,9 @@ The macro plane is the durable, evolving DAG:
 
 The micro plane executes one ready node:
 
-- ordinary nodes use existing DSH subagent providers through frozen Legion Profiles;
+- ordinary nodes use existing DSH subagent providers through frozen Legion Specialists;
 - fan-out remains bounded and settles through DSH child lifecycle APIs;
-- an optional DSH workflow adapter may execute pure/read-only high-throughput micro-swarms only when it preserves Profile authority and result contracts;
+- an optional DSH workflow adapter may execute pure/read-only high-throughput micro-swarms only when it preserves Specialist authority and result contracts;
 - micro-plane process state is disposable; only committed results matter.
 
 ### 5.3 Root and child journals
@@ -219,12 +219,12 @@ The micro plane executes one ready node:
 | Flush/durability barrier | DSH `ctx.sessions.flush()` | Avoid a second WAL and preserve backend independence. |
 | Projection registry and persisted projection cache | DSH | Cold replay already supports checkpoint + tail folding. |
 | Agent, tool, subagent, cancellation, approval, sandbox | DSH | Legion must not fork lifecycle authority. |
-| Profiles, Teams, Strategies, typed DAG, PlanDelta | Legion | These are Legion's semantic domain. |
+| Specialists, Cohorts, Strategies, typed DAG, PlanDelta | Legion | These are Legion's semantic domain. |
 | Run/task/attempt state machines | Legion | They define orchestration meaning, not physical execution. |
 | Atomic run claim and fencing | Host/DSH coordination seam | Journal append alone cannot exclude concurrent owners. |
 | Global resource admission | Host/DSH admission seam | Separate Legion calls cannot safely self-coordinate globally. |
 | Mailbox protocol | Legion semantics over DSH journal | No second queue or mailbox directory. |
-| ContextManifest ordering and selection | Legion | It is Strategy/Profile-aware prompt composition policy. |
+| ContextManifest ordering and selection | Legion | It is Strategy/Specialist-aware prompt composition policy. |
 | Artifact bytes | Existing DSH/workspace facilities | v1.1.0 must not introduce another blob store. |
 | Replay/explain view | Legion projection/API | The view is domain-specific and derived. |
 
@@ -251,7 +251,7 @@ interface LegionConfigV2 {
 `enableDurableRuns: false` means:
 
 - the new model-facing run-control branch is absent;
-- existing direct Profile and ephemeral Strategy branches are unchanged;
+- existing direct Specialist and ephemeral Strategy branches are unchanged;
 - no durable controller effects are registered beyond harmless projection capability if configured.
 
 ### 7.2 Preserve the existing Strategy call
@@ -512,7 +512,7 @@ interface AttemptRecord {
   readonly generation: number
   readonly owner: OwnerFingerprint
   readonly fence: Fence
-  readonly profile: string
+  readonly specialist: string
   readonly routePlanDigest: string
   readonly environmentDigest: string
   readonly contextManifestDigest: ContextDigest
@@ -792,8 +792,8 @@ Compilation must reject:
 - output artifact collisions;
 - contract mismatches;
 - impossible completion artifacts;
-- nodes exceeding Team member/cardinality constraints;
-- nodes that widen Profile tools, model authority, depth, or deployment limits;
+- nodes exceeding Cohort member/cardinality constraints;
+- nodes that widen Specialist tools, model authority, depth, or deployment limits;
 - generated/authored namespace capture;
 - graph limits outside safe integer ranges.
 
@@ -811,7 +811,7 @@ The digest must include:
 
 - strategy and catalog generation;
 - effective limits;
-- member/Profile bindings;
+- member/Specialist bindings;
 - artifact contracts;
 - effect class and retry policy;
 - environment assumptions that affect validity.
@@ -864,7 +864,7 @@ The committed event carries:
 - the complete resulting PlanGraph;
 - the new plan version;
 - validation/decision evidence;
-- the controller Profile and Route Plan digest that proposed it.
+- the controller Specialist and Route Plan digest that proposed it.
 
 ### 13.3 Monotonic graph evolution
 
@@ -880,7 +880,7 @@ It may not:
 
 - delete or rewrite completed task history;
 - mutate an accepted artifact;
-- change a running attempt's Profile or route;
+- change a running attempt's Specialist or route;
 - reactivate a cancelled or superseded generation;
 - remove evidence of failure;
 - widen tools, permissions, depth, budget, deadline, output, node, attempt, or milestone limits;
@@ -1235,7 +1235,7 @@ interface ContextPage {
   readonly digest: ArtifactDigest
   readonly source: ArtifactRef
   readonly slot:
-    | "profile-policy"
+    | "specialist-policy"
     | "strategy-policy"
     | "shared-run"
     | "goal"
@@ -1259,7 +1259,7 @@ interface ContextManifest {
   readonly generation: number
   readonly runId: RunId
   readonly taskId: TaskId
-  readonly profile: string
+  readonly specialist: string
   readonly routePlanDigest: string
   readonly sharedPrefixDigest: string
   readonly pages: readonly ContextPage[]
@@ -1273,7 +1273,7 @@ interface ContextManifest {
 Always render in this order:
 
 1. DSH harness/system/tool schema;
-2. Profile persona, capability, and authority policy;
+2. Specialist persona, capability, and authority policy;
 3. Strategy/policy version and run-shared immutable context;
 4. current GoalSpec and acceptance criteria;
 5. task intent and required inputs;
@@ -1285,9 +1285,9 @@ Within a slot, sort by stable `orderKey`, never by insertion time.
 ### 18.5 Cache-stability rules
 
 - Keep timestamps, RunId, TaskId, random nonces, live availability, and dynamic environment facts out of the early shared prefix.
-- Sibling tasks with the same Profile and shared run context should receive a byte-identical prefix.
+- Sibling tasks with the same Specialist and shared run context should receive a byte-identical prefix.
 - Put unique task material after the shared prefix.
-- Group dispatch by `(provider, model, toolsetDigest, profileDigest, sharedPrefixDigest)` where Host admission permits.
+- Group dispatch by `(provider, model, toolsetDigest, specialistDigest, sharedPrefixDigest)` where Host admission permits.
 - Never reorder an existing manifest generation.
 - Context compaction creates a new generation and digest; it does not mutate the old one.
 - Record which generation produced each attempt.
@@ -1333,7 +1333,7 @@ interface EnvironmentSnapshot {
   readonly capturedAt: number
   readonly cwdIdentity: string
   readonly availableSubagentProviders: readonly string[]
-  readonly profileCapabilityFacts: Readonly<Record<string, CapabilityObservation>>
+  readonly specialistCapabilityFacts: Readonly<Record<string, CapabilityObservation>>
   readonly routeFacts: Readonly<Record<string, RouteObservation>>
   readonly toolsetDigests: Readonly<Record<string, string>>
   readonly hostLimits: HostLimitObservation
@@ -1358,7 +1358,7 @@ Unknown metadata is not a failure unless the operation requires a proven propert
 ### 19.3 Freeze per attempt
 
 - Plan compilation records an environment digest.
-- Every attempt revalidates exact Profile/Route Plan facts immediately before start.
+- Every attempt revalidates exact Specialist/Route Plan facts immediately before start.
 - The selected route and context generation are frozen for the attempt.
 - A later topology/capability change creates a new attempt or PlanDelta; it never mutates the running attempt.
 - A provider/model fallback is a new attempt generation with an explicit decision event.
@@ -1377,16 +1377,16 @@ Resume compares current environment and authority digests with the continuation 
 
 ## 20. Multi-model routing and admission
 
-### 20.1 Reuse Profiles
+### 20.1 Reuse Specialists
 
-Do not add a second model router. Every executable task binds a Team member slot, which resolves to an existing semantic Profile such as `quick`, `deep`, or `review`.
+Do not add a second model router. Every executable task binds a Cohort member slot, which resolves to an existing semantic Specialist such as `quick`, `deep`, or `review`.
 
 Recommended policy, expressed as ordinary catalog data:
 
-- strong Profile for planner/controller, shard reducers, verifier, and final synthesizer;
-- lighter Profile for extraction, classification, bounded search, format conversion, and independent candidates;
-- specialized review Profile for evidence/defect checks;
-- no hardcoded Profile names in the executor.
+- strong Specialist for planner/controller, shard reducers, verifier, and final synthesizer;
+- lighter Specialist for extraction, classification, bounded search, format conversion, and independent candidates;
+- specialized review Specialist for evidence/defect checks;
+- no hardcoded Specialist names in the executor.
 
 ### 20.2 Route immutability
 
@@ -1510,7 +1510,7 @@ DSH's current workflow engine is foreground-only and has no journaling/resume. T
 - never model workflow script progress as durable DAG progress;
 - always dispose the workflow run on every path.
 
-Do not use the adapter if it cannot preserve Profile persona, tool filters, result schema, provider authority, and route bindings. In that case, use existing direct Legion fan-out and open a narrow DSH proposal for opaque prebound route/Profile handles.
+Do not use the adapter if it cannot preserve Specialist persona, tool filters, result schema, provider authority, and route bindings. In that case, use existing direct Legion fan-out and open a narrow DSH proposal for opaque prebound route/Specialist handles.
 
 ### 21.6 Real-parallelism metrics
 
@@ -1814,7 +1814,7 @@ Use:
 - `ctx.sessionProjections`;
 - `ctx.sessionProjectionCache` when present;
 - `ctx.subagents` and existing continuable-child lifecycle;
-- existing exact model adapter metadata and Profile routing;
+- existing exact model adapter metadata and Specialist routing;
 - optional `ctx.workflowEngine` only under the restrictions above.
 
 Update `package.json` peer/dev dependencies only after checking the exact package that owns each public type. The implementation will likely need the Session projection package as a peer and the workflow package only if the optional adapter ships. If a required new DSH coordination/admission API raises the minimum compatible DSH release, update the peer lower bound, compatibility matrix, receipts, packed tests, and documentation together; do not compile against an undeclared transitive package.
@@ -1825,7 +1825,7 @@ Before v1.1.0 claims full durable ownership safety, implement or obtain:
 
 1. **Atomic run coordination seam** with lease/fence CAS semantics.
 2. **Host-global admission seam** for multi-run resource reservations and reconciliation.
-3. Optionally, **opaque prebound child route/Profile handles** for DSH workflow micro-swarms.
+3. Optionally, **opaque prebound child route/Specialist handles** for DSH workflow micro-swarms.
 4. Optionally, **durable external-result receipt lookup** if child settlement can be proven after controller crash.
 
 ### 26.3 Capability-driven activation
@@ -2073,14 +2073,14 @@ Each milestone must produce a visible, independently reviewable result. Do not i
 
 ### Milestone 7 — Environment-aware multi-model orchestration
 
-**Outcome:** Each DAG attempt freezes an exact Profile/Route Plan and environment/context generation; reducers and controllers can use different Profiles.
+**Outcome:** Each DAG attempt freezes an exact Specialist/Route Plan and environment/context generation; reducers and controllers can use different Specialists.
 
 **WHY:** Heterogeneous models reduce cost and latency, but silent rebinding causes irreproducibility and stale assumptions.
 
 **HOW:**
 
 - add sanitized EnvironmentSnapshot and digest;
-- bind member slot -> Profile -> Route Plan per attempt;
+- bind member slot -> Specialist -> Route Plan per attempt;
 - group compatible dispatches by cache prefix where admission allows;
 - implement explicit fallback as a new attempt generation;
 - integrate Host global admission if available;
@@ -2209,7 +2209,7 @@ Inject every crash cut listed in section 17.5. Restart from persisted Session ev
 - no secret/absolute path leakage in events or explain views;
 - model proposals cannot widen tools, authority, depth, or limits;
 - reserved macro namespace rejection;
-- untrusted context pages cannot become system/Profile policy;
+- untrusted context pages cannot become system/Specialist policy;
 - malformed external JSON remains `unknown` until validated;
 - workflow adapter refuses unsafe capability mismatch.
 
@@ -2264,7 +2264,7 @@ durableRunPolicy:
     maxTransitionsPerActivation: 32
     activationDeadlineMs: 900000
 
-teams:
+cohorts:
   stair-step-coding:
     description: Planner, implementer, and independent verifier.
     members:
@@ -2430,7 +2430,7 @@ Use primary sources and current repository code as the source of truth:
 - [DSH subagent lifecycle and cold resume](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/subagent.md)
 - [DSH workflow contract and current no-journal/no-resume limitation](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/workflow/workflow/README.md)
 - [DSH workflow worker-thread limits and KV-cache behavior](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/workflow/workflow-worker-thread/README.md)
-- [OMO team-core domain primitives](https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/team-core/AGENTS.md)
+- [OMO `team-core` domain primitives](https://github.com/code-yeongyu/oh-my-openagent/blob/dev/packages/team-core/AGENTS.md)
 - [Kimi Agent Swarm current capabilities and technical overview](https://www.kimi.com/help/agent/agent-swarm)
 - [Kimi K2.6 long-horizon and swarm examples](https://www.kimi.com/blog/kimi-k2-6)
 - [Kimi K2.5 technical report: PARL, critical steps, and context sharding](https://arxiv.org/html/2602.02276v1)

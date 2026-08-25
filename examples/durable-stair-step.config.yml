@@ -7,7 +7,7 @@ enableDurableRuns: true
 durableRunPolicy:
   maxStartsPerActivation: 8
   maxConcurrentTasks: 2
-profiles:
+specialists:
   implementer:
     description: Implement one bounded visible increment.
     subagentProvider: spawn
@@ -20,7 +20,7 @@ profiles:
     maxDepth: 1
     defaultRunInBackground: false
     result: review-v1
-teams:
+cohorts:
   durable-stair-step:
     description: Implement and verify visible increments.
     members:

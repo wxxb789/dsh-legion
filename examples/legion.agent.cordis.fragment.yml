@@ -21,7 +21,7 @@
     guidance: >-
       Prefer quick for routine work. Use deep only when the task needs sustained
       reasoning or implementation. Use review after consequential changes.
-    profiles:
+    specialists:
       deep:
         description: Complex architecture, difficult debugging, and end-to-end implementation.
         subagentProvider: spawn

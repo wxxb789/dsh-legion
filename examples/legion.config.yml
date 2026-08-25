@@ -7,7 +7,7 @@ enableRunInBackground: true
 resourceRoots:
   bundled: resources
 
-profiles:
+specialists:
   quick:
     description: Translation, exploration, extraction, formatting, and summaries.
     subagentProvider: spawn

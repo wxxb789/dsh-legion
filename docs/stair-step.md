@@ -1,6 +1,6 @@
 # Stair-step Advancement
 
-Stair-step is an ordinary replaceable public Strategy advancement policy. Planner and verifier are normal Team member slots. Each accepted milestone binds a visible artifact, verification evidence, semantic progress, risks, a progress digest, and the next decision.
+Stair-step is an ordinary replaceable public Strategy advancement policy. Planner and verifier are normal Cohort member slots. Each accepted milestone binds a visible artifact, verification evidence, semantic progress, risks, a progress digest, and the next decision.
 
 ## Capability requirements
 

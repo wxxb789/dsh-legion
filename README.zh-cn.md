@@ -3,7 +3,7 @@
 [English](README.md) · **简体中文**
 
 <p align="center">
-  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion 架构：协调 Agent 调用一个 legion 工具，路由到以原生 DeepSeek Harness Subagent 运行的 quick、deep 和 review Profile" width="840"></a>
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion 架构：协调 Agent 调用一个 legion 工具，路由到以原生 DeepSeek Harness Subagent 运行的 quick、deep 和 review Specialist" width="840"></a>
 </p>
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
@@ -12,13 +12,13 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
-**dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它能将单个 AI Coding Agent 转变为有边界的智能体团队：可配置的 AI Agent Profile、精确 LLM 模型路由、声明式 Team 与 Strategy、结构化结果，以及受控深度的 Subagent 委派——同时无需替代 DSH 运行时。
+**dsh-legion** 是一个使用 TypeScript 开发的 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)多智能体编排插件。它能将单个 AI Coding Agent 转变为有边界的智能体团队：可配置的 AI Agent Specialist、精确 LLM 模型路由、声明式 Cohort 与 Strategy、结构化结果，以及受控深度的 Subagent 委派——同时无需替代 DSH 运行时。
 
 ## TL;DR
 
 - **它是什么。** 一个面向 DeepSeek Harness 的多智能体委派策略插件，而不是独立的智能体框架。
-- **它带来什么。** 一个模型可见的 `legion` 工具，其选项是 `quick`、`deep`、`review` 这类语义化 Profile；每个 Profile 背后是部署者掌控的模型路由、Subagent 后端、Persona、工具过滤、深度与结果契约。
-- **好处在哪。** 协调 Agent 选择的是意图而不是模型 ID；Prompt 永远无法放宽 Profile 背后的策略；把 `deep` 换成另一个模型，不需要改任何 Prompt。
+- **它带来什么。** 一个模型可见的 `legion` 工具，其选项是 `quick`、`deep`、`review` 这类语义化 Specialist；每个 Specialist 背后是部署者掌控的模型路由、Subagent 后端、Persona、工具过滤、深度与结果契约。
+- **好处在哪。** 协调 Agent 选择的是意图而不是模型 ID；Prompt 永远无法放宽 Specialist 背后的策略；把 `deep` 换成另一个模型，不需要改任何 Prompt。
 - **成本多少。** 用户自有 Agent Preset 里的一行配置。不引入额外的 Scheduler、Session Store、数据库或 Agent 运行时。
 - **适合谁。** 已经在运行 DSH、希望多智能体委派可审查、可复用的开发者与部署者。
 
@@ -27,7 +27,7 @@
 ## 快速开始
 
 ~~~bash
-# 1. 将插件安装到某个 DSH Host Profile（追加 #<commit-sha> 可锁定具体版本）
+# 1. 将插件安装到某个 DSH Host `profile`（追加 #<commit-sha> 可锁定具体版本）
 dsh plugin --profile web add github:wxxb789/dsh-legion
 
 # 2. 把 Legion 配置行复制到用户自有的 Agent Preset，然后开启一个新 Session
@@ -37,7 +37,7 @@ dsh plugin --profile web add github:wxxb789/dsh-legion
 dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixture.yml
 ~~~
 
-协调 Agent 随后只会看到一个 `legion` 工具，其 `profile` 取值就是你自己的语义化委派选项。详细步骤参见[安装](#安装)与[创建 Legion Agent Preset](#创建-legion-agent-preset)。
+协调 Agent 随后只会看到一个 `legion` 工具，其 `specialist` 取值就是你自己的语义化委派选项。详细步骤参见[安装](#安装)与[创建 Legion Agent Preset](#创建-legion-agent-preset)。
 
 ## 目录
 
@@ -66,11 +66,11 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 
 - **按任务类型路由。** 将提取、格式化和摘要交给快速模型，将架构设计、复杂调试交给能力更强的模型。
 - **执行独立审查。** 为 Reviewer 配置只读工具、独立 Persona，以及结构化的 `review-v1` 结果。
-- **构建多智能体流程。** 定义有边界的 Team，以及计划/执行/审查、研究 Fanout 等声明式 Strategy。
+- **构建多智能体流程。** 定义有边界的 Cohort，以及计划/执行/审查、研究 Fanout 等声明式 Strategy。
 - **限制工作量与风险。** 限制深度、并发数、参与者、截止时间、输出大小、工具和可用路由。这些边界能够约束部分成本驱动因素，但 Legion 不提供总 Token 或费用准入上限。
-- **统一委派语义。** 即使底层模型或 Subagent 后端发生变化，也能继续使用稳定的 Profile 名称。
-- **运行前验证策略。** 使用显式 Provider 能力 Fixture 检查配置并解释最终生效的 Profile。
-- **无需 Fork 即可扩展。** 通过 Catalog Layer 添加、替换、禁用或恢复 Profile、Team 和 Strategy。
+- **统一委派语义。** 即使底层模型或 Subagent 后端发生变化，也能继续使用稳定的 Specialist 名称。
+- **运行前验证策略。** 使用显式 Provider 能力 Fixture 检查配置并解释最终生效的 Specialist。
+- **无需 Fork 即可扩展。** 通过 Catalog Layer 添加、替换、禁用或恢复 Specialist、Cohort 和 Strategy。
 
 Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，但不希望再引入另一套 Scheduler、Session Store 或 Agent Runtime 的开发者与部署者。
 
@@ -83,9 +83,9 @@ Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，
 | 你所采用的内容 | 面向你已有 Agent 的委派策略 | 第二个运行时、状态模型与进程生命周期 |
 | 谁掌控 Agent Loop | DeepSeek Harness | 框架 |
 | Session、沙箱、审批、模型适配器 | 由 DSH 所有且保持不变 | 由框架所有，与你的 Agent 并行 |
-| 模型选择 | 每个 Profile 拥有有序的精确 Provider/Model 候选路由 | 通常在代码中按 Node 或按 Agent 绑定 |
+| 模型选择 | 每个 Specialist 拥有有序的精确 Provider/Model 候选路由 | 通常在代码中按 Node 或按 Agent 绑定 |
 | 采用成本 | 用户自有 Preset 中的一行配置 | 新的依赖树、服务或进程 |
-| Prompt 权限 | Prompt 选择 Profile，但永远无法放宽该 Profile 的模型、工具、Persona 或深度 | 因框架而异 |
+| Prompt 权限 | Prompt 选择 Specialist，但永远无法放宽该 Specialist 的模型、工具、Persona 或深度 | 因框架而异 |
 | 何时不适用 | 你没有运行 DSH | 你需要一个单体自包含编排器 |
 
 如果你没有运行 DeepSeek Harness，Legion 就不是合适的工具，独立框架会更适合。
@@ -94,28 +94,28 @@ Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，
 
 | 能力 | 说明 |
 |---|---|
-| 语义化 Profile | 使用 `quick`、`deep`、`review` 等命名策略，而不是在每次 Prompt 中选择原始模型。 |
-| 精确模型路由 | 每个 Profile 最多配置 8 个有序 Provider/Model 候选，并支持静态上下文和输出预算约束。 |
-| 多种 Subagent 后端 | 每个 Profile 可使用 `spawn`、`fork`、`codex`、`claude-code` 或其他 DSH Provider。 |
+| 语义化 Specialist | 使用 `quick`、`deep`、`review` 等命名策略，而不是在每次 Prompt 中选择原始模型。 |
+| 精确模型路由 | 每个 Specialist 最多配置 8 个有序 Provider/Model 候选，并支持静态上下文和输出预算约束。 |
+| 多种 Subagent 后端 | 每个 Specialist 可使用 `spawn`、`fork`、`codex`、`claude-code` 或其他 DSH Provider。 |
 | 工具与 Persona 策略 | 限制子智能体工具、添加专属指令、控制深度及前台/后台默认行为。 |
 | 结构化结果 | 支持版本化的 `text`、`findings-v1` 和 `review-v1` 前台结果契约。 |
-| 自定义 Team | 声明引用现有 Profile 的有边界 Member Slot。 |
+| 自定义 Cohort | 声明引用现有 Specialist 的有边界 Member Slot。 |
 | 声明式 Strategy | 将类型化 Artifact Graph 编译为冻结的 DSH 委派原语。 |
-| 硬性执行限制 | 限制每次 Team Run 的 Agent 数、并发数、截止时间和可接受输出大小。 |
+| 硬性执行限制 | 限制每次 Cohort Run 的 Agent 数、并发数、截止时间和可接受输出大小。 |
 | Catalog 自定义 | 分层添加、替换、禁用和恢复用户或第三方条目。 |
 | Prompt Fragment | 从部署者控制的 Root 加载受约束、不可变的 UTF-8 Prompt 资源。 |
 | 可解释策略 | 提供稳定 Digest、确定性诊断、路由证据和 JSON Explain 输出。 |
 | 运行时重配置 | 可选：Host 挂载 Settings Provider 后，可通过 `legion` 命名空间修改同一份配置并即时重新发布，无需重启。参见[运行时重配置](docs/settings.md)。 |
 | Web 设置卡片 | DSH「设置 → 插件」页中的插件卡片，支持暂存编辑与覆盖标记。参见[设置卡片](docs/settings-card.md)。 |
-| ACP 委派 | 可选 Profile，通过 DSH 的 ACP 后端委派给 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode。参见 [ACP 委派](docs/acp-delegation.md)。 |
+| ACP 委派 | 可选 Specialist，通过 DSH 的 ACP 后端委派给 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode。参见 [ACP 委派](docs/acp-delegation.md)。 |
 | 原生 DSH 生命周期 | Continuation、取消、结算通知、Provider 生命周期和 HMR 注册仍由 DSH 管理。 |
 
 ## 工作原理
 
 ~~~text
 Catalog Layers
-  ├─ Profiles   -> 模型路由、后端、Persona、工具、结果契约
-  ├─ Teams      -> 引用 Profile 的有边界 Member Slot
+  ├─ Specialists   -> 模型路由、后端、Persona、工具、结果契约
+  ├─ Cohorts      -> 引用 Specialist 的有边界 Member Slot
   └─ Strategies -> 类型化 Artifact Graph + 硬性限制
                          │
                          ▼
@@ -125,18 +125,18 @@ Catalog Layers
                   原生 DSH Subagent
 ~~~
 
-一个典型的模型侧 Profile 调用很简单：
+一个典型的模型侧 Specialist 调用很简单：
 
 ~~~json
 {
-  "profile": "quick",
+  "specialist": "quick",
   "description": "summarize findings",
   "prompt": "Summarize the investigation and preserve source paths.",
   "run_in_background": true
 }
 ~~~
 
-协调 Agent 只选择语义化 Profile；Prompt 无法改变该 Profile 背后由部署者控制的模型、工具、Persona、深度或结果策略。
+协调 Agent 只选择语义化 Specialist；Prompt 无法改变该 Specialist 背后由部署者控制的模型、工具、Persona、深度或结果策略。
 
 Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、沙箱、审批、Subagent Registry 或 Web GUI。它只使用 DSH 的公开 `ctx.subagents`、`ctx.tools` 和 `ctx.systemPrompt` 接口，从而确保运行时和生命周期只有一个所有者。
 
@@ -146,21 +146,21 @@ Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、�
 
 1. Legion 用严格 Schema 校验配置，文档中任意位置出现未知字段都会被拒绝。
 2. Catalog Layer 按顺序合并：后面的层按名称替换前面的条目，Tombstone 可禁用继承来的条目，而之后任何同名定义都会将其恢复。
-3. Profile 引用的 Prompt Fragment 只读取一次，受每个 Profile 的字节预算约束，并以带内容 Digest 的不可变快照形式固定下来。
+3. Specialist 引用的 Prompt Fragment 只读取一次，受每个 Specialist 的字节预算约束，并以带内容 Digest 的不可变快照形式固定下来。
 4. Legion 观察 Host 当前注册了哪些 Subagent 后端与哪些 LLM 适配器。
-5. 每个 Profile 基于该观察结果编译；只有当其配置的后端确实能满足该 Profile 的策略——执行模式、工具过滤、Persona、深度与结构化输出——它才会成为**活跃 Profile**。
-6. 委派工具随之发布，其参数 Schema 由活跃 Profile 推导而来，同时向 System Prompt 贡献一份对应的路由表。
-7. 如果没有任何活跃 Profile，工具会被撤销，提示内容渲染为空。后端或适配器发生变化时，整个流程会重新执行。
+5. 每个 Specialist 基于该观察结果编译；只有当其配置的后端确实能满足该 Specialist 的策略——执行模式、工具过滤、Persona、深度与结构化输出——它才会成为**活跃 Specialist**。
+6. 委派工具随之发布，其参数 Schema 由活跃 Specialist 推导而来，同时向 System Prompt 贡献一份对应的路由表。
+7. 如果没有任何活跃 Specialist，工具会被撤销，提示内容渲染为空。后端或适配器发生变化时，整个流程会重新执行。
 
 **单次委派**，即从协调 Agent 发起工具调用到拿到结果之间：
 
-8. 参数完成校验，并解析为**恰好一个** Profile：调用中指定的那个，或配置的 `defaultProfile`。
-9. 如果该 Profile 声明了 `routes`，Legion 会读取每个候选的精确模型元数据，并选中你所写顺序中第一个不与静态事实冲突的候选。
+8. 参数完成校验，并解析为**恰好一个** Specialist：调用中指定的那个，或配置的 `defaultProfile`。
+9. 如果该 Specialist 声明了 `routes`，Legion 会读取每个候选的精确模型元数据，并选中你所写顺序中第一个不与静态事实冲突的候选。
 10. 参与判断的只有静态事实，例如上下文窗口与输出预算。元数据读不到的候选仍然可选；只有当所有候选都被明确排除时，调用才会失败。
-11. Legion 通过 Host 的 Subagent API **只启动一个**子智能体，并施加该 Profile 的固定策略；当该子智能体或其 Provider 失败时，绝不重试、也不切换路由。
+11. Legion 通过 Host 的 Subagent API **只启动一个**子智能体，并施加该 Specialist 的固定策略；当该子智能体或其 Provider 失败时，绝不重试、也不切换路由。
 12. 后台调用会立即返回可续接的子智能体 ID；前台调用则等待结果，按契约重新校验结构化结果，并重建为全新的纯数据后返回。
 
-这套设计带来两个值得明说的性质。编译后的 Team / Strategy IR 是深度冻结且 detached 的：它不持有你配置对象的任何引用，也不携带函数。编译后的 Strategy Plan 还会按对象身份记录在进程级 Registry 中，因此执行阶段只接受由本进程编译出的 Plan——即便内容与 Digest 完全一致，重建或反序列化得到的副本同样会被拒绝。
+这套设计带来两个值得明说的性质。编译后的 Cohort / Strategy IR 是深度冻结且 detached 的：它不持有你配置对象的任何引用，也不携带函数。编译后的 Strategy Plan 还会按对象身份记录在进程级 Registry 中，因此执行阶段只接受由本进程编译出的 Plan——即便内容与 Digest 完全一致，重建或反序列化得到的副本同样会被拒绝。
 
 ## 安装
 
@@ -168,25 +168,25 @@ Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、�
 
 - 已安装兼容版本的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。
 - `pnpm` 已加入 `PATH`；`dsh plugin` 会将包管理操作转发给 pnpm。
-- 一个用于安装插件的 DSH Host Profile，例如默认的 `web`。
-- 已配置至少一个 DSH Subagent Provider，以及 Legion Profile 所引用的 LLM Provider 和 Model。
+- 一个用于安装插件的 DSH Host `profile`，例如默认的 `web`。
+- 已配置至少一个 DSH Subagent Provider，以及 Legion Specialist 所引用的 LLM Provider 和 Model。
 - 本地开发需要 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.21.0`。
 
 ### 从 GitHub 安装
 
-把默认分支安装到 `web` Profile：
+把默认分支安装到 `web` Host composition：
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion
 ~~~
 
-如果插件应安装到其他 DSH Host Profile，请替换 `web`。
+如果插件应安装到其他 DSH Host `profile`，请替换 `web`。
 
-该命令只在**安装那一刻**解析一次 `main`。`dsh plugin` 会把操作转发给 pnpm，由 pnpm 把解析出的 Commit 记录到 Host Profile 的 Lockfile 中；在你显式升级之前，已安装版本不会跟随后续提交漂移。
+该命令只在**安装那一刻**解析一次 `main`。`dsh plugin` 会把操作转发给 pnpm，由 pnpm 把解析出的 Commit 记录到 Host `profile` 的 Lockfile 中；在你显式升级之前，已安装版本不会跟随后续提交漂移。
 
 #### 锁定具体版本
 
-Git 安装会在你的机器上执行 Legion 的 `prepare` 构建，且不在 Agent 运行的任何沙箱之内。当已安装代码需要可审计、可复现时——生产 Profile、共享机器，或需要审查「允许哪些代码执行构建」的部署——请追加不可变版本：
+Git 安装会在你的机器上执行 Legion 的 `prepare` 构建，且不在 Agent 运行的任何沙箱之内。当已安装代码需要可审计、可复现时——生产 Host composition、共享机器，或需要审查「允许哪些代码执行构建」的部署——请追加不可变版本：
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
@@ -231,7 +231,7 @@ dsh plugin --profile web add .
 
 ### 备选方式：复制完整 Preset
 
-将 [presets/legion](presets/legion) 复制到 `$DSH_HOME/.agent-presets/legion`。其中包含一组专注于编码工作的工具，以及 `deep`、`quick`、`review` 示例 Profile。
+将 [presets/legion](presets/legion) 复制到 `$DSH_HOME/.agent-presets/legion`。其中包含一组专注于编码工作的工具，以及 `deep`、`quick`、`review` 示例 Specialist。
 
 复制后的 Preset 是一个版本化模板，不会自动继承 DSH 或 Legion 的后续改动。已有内容的 Session 也不能切换已记录的 Preset，因此修改组合后需要创建新 Session。
 
@@ -269,7 +269,7 @@ dsh plugin --profile web add .
 
 ## 卸载
 
-需要从所有安装过 Legion 的 DSH Host Profile 中分别卸载：
+需要从所有安装过 Legion 的 DSH Host `profile` 中分别卸载：
 
 1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。下一步删除 Package 时会一并移除贡献 `legion-settings` 配置行的 Bundle Layer；若该配置行是手工复制进已合成的 `cordis.yml` 的，需要自行在那里删除。
 2. 删除已安装的 Package：
@@ -285,20 +285,20 @@ dsh plugin --profile web add .
 
 ## 使用方式
 
-### 通过 Profile 委派
+### 通过 Specialist 委派
 
-协调 Agent 会看到一个 `legion` 工具以及当前可用 Profile 的描述：
+协调 Agent 会看到一个 `legion` 工具以及当前可用 Specialist 的描述：
 
 ~~~json
 {
-  "profile": "review",
+  "specialist": "review",
   "description": "review the authentication change",
   "prompt": "Inspect the diff for correctness and security issues. Cite files and lines.",
   "run_in_background": false
 }
 ~~~
 
-如果配置了 `defaultProfile`，调用时可以省略 `profile`。并行的同级调用使用 DSH 原生并行工具执行能力。
+如果配置了 `defaultProfile`，调用时可以省略 `specialist`。并行的同级调用使用 DSH 原生并行工具执行能力。
 
 ### 运行 Strategy
 
@@ -313,7 +313,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 }
 ~~~
 
-一个请求不能混用 Profile 和 Strategy 字段；调用级限制只能收紧编译后的 Strategy 限制。
+一个请求不能混用 Specialist 和 Strategy 字段；调用级限制只能收紧编译后的 Strategy 限制。
 
 ## 配置参考
 
@@ -326,7 +326,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
     configVersion: 2
     toolName: legion
     defaultProfile: quick
-    profiles:
+    specialists:
       quick:
         description: Fast exploration, extraction, and summaries.
         subagentProvider: spawn
@@ -361,22 +361,22 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `role` | `delegation` | 该配置行的组合角色，只从配置行自身的 Entry 读取，绝不取自设置层。`settings` 行只注册 `legion` 命名空间，不提供其他任何内容——没有工具、没有 Prompt Section、没有 Projection、没有 Service。 |
-| `configVersion` | `2` | 当前配置契约。省略该字段或写 `1` 都会被接受并归一化为 `2`；但 v1 文档一旦使用 `catalogLayers`、`teams`、`strategies`、`enableStrategies` 或 Durable Run，会在激活时被拒绝，而不是自动升级。 |
+| `configVersion` | `2` | 当前配置契约。省略该字段或写 `1` 都会被接受并归一化为 `2`；但 v1 文档一旦使用 `catalogLayers`、`cohorts`、`strategies`、`enableStrategies` 或 Durable Run，会在激活时被拒绝，而不是自动升级。 |
 | `toolName` | `legion` | 暴露给模型的工具名称。 |
-| `profiles` | 必填 | 语义化 Profile Map。 |
-| `defaultProfile` | 无 | 调用未指定 `profile` 时使用的 Profile。 |
+| `specialists` | 必填 | 语义化 Specialist Map。 |
+| `defaultProfile` | 无 | 调用未指定 `specialist` 时使用的 Specialist。 |
 | `enableRunInBackground` | `true` | 是否暴露后台委派。 |
 | `enableStrategies` | `false` | 是否显式向模型暴露生效的 Strategy。 |
 | `guidance` | 无 | 追加给协调 Agent 的说明。 |
 | `resourceRoots` | `{}` | Prompt Fragment 的部署者相对 Root。 |
-| `maxResourceBytes` | `65536` | 每个 Profile 的 Fragment 字节预算，硬上限为 4 MiB。 |
+| `maxResourceBytes` | `65536` | 每个 Specialist 的 Fragment 字节预算，硬上限为 4 MiB。 |
 | `catalogLayers` | `[]` | 有序第三方或项目策略层。 |
-| `teams` | `{}` | 最终部署层的 Team。 |
+| `cohorts` | `{}` | 最终部署层的 Cohort。 |
 | `strategies` | `{}` | 最终部署层的 Strategy。 |
 
-Profile 名称必须匹配 `^[a-z][a-z0-9-]*$`。
+Specialist 名称必须匹配 `^[a-z][a-z0-9-]*$`。
 
-### Profile 字段
+### Specialist 字段
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
@@ -393,7 +393,7 @@ Profile 名称必须匹配 `^[a-z][a-z0-9-]*$`。
 
 对于 `codex`、`claude-code` 这类外部产品，Model 选择由产品自身管理，通常应设置 `maxDepth: provider-managed` 和 `defaultRunInBackground: false`。
 
-如果目标 Agent 支持 Agent Client Protocol，更推荐走 DSH 的通用 ACP 后端：Legion 会按上述约束自动生成 Profile 与挂载行，无需手写。参见 [ACP 委派](docs/acp-delegation.md)与 `examples/legion.acp.fragment.yml`。
+如果目标 Agent 支持 Agent Client Protocol，更推荐走 DSH 的通用 ACP 后端：Legion 会按上述约束自动生成 Specialist 与挂载行，无需手写。参见 [ACP 委派](docs/acp-delegation.md)与 `examples/legion.acp.fragment.yml`。
 
 ### 精确 Route Candidate
 
@@ -417,13 +417,13 @@ routes:
 
 Legion 最多启动一个子智能体；如果已选子智能体因 Provider、认证、Quota、网络或执行错误而失败，不会自动重试其他 Route。
 
-### Catalog Layer、Team 与 Strategy
+### Catalog Layer、Cohort 与 Strategy
 
-Config v2 可以对 Profile、Team、Strategy 进行分层。后出现的同名定义会替换前者；Tombstone 可以禁用条目；更后面的定义可以重新启用它。Root Map 是最终部署层。
+Config v2 可以对 Specialist、Cohort、Strategy 进行分层。后出现的同名定义会替换前者；Tombstone 可以禁用条目；更后面的定义可以重新启用它。Root Map 是最终部署层。
 
 ~~~yaml
 configVersion: 2
-teams:
+cohorts:
   coding:
     description: One executor and one reviewer.
     members:
@@ -479,7 +479,7 @@ Legion 是通过**组合那一行**来选择它的，而不是重新实现，自
 
 被委派的子 Agent 继承同一 Presentation。`dsh-agent-presets` 会把子 Agent 的 Scope 重新挂到父 Agent 所在 Preset 的 standing scope 上，注册表沿这条链解析模式——所以 PTC 模式协调者的子 Agent 自身也在 PTC 模式，SDK 段按该子 Agent 自己的可见工具重新生成。
 
-Profile 的 `toolFilter` 在 Code Mode 下含义不变。SDK binding table 由调用方 Agent 的**可见**集合构建，因此被拒绝的能力不会出现在生成的 SDK 中，从 `run_code` 内部按名调用它仍然解析为 `UNKNOWN_TOOL`：`review` Profile 对 `write`/`edit` 的拒绝在两种 Presentation 下都成立。有两条边界属于 Host 的设计而非 Legion——`run_code` 本身永远不能被拒绝，且 Filter 只约束子 Agent**继承**到的表面，不约束该子 Agent 自身 Scope 注册的工具（它的 report 与结构化输出工具）。
+Specialist 的 `toolFilter` 在 Code Mode 下含义不变。SDK binding table 由调用方 Agent 的**可见**集合构建，因此被拒绝的能力不会出现在生成的 SDK 中，从 `run_code` 内部按名调用它仍然解析为 `UNKNOWN_TOOL`：`review` Specialist 对 `write`/`edit` 的拒绝在两种 Presentation 下都成立。有两条边界属于 Host 的设计而非 Legion——`run_code` 本身永远不能被拒绝，且 Filter 只约束子 Agent**继承**到的表面，不约束该子 Agent 自身 Scope 注册的工具（它的 report 与结构化输出工具）。
 
 你走哪条安装路径，决定这一行放在哪里。随包 Preset（[`presets/legion`](presets/legion)）拥有完整 composition，因此携带该行。追加式 Fragment（[`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)）不携带，因为一个 composition 只选择一种 Presentation，第二次声明会被拒绝而非合并——把它追加到官方 `code` Preset 就得到 PTC 模式，追加到 `standard` 就是 `native`，Legion 两者都跟随。
 
@@ -501,7 +501,7 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 dsh-legion explain examples/legion.config.yml --providers examples/providers.fixture.yml --json
 ~~~
 
-`doctor` 输出紧凑摘要；`explain` 还会输出 Profile、执行模式、Model Route、结果契约和诊断码；`--json` 输出版本化的 `legion-explain` View。
+`doctor` 输出紧凑摘要；`explain` 还会输出 Specialist、执行模式、Model Route、结果契约和诊断码；`--json` 输出版本化的 `legion-explain` View。
 
 Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实时 DSH 进程、凭据、网络可达性、Provider 健康、Quota、账单、延迟或真实 Model 可用性。
 
@@ -515,10 +515,10 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 - Curated Strategy 不会自动向模型开放；部署者可显式设置 `enableStrategies: true`。
 - 已选择的子智能体失败后，Legion 不会重试或切换模型。
-- 进程内子智能体继承父级命名 DSH Agent Preset；Profile 仍可改变 Model、Persona、Tool、Backend 和限制。
-- GUI 设置卡片只编辑四个标量策略；Profile、Team、Strategy 与 Catalog Layer 仍由配置文档管理。
+- 进程内子智能体继承父级命名 DSH Agent Preset；Specialist 仍可改变 Model、Persona、Tool、Backend 和限制。
+- GUI 设置卡片只编辑四个标量策略；Specialist、Cohort、Strategy 与 Catalog Layer 仍由配置文档管理。
 - 卡片的浏览器半侧是手工复刻 DSH 尚未发布的客户端 Bundle 格式，上游若变更该格式，失败会发生在加载期而不是构建期。
-- Profile 的 `result` Schema 目前仍接受 `plan-delta-v1`，但该契约是为 Durable Run 的 Plan 提案设计的，并非普通委派用途。在它被显式收口或正式公开之前，请视为 Profile 不支持该取值。
+- Specialist 的 `result` Schema 目前仍接受 `plan-delta-v1`，但该契约是为 Durable Run 的 Plan 提案设计的，并非普通委派用途。在它被显式收口或正式公开之前，请视为 Specialist 不支持该取值。
 - 不支持在缺少兼容 DSH Peer 的环境中直接运行裸 Package。
 
 ## 常见问题
@@ -537,19 +537,19 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ### 可以委派给 Codex、Claude Code 或 GitHub Copilot CLI 吗？
 
-可以，通过 DSH 的 ACP 后端。Legion 提供可选 Catalog Layer，内含面向 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode 的 Profile。参见 [ACP 委派](docs/acp-delegation.md)。
+可以，通过 DSH 的 ACP 后端。Legion 提供可选 Catalog Layer，内含面向 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode 的 Specialist。参见 [ACP 委派](docs/acp-delegation.md)。
 
 ### Legion 会自动选择最便宜或最健康的模型吗？
 
 不会。它只会按照顺序，根据已知静态事实检查 Route。它不声称知道实时健康、价格、认证、Quota 或延迟，也不会在失败后自动重放。
 
-### 可以创建自定义 Profile、Team 和 Strategy 吗？
+### 可以创建自定义 Specialist、Cohort 和 Strategy 吗？
 
 可以。自定义能力是核心设计。Default Catalog 与用户和第三方条目使用完全相同的公开、可替换契约。
 
 ### 为什么 Legion 工具会消失？
 
-只有当 Profile 配置的后端确实能满足该 Profile 的策略时，它才会被发布：包括它默认使用的执行模式，以及工具过滤、Persona、深度和结构化输出。Subagent Provider 未注册会使其失活；已注册但能力不足的后端同样会——例如该后端无法提供 `findings-v1` Profile 所需的结构化输出。如果没有任何 Profile 满足条件，工具会被撤销、提示渲染为空；缺失的能力出现后二者都会恢复。还应确认 Legion 安装在正确的 DSH Host Profile 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
+只有当 Specialist 配置的后端确实能满足该 Specialist 的策略时，它才会被发布：包括它默认使用的执行模式，以及工具过滤、Persona、深度和结构化输出。Subagent Provider 未注册会使其失活；已注册但能力不足的后端同样会——例如该后端无法提供 `findings-v1` Specialist 所需的结构化输出。如果没有任何 Specialist 满足条件，工具会被撤销、提示渲染为空；缺失的能力出现后二者都会恢复。还应确认 Legion 安装在正确的 DSH Host `profile` 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
 
 ### 可以直接编辑 DSH 自带的 `standard` Preset 吗？
 
@@ -572,7 +572,7 @@ pnpm run check
 - [Journal Contract v1](docs/journal-contract-v1.md)
 - [Run Replay](docs/run-replay.md)
 - [版本化配置与回滚](docs/adr/0008-versioned-config-and-rollback.md)
-- [声明式 Team 与 Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
+- [声明式 Cohort 与 Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [显式 Strategy 暴露权限](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
 - [可复现发布](docs/adr/0009-reproducible-provenance-releases.md)
 - [全部 ADR](docs/adr)
@@ -589,7 +589,7 @@ Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式
 
 - [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) —— 开源智能体 Harness，Legion 所依托的 Agent、Session、模型适配器、Subagent 运行时、沙箱、审批机制和 Web GUI 都由它提供。
 - [Cordis](https://github.com/cordiverse/cordis) —— DSH 所基于的插件与服务框架；Legion 通过普通 Cordis Fiber 注册。
-- [Agent Client Protocol](https://agentclientprotocol.com) —— DSH ACP 后端所使用的协议，Legion 的可选外部 Agent Profile 依赖它。
+- [Agent Client Protocol](https://agentclientprotocol.com) —— DSH ACP 后端所使用的协议，Legion 的可选外部 Agent Specialist 依赖它。
 - [`dsh-plugin` 主题](https://github.com/topics/dsh-plugin) —— 发现更多 DeepSeek Harness 插件。
 
 如果 dsh-legion 帮你节省了工作量，为仓库点个 Star 可以帮助更多 DSH 用户找到它。

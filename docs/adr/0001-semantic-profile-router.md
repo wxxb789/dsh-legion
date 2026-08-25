@@ -1,4 +1,6 @@
-# ADR 0001: Start with a semantic profile router
+# ADR 0001: Start with a semantic specialist router
+
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
 
 - Status: Accepted
 - Date: 2026-08-14
@@ -17,15 +19,15 @@ DSH already owns the hard lifecycle problems:
 - parallel tool execution;
 - workflow fan-out for large explicit orchestrations.
 
-A separate Legion scheduler or team runtime would duplicate those modules before the project has a distinct lifecycle requirement. The useful missing seam is semantic routing: the coordinator should choose `quick`, `deep`, or `review`, not raw provider and model ids.
+A separate Legion scheduler or Host `Team` runtime would duplicate those modules before the project has a distinct lifecycle requirement. The useful missing seam is semantic routing: the coordinator should choose `quick`, `deep`, or `review`, not raw provider and model ids.
 
-Current DSH in-process children join their parent's standing agent preset through `composeFrom()`. `SubagentStartRequest` can override model, persona, tools, and depth, but it cannot name another agent preset. Continuable setup contributions also receive only the unpublished child context, not per-call Legion profile metadata.
+Current DSH in-process children join their parent's standing Agent Preset through `composeFrom()`. `SubagentStartRequest` can override model, persona, tools, and depth, but it cannot name another agent preset. Continuable setup contributions also receive only the unpublished child context, not per-call Legion specialist metadata.
 
 ## Decision
 
 Version 0.1 is one agent-plane Cordis plugin with one model-facing tool.
 
-The public configuration maps profile names to:
+The public configuration maps specialist names to:
 
 - a named DSH subagent backend;
 - optional child LLM provider/model/maxTokens;
@@ -33,7 +35,7 @@ The public configuration maps profile names to:
 - depth policy;
 - default foreground or continuable-background behavior.
 
-The coordinator receives a generated prompt section describing profiles and calls one tool with `profile`, `description`, `prompt`, and optional `run_in_background`.
+The coordinator receives a generated prompt section describing specialists and calls one tool with `profile`, `description`, `prompt`, and optional `run_in_background`.
 
 Legion delegates through `ctx.subagents.start()` and `startContinuable()`. It does not own Sessions, child persistence, follow-up, provider registration, sandbox policy, approvals, or model credentials.
 
@@ -55,7 +57,7 @@ The plugin lives in an agent preset because it contributes only a model-facing t
 
 - Version 0.1 has no model fallback chain or health-based router.
 - Product providers such as Codex and Claude Code keep their native model selection.
-- A single child cannot select a different DSH agent preset. Profiles vary the child overlay, not its standing composition.
+- A single child cannot select a different DSH agent preset. Specialists vary the child overlay, not its standing composition.
 - Configuration is edited in the agent preset instead of the Web settings UI.
 
 ## Rejected alternatives
@@ -64,13 +66,13 @@ The plugin lives in an agent preset because it contributes only a model-facing t
 
 Rejected for the MVP. It would expose or hide a second scheduling state machine on top of mature DSH subagent and workflow modules. Add it only when a concrete topology cannot be expressed by coordinator tool calls or DSH workflows.
 
-### One generated tool per profile
+### One generated tool per specialist
 
 Rejected. It multiplies tool schemas, increases prompt and cache cost, and makes configuration changes alter the entire tool catalog. A single enum-backed tool keeps the interface and KV-cache impact stable.
 
 ### Raw provider/model parameters in each call
 
-Rejected. It moves deployment policy into prompts, weakens auditability, and makes every coordinator relearn model ids. Semantic profiles are the stable interface.
+Rejected. It moves deployment policy into prompts, weakens auditability, and makes every coordinator relearn model ids. Semantic specialists are the stable interface.
 
 ### Claiming per-child DSH preset support
 

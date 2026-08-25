@@ -1,5 +1,7 @@
 # Durable Strategy Runs use the DSH Session journal
 
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
+
 - Status: Accepted
 - Date: 2026-08-16
 
@@ -26,13 +28,13 @@ The controller runs only when explicitly invoked or resumed, advances a bounded 
 ## Rejected alternatives
 
 - A Legion database, task directory, mailbox directory, or WAL duplicates DSH durability and creates split-brain recovery.
-- A process-global scheduler or resident Team runtime duplicates DSH workflow and subagent lifecycles.
+- A process-global scheduler or resident Cohort runtime duplicates DSH workflow and subagent lifecycles.
 - Copying child transcripts into the anchor journal wastes storage and confuses ownership.
 - Reconstructing Promises, handles, queues, or JavaScript stacks makes replay process-dependent.
 
 ## Compatibility
 
-The v1.0 direct Profile and ephemeral Strategy paths remain supported and are the default. Durable execution is additive, explicit, deployment-authorized, and Session-anchored. Omitting durability settings preserves v1.0 configuration, results, release gates, and behavior.
+The v1.0 direct Specialist and ephemeral Strategy paths remain supported and are the default. Durable execution is additive, explicit, deployment-authorized, and Session-anchored. Omitting durability settings preserves v1.0 configuration, results, release gates, and behavior.
 
 ## Failure semantics
 

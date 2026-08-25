@@ -22,7 +22,7 @@ describe('shipped Legion preset template', () => {
       configVersion: 2,
       defaultProfile: 'quick',
       resourceRoots: { bundled: 'resources' },
-      profiles: {
+      specialists: {
         deep: {
           subagentProvider: 'spawn',
           routes: [
@@ -50,7 +50,7 @@ describe('shipped Legion preset template', () => {
       },
     })
     expect(legion?.config).toMatchObject({
-      teams: DEFAULT_CATALOG_LAYER.teams,
+      cohorts: DEFAULT_CATALOG_LAYER.teams,
       strategies: DEFAULT_CATALOG_LAYER.strategies,
     })
     expect(named.some(row => row.name === '@deepseek-ai/dsh-subagent')).toBe(false)

@@ -4,9 +4,9 @@ Legion serves one settings namespace, `legion`, whenever the Host mounts a setti
 
 ## Which row owns it
 
-A namespace is process-wide; a Profile catalog belongs to the row that composed it. Legion splits along that line.
+A namespace is process-wide; a Specialist catalog belongs to the row that composed it. Legion splits along that line.
 
-The **settings row** owns the namespace. It is the Host-plane row the bundle patch installs — `role: settings`, no Profiles — and it contributes nothing else: no tool, no prompt section, no projection, no service. Registering a namespace is an effect on the registering fiber, so this row is what keeps the card on the Settings → Plugins tab for the whole process instead of only while a session using the Legion preset happens to be alive.
+The **settings row** owns the namespace. It is the Host-plane row the bundle patch installs — `role: settings`, no Specialists — and it contributes nothing else: no tool, no prompt section, no projection, no service. Registering a namespace is an effect on the registering fiber, so this row is what keeps the card on the Settings → Plugins tab for the whole process instead of only while a session using the Legion preset happens to be alive.
 
 Every **delegation row** — the ordinary `role: delegation` row in your Agent Preset — consumes what that row serves. It never registers the namespace a second time (the Host refuses a duplicate loudly), so any number of concurrent sessions read the same stored section and each republishes its own tool.
 
@@ -14,7 +14,7 @@ Which half a row runs is decided by what the Host already serves, not by configu
 
 The `role` is read from the row's composition entry and is deliberately never taken from the settings layer. A stored section that could flip a row to `settings` would withdraw every delegation surface in the deployment from inside the document meant to configure it.
 
-That split moves one class of error from write time to read time, and a card user sees the difference. A write the schema rejects is refused as you save it, with the reason on the card. A write that only a catalog can judge — a `defaultProfile` naming a Profile no row defines, most of all — is accepted and saved by the row that owns the namespace, and then materializes nowhere: each delegation row keeps the generation it last published and logs `LEGION_SETTINGS_REGISTRATION_REJECTED`. The card shows the value it stored; the Host log is where you find out it took effect nowhere.
+That split moves one class of error from write time to read time, and a card user sees the difference. A write the schema rejects is refused as you save it, with the reason on the card. A write that only a catalog can judge — a `defaultProfile` naming a Specialist no row defines, most of all — is accepted and saved by the row that owns the namespace, and then materializes nowhere: each delegation row keeps the generation it last published and logs `LEGION_SETTINGS_REGISTRATION_REJECTED`. The card shows the value it stored; the Host log is where you find out it took effect nowhere.
 
 ## Layers
 
@@ -24,7 +24,7 @@ Three layers resolve a delegation row's configuration, last one wins per field:
 2. **That row's own** composition entry.
 3. The stored user section.
 
-Plain objects merge recursively; arrays and scalars replace the layer below wholesale. This is the order the Host applies to a registrant's `base`, applied by each delegation row to its own entry — so the preset that names your Profiles stays underneath your edits, and the settings row's empty catalog never gets between them.
+Plain objects merge recursively; arrays and scalars replace the layer below wholesale. This is the order the Host applies to a registrant's `base`, applied by each delegation row to its own entry — so the preset that names your Specialists stays underneath your edits, and the settings row's empty catalog never gets between them.
 
 A field's **presence** in the user section is what marks it overridden. Clearing a field lets it fall back to the composition entry.
 
@@ -41,7 +41,7 @@ Republication is serialized and last-commit-wins. Two commits landing together p
 | No settings provider mounted | Legion runs on its composition entry; nothing is registered yet. Both halves attach through an injected scope and wait for a provider instead of going inert, so a settings provider composed after the row still reaches it. `detectSettingsCapabilities` reports `LEGION_SETTINGS_SERVICE_UNAVAILABLE` for the moment it is asked; no row logs it, because a provider that is not there yet is not a failure. |
 | Stored section fails the schema | The owner refuses the write while the caller is still there to read why, so the card reports it and nothing is persisted. |
 | Stored section fails `materializeConfig` | The owner accepts and persists it, because that check is catalog-dependent and the owner judges no catalog. Each delegation row then falls back — it keeps its last published generation, or its composition entry if it never published one — and logs `LEGION_SETTINGS_REGISTRATION_REJECTED` once per distinct failure. |
-| A stored section one row cannot materialize | Only that row falls back and logs; every other row keeps publishing. The namespace owner validates what holds for any catalog — a blank `toolName`, an inverted `durableRunPolicy`, an unusable resource root — and leaves catalog cross-references such as `defaultProfile` to each row, because a Profile name valid for the row that defines it is invalid for the row beside it. |
+| A stored section one row cannot materialize | Only that row falls back and logs; every other row keeps publishing. The namespace owner validates what holds for any catalog — a blank `toolName`, an inverted `durableRunPolicy`, an unusable resource root — and leaves catalog cross-references such as `defaultProfile` to each row, because a Specialist name valid for the row that defines it is invalid for the row beside it. |
 | A commit cannot be materialized or its fragments cannot be loaded | The last published generation stays registered; the failure is logged. |
 | The settings provider detaches | The composition entry becomes the source again and Legion republishes from it. |
 | Legion's own fiber unloads | Republication stops; no generation is rebuilt against a disposing fiber. |

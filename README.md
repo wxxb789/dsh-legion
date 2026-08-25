@@ -3,7 +3,7 @@
 **English** · [简体中文](README.zh-cn.md)
 
 <p align="center">
-  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion architecture: a coordinator agent calls one legion tool, which routes to quick, deep, and review profiles that run as native DeepSeek Harness subagents" width="840"></a>
+  <a href="https://github.com/wxxb789/dsh-legion"><img src="https://raw.githubusercontent.com/wxxb789/dsh-legion/main/.github/assets/social-preview.png" alt="dsh-legion architecture: a coordinator agent calls one legion tool, which routes to quick, deep, and review Specialists that run as native DeepSeek Harness subagents" width="840"></a>
 </p>
 
 [![CI](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml/badge.svg)](https://github.com/wxxb789/dsh-legion/actions/workflows/ci.yml)
@@ -12,13 +12,13 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![DSH plugin](https://img.shields.io/badge/DeepSeek%20Harness-dsh--plugin-5b4ee5?logo=github&logoColor=white)](https://github.com/topics/dsh-plugin)
 
-**dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It turns one AI coding agent into a bounded agent team: configurable AI agent Profiles, an exact LLM model router, declarative Teams and Strategies, structured results, and depth-limited subagent delegation — without replacing the DSH runtime.
+**dsh-legion** is a TypeScript multi-agent orchestration plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It turns one AI coding agent into a bounded orchestration cohort: configurable AI agent Specialists, an exact LLM model router, declarative Cohorts and Strategies, structured results, and depth-limited subagent delegation — without replacing the DSH runtime.
 
 ## TL;DR
 
 - **What it is.** A DeepSeek Harness plugin for multi-agent delegation policy — not a standalone agent framework.
-- **What it adds.** One model-facing `legion` tool whose choices are semantic Profiles such as `quick`, `deep`, and `review`. Each Profile carries a deployment-owned model route, subagent backend, persona, tool filter, depth, and result contract.
-- **Why it helps.** The coordinating agent picks intent instead of model IDs, a prompt can never widen the policy behind a Profile, and changing the model behind `deep` rewrites no prompts.
+- **What it adds.** One model-facing `legion` tool whose choices are semantic Specialists such as `quick`, `deep`, and `review`. Each Specialist carries a deployment-owned model route, subagent backend, persona, tool filter, depth, and result contract.
+- **Why it helps.** The coordinating agent picks intent instead of model IDs, a prompt can never widen the policy behind a Specialist, and changing the model behind `deep` rewrites no prompts.
 - **What it costs.** One configuration row in a user-owned agent preset. No extra scheduler, session store, database, or agent runtime.
 - **Who it is for.** Developers and deployment owners already running DSH who want reviewable, reusable multi-agent delegation.
 
@@ -37,7 +37,7 @@ dsh plugin --profile web add github:wxxb789/dsh-legion
 dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixture.yml
 ~~~
 
-The coordinator now sees one `legion` tool whose `profile` values are your semantic delegation choices. Step-by-step instructions are in [Install](#install) and [Set up a Legion agent preset](#set-up-a-legion-agent-preset).
+The coordinator now sees one `legion` tool whose `specialist` values are your semantic delegation choices. Step-by-step instructions are in [Install](#install) and [Set up a Legion agent preset](#set-up-a-legion-agent-preset).
 
 ## Contents
 
@@ -66,11 +66,11 @@ Legion is useful when one AI coding agent should delegate different kinds of wor
 
 - **Route work by task type.** Send extraction or summaries to a fast model and architecture or debugging to a deeper model.
 - **Run independent reviews.** Give a reviewer read-only tools, a separate persona, and a structured `review-v1` result.
-- **Build multi-agent workflows.** Define bounded Teams and declarative plan/execute/review or research fanout Strategies.
+- **Build multi-agent workflows.** Define bounded Cohorts and declarative plan/execute/review or research fanout Strategies.
 - **Bound workload and risk.** Limit depth, concurrency, participants, deadlines, output size, tools, and eligible routes. These bounds constrain cost drivers, but Legion does not provide aggregate token or monetary-cost admission.
-- **Standardize delegation.** Keep semantic Profile names stable when the underlying model or backend changes.
+- **Standardize delegation.** Keep semantic Specialist names stable when the underlying model or backend changes.
 - **Validate policy before runtime.** Diagnose configuration against explicit provider capability fixtures.
-- **Customize without forking.** Add, replace, disable, or revive Profiles, Teams, and Strategies through Catalog Layers.
+- **Customize without forking.** Add, replace, disable, or revive Specialists, Cohorts, and Strategies through Catalog Layers.
 
 Legion is for developers and deployment owners who already use DSH and want configurable multi-agent delegation without adopting another scheduler, session store, or agent runtime.
 
@@ -83,9 +83,9 @@ Standalone multi-agent frameworks such as LangGraph, CrewAI, and AutoGen ship th
 | What you adopt | Delegation policy for an agent you already run | A second runtime, state model, and process lifecycle |
 | Who owns the agent loop | DeepSeek Harness | The framework |
 | Sessions, sandbox, approvals, model adapters | DSH-owned and unchanged | Framework-owned, parallel to your agent's |
-| Model selection | Ordered exact provider/model Route Candidates per Profile | Usually wired per node or per agent in code |
+| Model selection | Ordered exact provider/model Route Candidates per Specialist | Usually wired per node or per agent in code |
 | Cost to adopt | One configuration row in a user-owned preset | A new dependency tree, service, or process |
-| Prompt authority | A prompt selects a Profile and can never widen that Profile's model, tools, persona, or depth | Varies by framework |
+| Prompt authority | A prompt selects a Specialist and can never widen that Specialist's model, tools, persona, or depth | Varies by framework |
 | Wrong tool when | You do not run DSH | You want one self-contained orchestrator |
 
 If you are not running DeepSeek Harness, Legion is not the right tool, and a standalone framework is the better fit.
@@ -94,28 +94,28 @@ If you are not running DeepSeek Harness, Legion is not the right tool, and a sta
 
 | Capability | What it provides |
 |---|---|
-| Semantic Profiles | Named policies such as `quick`, `deep`, and `review` instead of raw model choices in every prompt. |
+| Semantic Specialists | Named policies such as `quick`, `deep`, and `review` instead of raw model choices in every prompt. |
 | Exact model routing | Up to eight ordered provider/model candidates with static context and output-budget constraints. |
-| Multiple backends | Use `spawn`, `fork`, `codex`, `claude-code`, or another DSH-registered subagent provider per Profile. |
-| Tool and persona policy | Restrict child tools, add Profile instructions, set depth, and choose foreground/background defaults. |
+| Multiple backends | Use `spawn`, `fork`, `codex`, `claude-code`, or another DSH-registered subagent provider per Specialist. |
+| Tool and persona policy | Restrict child tools, add Specialist instructions, set depth, and choose foreground/background defaults. |
 | Structured results | Versioned `text`, `findings-v1`, and `review-v1` foreground result contracts. |
-| Custom Teams | Declare bounded Member Slots that reference existing Profiles. |
+| Custom Cohorts | Declare bounded Member Slots that reference existing Specialists. |
 | Declarative Strategies | Compile typed artifact graphs to frozen DSH delegation primitives. |
-| Hard limits | Bound agents, concurrency, deadline, and accepted output size for each Team Run. |
+| Hard limits | Bound agents, concurrency, deadline, and accepted output size for each Cohort Run. |
 | Catalog customization | Layer, replace, disable, and restore user or third-party catalog entries. |
 | Prompt Fragments | Load confined, immutable UTF-8 prompt resources from deployment-owned roots. |
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
 | Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
 | Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. See [the settings card](docs/settings-card.md). |
-| ACP delegation | Optional Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. See [ACP delegation](docs/acp-delegation.md). |
+| ACP delegation | Optional Specialists for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. See [ACP delegation](docs/acp-delegation.md). |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
 ## How it works
 
 ~~~text
 Catalog Layers
-  ├─ Profiles   -> model routes, backend, persona, tools, result contract
-  ├─ Teams      -> bounded Member Slots referencing Profiles
+  ├─ Specialists   -> model routes, backend, persona, tools, result contract
+  ├─ Cohorts      -> bounded Member Slots referencing Specialists
   └─ Strategies -> typed artifact graph + hard limits
                          │
                          ▼
@@ -125,18 +125,18 @@ Catalog Layers
                  native DSH subagents
 ~~~
 
-A typical model-facing Profile call is small:
+A typical model-facing Specialist call is small:
 
 ~~~json
 {
-  "profile": "quick",
+  "specialist": "quick",
   "description": "summarize findings",
   "prompt": "Summarize the investigation and preserve source paths.",
   "run_in_background": true
 }
 ~~~
 
-The coordinator chooses a semantic Profile; the prompt cannot change that Profile's deployment-owned model, tools, persona, depth, or result policy.
+The coordinator chooses a semantic Specialist; the prompt cannot change that Specialist's deployment-owned model, tools, persona, depth, or result policy.
 
 Legion intentionally does **not** own the agent loop, sessions, persistence, model adapters, credentials, sandbox, approvals, subagent registry, or Web GUI. It uses DSH's public `ctx.subagents`, `ctx.tools`, and `ctx.systemPrompt` seams so there is only one runtime and lifecycle owner.
 
@@ -146,21 +146,21 @@ Legion intentionally does **not** own the agent loop, sessions, persistence, mod
 
 1. Legion validates the configuration against a strict schema that rejects unknown fields anywhere in the document.
 2. Catalog Layers merge in order: a later layer replaces an earlier entry by name, a tombstone disables an inherited one, and any later definition of that name revives it.
-3. Prompt Fragments referenced by Profiles are read once, under a per-Profile byte budget, and captured as an immutable snapshot with a content digest.
+3. Prompt Fragments referenced by Specialists are read once, under a per-Specialist byte budget, and captured as an immutable snapshot with a content digest.
 4. Legion observes which subagent backends and which LLM adapters the Host currently has registered.
-5. Each Profile is compiled against that observation and becomes **active** only if its configured backend can actually satisfy the Profile's policy: execution mode, tool filtering, persona, depth, and structured output.
-6. The delegation tool is published with a parameter schema derived from the active Profiles, and a matching routing table is contributed to the system prompt.
-7. If no Profile is active, the tool is withdrawn and the guidance renders empty. The whole sequence reruns whenever backends or adapters change.
+5. Each Specialist is compiled against that observation and becomes **active** only if its configured backend can actually satisfy the Specialist's policy: execution mode, tool filtering, persona, depth, and structured output.
+6. The delegation tool is published with a parameter schema derived from the active Specialists, and a matching routing table is contributed to the system prompt.
+7. If no Specialist is active, the tool is withdrawn and the guidance renders empty. The whole sequence reruns whenever backends or adapters change.
 
 **One delegation**, between the coordinator's tool call and the returned result:
 
-8. Arguments are validated and resolved to exactly one Profile: the one named, or the configured `defaultProfile`.
-9. If that Profile declares `routes`, Legion reads each candidate's exact-model metadata and takes the first candidate in your authored order that no static fact contradicts.
+8. Arguments are validated and resolved to exactly one Specialist: the one named, or the configured `defaultProfile`.
+9. If that Specialist declares `routes`, Legion reads each candidate's exact-model metadata and takes the first candidate in your authored order that no static fact contradicts.
 10. Only static facts participate, such as context window and output budget. A candidate whose metadata cannot be read stays eligible; the call fails only when every candidate is positively ruled out.
-11. Legion starts exactly one child through the Host's subagent API with the Profile's fixed policy applied, and never retries or switches routes when that child or its provider fails.
+11. Legion starts exactly one child through the Host's subagent API with the Specialist's fixed policy applied, and never retries or switches routes when that child or its provider fails.
 12. A background call returns a continuable child id immediately; a foreground call waits, revalidates a structured result against its contract, and rebuilds it as fresh plain data before returning.
 
-Two properties follow from that design and are worth stating plainly. Compiled Team and Strategy IR is deep-frozen and detached: it holds no reference to your configuration objects and carries no functions. A compiled Strategy plan is also tracked by object identity in a process-wide registry, so execution accepts only a plan this process compiled — a reconstructed or deserialized copy is rejected even when its contents and digest are identical.
+Two properties follow from that design and are worth stating plainly. Compiled Cohort and Strategy IR is deep-frozen and detached: it holds no reference to your configuration objects and carries no functions. A compiled Strategy plan is also tracked by object identity in a process-wide registry, so execution accepts only a plan this process compiled — a reconstructed or deserialized copy is rejected even when its contents and digest are identical.
 
 ## Install
 
@@ -168,25 +168,25 @@ Two properties follow from that design and are worth stating plainly. Compiled T
 
 - A compatible [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) installation.
 - `pnpm` on `PATH`; `dsh plugin` forwards package operations to pnpm.
-- A DSH host profile, such as the default `web` profile.
-- A configured DSH subagent provider and the LLM provider/model routes referenced by your Profiles.
+- A DSH Host `profile`, such as the default `web` composition.
+- A configured DSH subagent provider and the LLM provider/model routes referenced by your Specialists.
 - For local development: Node.js `^22.19.0 || >=24.0.0` and pnpm `11.21.0`.
 
 ### Install from GitHub
 
-Install the default branch into the `web` profile:
+Install the default branch into the `web` Host composition:
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion
 ~~~
 
-Replace `web` if Legion should be available in another DSH host profile.
+Replace `web` if Legion should be available in another DSH Host `profile`.
 
-This resolves `main` **once, at install time**. `dsh plugin` forwards to pnpm, which records the resolved commit in the host profile's lockfile, so the installed revision does not follow later pushes until you upgrade explicitly.
+This resolves `main` **once, at install time**. `dsh plugin` forwards to pnpm, which records the resolved commit in the Host `profile` lockfile, so the installed revision does not follow later pushes until you upgrade explicitly.
 
 #### Pin a revision
 
-A git install runs Legion's `prepare` build on your machine, outside any sandbox the agent runs under. Append an immutable revision whenever the installed code has to stay auditable and reproducible — production profiles, shared machines, or a deployment where you review what you allow to build:
+A git install runs Legion's `prepare` build on your machine, outside any sandbox the agent runs under. Append an immutable revision whenever the installed code has to stay auditable and reproducible — production Host compositions, shared machines, or a deployment where you review what you allow to build:
 
 ~~~bash
 dsh plugin --profile web add github:wxxb789/dsh-legion#<commit-sha>
@@ -231,7 +231,7 @@ Do not edit DSH's shipped `standard` preset directly.
 
 ### Alternative: copy the bundled preset
 
-Copy [presets/legion](presets/legion) to `$DSH_HOME/.agent-presets/legion`. It contains a focused coding tool set and example `deep`, `quick`, and `review` Profiles.
+Copy [presets/legion](presets/legion) to `$DSH_HOME/.agent-presets/legion`. It contains a focused coding tool set and example `deep`, `quick`, and `review` Specialists.
 
 A copied preset is a versioned template. It does not automatically inherit later DSH or Legion changes. Existing nonblank sessions also cannot change their recorded preset, so start a new session after changing composition.
 
@@ -269,7 +269,7 @@ dsh plugin --profile web add .
 
 ## Uninstall
 
-Remove Legion from every DSH host profile where it was installed:
+Remove Legion from every DSH Host `profile` where it was installed:
 
 1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. Removing the package in the next step removes the bundle layer that contributes the `legion-settings` row; a row you copied by hand into a composed `cordis.yml` is yours to remove there.
 2. Remove the package:
@@ -285,20 +285,20 @@ Package removal does not delete user-owned presets or configuration.
 
 ## Usage
 
-### Delegate through a Profile
+### Delegate through a Specialist
 
-The coordinator sees one `legion` tool plus active Profile descriptions:
+The coordinator sees one `legion` tool plus active Specialist descriptions:
 
 ~~~json
 {
-  "profile": "review",
+  "specialist": "review",
   "description": "review the authentication change",
   "prompt": "Inspect the diff for correctness and security issues. Cite files and lines.",
   "run_in_background": false
 }
 ~~~
 
-If `defaultProfile` is configured, `profile` may be omitted. Concurrent sibling calls use DSH's normal parallel tool execution.
+If `defaultProfile` is configured, `specialist` may be omitted. Concurrent sibling calls use DSH's normal parallel tool execution.
 
 ### Run a Strategy
 
@@ -313,7 +313,7 @@ Strategies are hidden by default. A deployment must explicitly set `enableStrate
 }
 ~~~
 
-Profile and Strategy fields cannot be mixed. Invocation limits may only narrow compiled Strategy limits.
+Specialist and Strategy fields cannot be mixed. Invocation limits may only narrow compiled Strategy limits.
 
 ## Configuration
 
@@ -326,7 +326,7 @@ A minimal agent-preset row:
     configVersion: 2
     toolName: legion
     defaultProfile: quick
-    profiles:
+    specialists:
       quick:
         description: Fast exploration, extraction, and summaries.
         subagentProvider: spawn
@@ -361,22 +361,22 @@ To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHu
 | Field | Default | Meaning |
 |---|---:|---|
 | `role` | `delegation` | Composition role of this row, read from the row's own entry and never from the settings layer. A `settings` row registers the `legion` namespace and nothing else — no tool, no prompt section, no projection, no service. |
-| `configVersion` | `2` | Current configuration contract. Omitted or `1` is accepted and normalized to `2`; a v1 document that uses `catalogLayers`, `teams`, `strategies`, `enableStrategies`, or durable runs is rejected at activation instead of upgraded. |
+| `configVersion` | `2` | Current configuration contract. Omitted or `1` is accepted and normalized to `2`; a v1 document that uses `catalogLayers`, `cohorts`, `strategies`, `enableStrategies`, or durable runs is rejected at activation instead of upgraded. |
 | `toolName` | `legion` | Model-facing tool name. |
-| `profiles` | required | Semantic Profile map. |
-| `defaultProfile` | none | Profile used when a call omits `profile`. |
+| `specialists` | required | Semantic Specialist map. |
+| `defaultProfile` | none | Specialist used when a call omits `specialist`. |
 | `enableRunInBackground` | `true` | Expose background delegation. |
 | `enableStrategies` | `false` | Explicitly expose active Strategies to the model. |
 | `guidance` | none | Extra coordinator guidance. |
 | `resourceRoots` | `{}` | Relative deployment roots for Prompt Fragments. |
-| `maxResourceBytes` | `65536` | Prompt Fragment bytes per Profile; hard ceiling 4 MiB. |
+| `maxResourceBytes` | `65536` | Prompt Fragment bytes per Specialist; hard ceiling 4 MiB. |
 | `catalogLayers` | `[]` | Ordered third-party or project policy layers. |
-| `teams` | `{}` | Final deployment-layer Teams. |
+| `cohorts` | `{}` | Final deployment-layer Cohorts. |
 | `strategies` | `{}` | Final deployment-layer Strategies. |
 
-Profile names must match `^[a-z][a-z0-9-]*$`.
+Specialist names must match `^[a-z][a-z0-9-]*$`.
 
-### Profile fields
+### Specialist fields
 
 | Field | Default | Meaning |
 |---|---:|---|
@@ -415,13 +415,13 @@ Immediately before child start, Legion observes registered DSH adapters and exac
 
 Legion starts at most one child and never retries another route after provider, authentication, quota, network, or child failure.
 
-### Catalog Layers, Teams, and Strategies
+### Catalog Layers, Cohorts, and Strategies
 
-Config v2 layers Profiles, Teams, and Strategies. A later definition replaces the same name; a tombstone disables it; a later definition may revive it. Root maps are the final deployment layer.
+Config v2 layers Specialists, Cohorts, and Strategies. A later definition replaces the same name; a tombstone disables it; a later definition may revive it. Root maps are the final deployment layer.
 
 ~~~yaml
 configVersion: 2
-teams:
+cohorts:
   coding:
     description: One executor and one reviewer.
     members:
@@ -477,7 +477,7 @@ Legion selects it by *composing that row*, never by reimplementing it, and owns 
 
 Delegated children inherit the same presentation. `dsh-agent-presets` re-parents a child agent's scope onto the parent's preset standing scope, and the registry resolves the mode along that chain — so a child of a PTC-mode Legion coordinator is itself in PTC mode, with the SDK section regenerated for that child's own visible tools.
 
-Profile `toolFilter` keeps its meaning under Code Mode. The SDK binding table is built from the calling agent's *visible* set, so a denied capability never appears in the generated SDK, and a call naming it from inside `run_code` still resolves to `UNKNOWN_TOOL`: the `review` profile's deny of `write`/`edit` holds in both presentations. Two boundaries belong to the Host's design rather than Legion's — `run_code` itself can never be denied, and a filter constrains only the surface a child *inherits*, never the tools that child's own scope registers (its report and structured-output tools).
+Specialist `toolFilter` keeps its meaning under Code Mode. The SDK binding table is built from the calling agent's *visible* set, so a denied capability never appears in the generated SDK, and a call naming it from inside `run_code` still resolves to `UNKNOWN_TOOL`: the `review` Specialist's deny of `write`/`edit` holds in both presentations. Two boundaries belong to the Host's design rather than Legion's — `run_code` itself can never be denied, and a filter constrains only the surface a child *inherits*, never the tools that child's own scope registers (its report and structured-output tools).
 
 Which path you took decides where the row lives. The bundled preset ([`presets/legion`](presets/legion)) owns its whole composition and carries it. The append-to-your-preset fragment ([`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)) carries none, because one composition selects one presentation and a second declaration is refused rather than merged — appending it to the official `code` preset gives you PTC mode, appending it to `standard` gives you `native`, and Legion follows either.
 
@@ -499,7 +499,7 @@ dsh-legion doctor examples/legion.config.yml --providers examples/providers.fixt
 dsh-legion explain examples/legion.config.yml --providers examples/providers.fixture.yml --json
 ~~~
 
-`doctor` prints a compact summary; `explain` adds Profiles, execution modes, model routes, result contracts, and diagnostic codes. `--json` emits the versioned `legion-explain` view.
+`doctor` prints a compact summary; `explain` adds Specialists, execution modes, model routes, result contracts, and diagnostic codes. `--json` emits the versioned `legion-explain` view.
 
 The fixture proves only supplied static facts. The CLI does not inspect a live DSH process, credentials, reachability, health, quota, billing, latency, or actual model availability.
 
@@ -513,10 +513,10 @@ Known limitations:
 
 - Curated Strategies are not automatically model-exposed; deployment owners may opt in with `enableStrategies: true`.
 - Legion does not retry or switch models after a selected child fails.
-- In-process children inherit the parent's named DSH agent preset; Profiles can still vary model, persona, tools, backend, and limits.
-- The GUI settings card edits four scalar policies; Profiles, Teams, Strategies, and catalog layers stay in the configuration document.
+- In-process children inherit the parent's named DSH agent preset; Specialists can still vary model, persona, tools, backend, and limits.
+- The GUI settings card edits four scalar policies; Specialists, Cohorts, Strategies, and catalog layers stay in the configuration document.
 - The card's browser half reproduces DSH's unpublished client bundle format by hand, so an upstream change to that format fails at load time rather than at build time.
-- The Profile `result` schema still accepts `plan-delta-v1`, a contract meant for durable-run plan proposals rather than ordinary delegation. Treat it as unsupported for Profiles until it is either gated or deliberately published.
+- The Specialist `result` schema still accepts `plan-delta-v1`, a contract meant for durable-run plan proposals rather than ordinary delegation. Treat it as unsupported for Specialists until it is either gated or deliberately published.
 - A bare package without compatible DSH peers is unsupported.
 
 ## FAQ
@@ -535,19 +535,19 @@ Any provider and exact model that your DSH deployment registers as an adapter, n
 
 ### Can it delegate to Codex, Claude Code, or GitHub Copilot CLI?
 
-Yes, through DSH's ACP backend. Legion ships an optional catalog layer with Profiles for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode. See [ACP delegation](docs/acp-delegation.md).
+Yes, through DSH's ACP backend. Legion ships an optional catalog layer with Specialists for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode. See [ACP delegation](docs/acp-delegation.md).
 
 ### Does Legion automatically choose the cheapest or healthiest model?
 
 No. It checks ordered routes against known static facts. It does not claim live health, price, authentication, quota, or latency, and does not replay after failure.
 
-### Can I create custom Profiles, Teams, and Strategies?
+### Can I create custom Specialists, Cohorts, and Strategies?
 
 Yes. The Default Catalog uses the same public, replaceable contracts as user and third-party entries.
 
 ### Why does the Legion tool disappear?
 
-A Profile is published only when its configured backend can actually satisfy that Profile's policy: the execution mode it defaults to, plus tool filtering, persona, depth, and structured output. An unregistered subagent provider deactivates it, and so does a registered backend that cannot supply what the Profile asks for — structured output for a `findings-v1` Profile, for example. If no Profile qualifies, the tool is withdrawn and the guidance renders empty; both return once the missing capability appears. Also verify that Legion is installed into the host profile and that a new session uses the preset containing its row.
+A Specialist is published only when its configured backend can actually satisfy that Specialist's policy: the execution mode it defaults to, plus tool filtering, persona, depth, and structured output. An unregistered subagent provider deactivates it, and so does a registered backend that cannot supply what the Specialist asks for — structured output for a `findings-v1` Specialist, for example. If no Specialist qualifies, the tool is withdrawn and the guidance renders empty; both return once the missing capability appears. Also verify that Legion is installed into the intended Host `profile` and that a new session uses the preset containing its row.
 
 ### Can I edit DSH's shipped `standard` preset?
 
@@ -570,7 +570,7 @@ Useful references:
 - [Journal contract v1](docs/journal-contract-v1.md)
 - [Run replay](docs/run-replay.md)
 - [Versioned configuration and rollback](docs/adr/0008-versioned-config-and-rollback.md)
-- [Declarative Team and Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
+- [Declarative Cohort and Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [Explicit Strategy exposure authority](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)
 - [Reproducible releases](docs/adr/0009-reproducible-provenance-releases.md)
 - [All architecture decisions](docs/adr)
@@ -587,7 +587,7 @@ This package does not ship DSH persistence, projection, atomic coordination, glo
 
 - [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) — the open-source agent harness that owns the Agent, Session, model adapters, subagent runtime, sandbox, approvals, and Web GUI that Legion plugs into.
 - [Cordis](https://github.com/cordiverse/cordis) — the plugin and service framework DSH is built on; Legion registers through ordinary Cordis fibers.
-- [Agent Client Protocol](https://agentclientprotocol.com) — the protocol behind DSH's ACP backend, used by Legion's optional external-agent Profiles.
+- [Agent Client Protocol](https://agentclientprotocol.com) — the protocol behind DSH's ACP backend, used by Legion's optional external-agent Specialists.
 - [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) — discover more DeepSeek Harness plugins.
 
 If dsh-legion saves you work, starring the repository helps other DSH users find it.

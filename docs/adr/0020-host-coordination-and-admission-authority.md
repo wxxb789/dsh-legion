@@ -1,5 +1,7 @@
 # Host owns atomic coordination and global admission authority
 
+> **Terminology: ADR 0022.** The retired Legion nouns `Profile` and `Team` became Specialist and Cohort; retired machine spellings remain only where compatibility history requires them.
+
 - Status: Accepted
 - Date: 2026-08-16
 
@@ -34,7 +36,7 @@ Legion feature-detects these capabilities at activation and compiles one capabil
 
 ## Compatibility
 
-The v1.0 direct and ephemeral Strategy paths remain unchanged and default. Durable branches are opt-in and capability-gated. Existing per-Team-Run member, concurrency, deadline, and accepted-output limits remain valid. Any future DSH peer-minimum increase must update compatibility matrices, package metadata, receipts, packed tests, and release documentation together; this ADR alone changes no package requirement.
+The v1.0 direct and ephemeral Strategy paths remain unchanged and default. Durable branches are opt-in and capability-gated. Existing per-Cohort-Run member, concurrency, deadline, and accepted-output limits remain valid. Any future DSH peer-minimum increase must update compatibility matrices, package metadata, receipts, packed tests, and release documentation together; this ADR alone changes no package requirement.
 
 ## Failure semantics
 

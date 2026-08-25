@@ -32,7 +32,7 @@ describe('published package contract', () => {
     expect(patch).toEqual([
       {
         insert: [
-          { id: 'legion-settings', name: 'dsh-legion', config: { role: 'settings', profiles: {} } },
+          { id: 'legion-settings', name: 'dsh-legion', config: { role: 'settings', specialists: {} } },
         ],
       },
     ])

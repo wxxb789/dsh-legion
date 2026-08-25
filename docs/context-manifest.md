@@ -12,7 +12,7 @@ Unknown slots, duplicate pages, invalid trust or freshness metadata, missing req
 
 ## Limits
 
-Manifests bound page count and bytes. Ordering is canonical by slot and code point. Eviction is deterministic and removes optional lower-value pages before required safe pages. The reusable prefix contains only profile-policy, strategy-policy, and shared-run slots; task, generation, and timestamp identity stay outside it.
+Manifests bound page count and bytes. Ordering is canonical by slot and code point. Eviction is deterministic and removes optional lower-value pages before required safe pages. The reusable prefix contains only specialist-policy, strategy-policy, and shared-run slots; task, generation, and timestamp identity stay outside it.
 
 ## Non-goals
 

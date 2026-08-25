@@ -6,7 +6,7 @@
  * it once per external agent — each with its own `providerName` and
  * `command` — turns Codex, Claude Code, and other ACP-speaking CLIs into
  * ordinary `ctx.subagents` providers. Legion contributes the delegation
- * policy for them: one Profile per agent, constrained to what an
+ * policy for them: one Specialist per agent, constrained to what an
  * out-of-process ACP child can actually honor.
  *
  * Nothing here is enabled by default and nothing here is privileged. An agent
@@ -14,12 +14,12 @@
  * {@link CatalogLayer}, and a deployment can define its own agents with the
  * same functions the curated table uses.
  *
- * The mount rows and the Profiles are generated from ONE descriptor list, so a
- * Profile's `subagentProvider` cannot drift from the `providerName` the
+ * The mount rows and the Specialists are generated from ONE descriptor list, so a
+ * Specialist's `subagentProvider` cannot drift from the `providerName` the
  * composition actually registers — the single most common way this setup
- * silently produces an inactive Profile.
+ * silently produces an inactive Specialist.
  *
- * Generated Profiles and layers are detached but deliberately NOT frozen: they
+ * Generated Specialists and layers are detached but deliberately NOT frozen: they
  * are configuration *input*, and Legion's Schemastery ingestion resolves
  * defaults by writing into the value it is given. `materializeConfig` is what
  * produces the owned, deeply frozen catalog. Descriptors and mount rows are
@@ -46,7 +46,7 @@ export const ACP_CATALOG_LAYER_ID = 'legion-acp-v1'
  *
  * `deployment-specific` — the agent really does speak ACP, but its entrypoint
  * depends on something only the deployment knows, such as an absolute path to
- * a locally built adapter. The Profile ships so the agent is nameable and
+ * a locally built adapter. The Specialist ships so the agent is nameable and
  * documentable; the mount row is the deployment's to write.
  *
  * `unverified` — no authoritative source established an entrypoint. Shipping
@@ -60,13 +60,13 @@ export type AcpEntrypointProvenance = typeof ACP_ENTRYPOINT_PROVENANCE[number]
 /** One external agent Legion can delegate to over ACP. */
 export interface AcpAgentSpec {
   /**
-   * Profile name and default `ctx.subagents` provider name. Must match
+   * Specialist name and default `ctx.subagents` provider name. Must match
    * {@link ORCHESTRATION_NAME}.
    */
   readonly id: string
   /** Vendor-facing product name, used in generated guidance. */
   readonly title: string
-  /** Coordinator-facing routing description for the generated Profile. */
+  /** Coordinator-facing routing description for the generated Specialist. */
   readonly description: string
   /**
    * Executable the ACP backend spawns. Present only for a `verified` entry;
@@ -114,9 +114,9 @@ export interface AcpCatalogOptions {
 }
 
 /**
- * Every field an ACP Profile must NOT set, with the reason. An out-of-process
+ * Every field an ACP Specialist must NOT set, with the reason. An out-of-process
  * child has its own runtime, so this process cannot enforce any of them; the
- * catalog compiler would reject the Profile with a provider-capability error
+ * catalog compiler would reject the Specialist with a provider-capability error
  * once the provider is actually mounted, which is far from the authoring site.
  */
 const ACP_FORBIDDEN_FIELDS = Object.freeze({
@@ -127,7 +127,7 @@ const ACP_FORBIDDEN_FIELDS = Object.freeze({
   agentOptions: 'an ACP child selects its own model; it has no DSH LLM route',
 } as const)
 
-/** An ACP agent spec rejected before it can become a Profile. */
+/** An ACP agent spec rejected before it can become a Specialist. */
 export class AcpCatalogError extends Error {
   /** Stable machine code for callers mapping this to their own taxonomy. */
   readonly code = 'LEGION_ACP_CATALOG_INVALID'
@@ -162,12 +162,12 @@ export function defineAcpAgent(spec: AcpAgentSpec): AcpAgentSpec {
 }
 
 /**
- * Build the Profile for one ACP agent. Every constraint an out-of-process
+ * Build the Specialist for one ACP agent. Every constraint an out-of-process
  * child cannot honor is fixed here rather than left to the author: depth is
  * provider-managed, the result contract is `text`, and delegation is
  * foreground because the ACP backend exposes no continuable activation.
  * @param spec - the agent descriptor.
- * @returns the Profile, ready for a catalog layer.
+ * @returns the Specialist, ready for a catalog layer.
  */
 export function acpProfile(spec: AcpAgentSpec): SpecialistSpec {
   const agent = defineAcpAgent(spec)
@@ -187,37 +187,37 @@ export function acpProfile(spec: AcpAgentSpec): SpecialistSpec {
 }
 
 /**
- * Refuse an authored Profile that an ACP provider could never satisfy, naming
+ * Refuse an authored Specialist that an ACP provider could never satisfy, naming
  * the field and the reason at the authoring site.
- * @param name - the Profile name, for the diagnostic.
- * @param profile - the authored Profile.
+ * @param name - the Specialist name, for the diagnostic.
+ * @param profile - the authored Specialist.
  */
 export function assertAcpProfileCompatible(name: string, profile: SpecialistSpec): void {
   const fields = profile as unknown as Record<string, unknown>
   for (const [field, reason] of Object.entries(ACP_FORBIDDEN_FIELDS)) {
     if (fields[field] !== undefined) {
-      throw new AcpCatalogError(`ACP Profile "${name}" must not set ${field}: ${reason}`)
+      throw new AcpCatalogError(`ACP Specialist "${name}" must not set ${field}: ${reason}`)
     }
   }
   if (typeof profile.maxDepth === 'number') {
     throw new AcpCatalogError(
-      `ACP Profile "${name}" must use maxDepth "provider-managed": an out-of-process child cannot enforce a numeric depth`,
+      `ACP Specialist "${name}" must use maxDepth "provider-managed": an out-of-process child cannot enforce a numeric depth`,
     )
   }
   if (profile.defaultRunInBackground) {
     throw new AcpCatalogError(
-      `ACP Profile "${name}" must set defaultRunInBackground false: the ACP backend registers no continuable activation`,
+      `ACP Specialist "${name}" must set defaultRunInBackground false: the ACP backend registers no continuable activation`,
     )
   }
   if (profile.result !== undefined && profile.result !== 'text') {
     throw new AcpCatalogError(
-      `ACP Profile "${name}" must use the "text" result contract: ACP advertises no structured output`,
+      `ACP Specialist "${name}" must use the "text" result contract: ACP advertises no structured output`,
     )
   }
 }
 
 /**
- * Build an opt-in catalog layer of ACP Profiles.
+ * Build an opt-in catalog layer of ACP Specialists.
  * @param agents - the agents to expose.
  * @param options - layer id and permission policy.
  * @returns the frozen catalog layer, ready for `catalogLayers`.
@@ -252,6 +252,7 @@ export function renderAcpFragment(
 ): string {
   const rows = acpMountRows(agents, options)
   const layer = acpCatalogLayer(agents, options)
+  const authoredLayer = { id: layer.id, specialists: layer.profiles ?? {} }
   const incomplete = agents.filter(agent => agent.entrypoint !== 'verified')
   const header = [
     '# Optional ACP delegation. Generated from the ACP agent catalog — do not edit by hand.',
@@ -260,8 +261,8 @@ export function renderAcpFragment(
     "# belong in the DSH agent preset that already mounts dsh-legion, NOT in Legion",
     '# config: registering a ctx.subagents provider is DSH\'s job, not Legion\'s.',
     '#',
-    '# legionCatalogLayer gives each registered provider a Profile. Append it to',
-    '# Legion\'s catalogLayers; it requires configVersion 2. A Profile whose provider',
+    '# legionCatalogLayer gives each registered provider a Specialist. Append it to',
+    '# Legion\'s catalogLayers; it requires configVersion 2. A Specialist whose provider',
     '# is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,',
     '# never a hard failure, so you can adopt these one at a time.',
     '#',
@@ -273,11 +274,11 @@ export function renderAcpFragment(
       '#',
       `# No portable spawn command exists for: ${incomplete.map(agent => agent.id).join(', ')}.`,
       '# Mount those yourself with @deepseek-ai/dsh-subagent-acp, using a providerName',
-      '# equal to the Profile name.',
+      '# equal to the Specialist name.',
     ],
     '',
   ].join('\n')
-  const body = yaml.dump({ acpProviderRows: rows, legionCatalogLayer: layer }, {
+  const body = yaml.dump({ acpProviderRows: rows, legionCatalogLayer: authoredLayer }, {
     noRefs: true,
     lineWidth: 100,
     sortKeys: false,
