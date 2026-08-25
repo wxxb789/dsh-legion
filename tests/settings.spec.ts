@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
@@ -86,6 +87,7 @@ const baseConfig = {
 
 async function setup(config: unknown, settings?: FakeSettings): Promise<Context> {
   const ctx = new Context()
+  await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -210,6 +212,7 @@ describe('settings-sourced publication', () => {
   it('falls back to the composition entry when the settings service detaches', async () => {
     const settings = new FakeSettings({ legion: { toolName: 'delegate' } })
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)

@@ -15,12 +15,13 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { emitAgentEvent, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
+  SubagentDescendantListEntry,
   SubagentProvider,
   SubagentResult,
   SubagentStartRequest,
@@ -54,6 +55,15 @@ class RouteAdapter extends LlmAdapter {
 function parent(id = 'parent'): Agent {
   const session = Session.create(SessionId(id))
   return { id: session.id, session } as unknown as Agent
+}
+
+function registryAgent(id: string, status: AgentStatus): Agent {
+  const session = Session.create(SessionId(id))
+  return { id: session.id, session, status } as unknown as Agent
+}
+
+function setAgentStatus(agent: Agent, status: AgentStatus): void {
+  (agent as { status: AgentStatus }).status = status
 }
 
 function provider(
@@ -151,6 +161,7 @@ async function setup(
   providers: SubagentProvider[] = [provider('spawn')],
 ): Promise<Context> {
   const ctx = new Context()
+  await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -425,6 +436,7 @@ describe('dsh-legion', () => {
         result: () => index++ === 0 ? first.promise : second.promise,
       })
       ctx = new Context()
+      await ctx.plugin(AgentRegistry)
       await ctx.plugin(SessionStore)
       await ctx.plugin(TestProjectionRegistry)
       await ctx.plugin(SystemPrompt)
@@ -525,6 +537,139 @@ describe('dsh-legion', () => {
     }
   })
 
+  it('derives live participation from the Host registry and the ended tree from cold listing', async () => {
+    const results = [Promise.withResolvers<SubagentResult>(), Promise.withResolvers<SubagentResult>()]
+    const first = registryAgent('receipt-live-first', 'running')
+    const unrelated = registryAgent('receipt-unrelated', 'running')
+    const second = registryAgent('receipt-live-second', 'running')
+    const removers: Array<() => void> = []
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(TestProjectionRegistry)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    // The first child predates the run observer, so its live row can only come from backfill.
+    removers.push(ctx.agents.register(first), ctx.agents.register(unrelated))
+    ctx.subagents.registerProvider({
+      name: 'spawn',
+      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      inheritsParentContext: false,
+      async start() {
+        const index = starts++
+        const child = index === 0 ? first : second
+        const remove = index === 0 ? removers[0]! : ctx.agents.register(child)
+        if (index !== 0) removers.push(remove)
+        return {
+          id: child.id,
+          localAgent: child,
+          result: results[index]!.promise,
+          async dispose() { remove() },
+        }
+      },
+    })
+    const coldChildren: SubagentDescendantListEntry[] = [
+      { kind: 'child', id: first.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: true, mode: 'one-shot', label: 'execute executor' },
+      { kind: 'child', id: SessionId('receipt-cold-grandchild'), parentId: first.id, depth: 2, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'nested child' },
+      { kind: 'child', id: second.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'review reviewer' },
+    ]
+    vi.spyOn(ctx.subagents, 'listDescendants').mockImplementation(async () => {
+      // Reusing an ended id must not let live registry state contaminate the cold tree.
+      removers.push(ctx.agents.register(registryAgent(String(first.id), 'running')))
+      return coldChildren
+    })
+    await ctx.plugin(legion, {
+      configVersion: 2,
+      toolName: 'legion',
+      enableRunInBackground: true,
+      enableStrategies: true,
+      catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
+      profiles: {
+        deep: { description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
+        quick: { description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
+        review: { description: 'Review.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'review-v1' },
+      },
+      defaultProfile: 'quick',
+    })
+    const session = ctx.sessions.create(SessionId('receipt-registry-parent'))
+    const agent = { id: session.id, session } as unknown as Agent
+    const snapshot = () => projections(ctx).snapshot(session).values['legion/run-receipts'] as {
+      receipts: Record<string, { participation: Array<Record<string, unknown>> }>
+    }
+
+    try {
+      const pending = execute(ctx, {
+        kind: 'strategy',
+        strategy: 'independent-review',
+        objective: 'Observe registry participation without model narration.',
+      }, agent)
+      await vi.waitFor(() => expect(starts).toBe(1))
+      const runId = Object.keys(snapshot().receipts)[0]!
+      expect(snapshot().receipts[runId]?.participation).toEqual([{
+        childId: first.id,
+        parentId: session.id,
+        depth: 1,
+        stage: 'execute',
+        member: 'executor',
+        childIndex: 0,
+        state: 'live',
+        registryStatus: 'running',
+      }])
+
+      setAgentStatus(first, 'idle')
+      emitAgentEvent(ctx, first, 'agent/status', { status: 'idle' })
+      expect(snapshot().receipts[runId]?.participation).toMatchObject([{
+        childId: first.id, state: 'live', registryStatus: 'idle',
+      }])
+
+      results[0]!.resolve({ output: [], stopReason: 'completed' })
+      await vi.waitFor(() => expect(starts).toBe(2))
+      expect(snapshot().receipts[runId]?.participation).toMatchObject([
+        { childId: first.id, state: 'ended' },
+        { childId: second.id, state: 'live', registryStatus: 'running' },
+      ])
+
+      results[1]!.resolve({
+        output: [],
+        structured: { verdict: 'pass', summary: 'No narration needed.', findings: [], verification: ['registry'] },
+        stopReason: 'completed',
+      })
+      const result = await pending
+      expect(result.isError).toBe(false)
+      if (result.isError) throw new Error(rendered(result))
+      expect(snapshot().receipts[runId]?.participation).toEqual([
+        { childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
+        { childId: SessionId('receipt-cold-grandchild'), parentId: first.id, depth: 2, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
+        { childId: second.id, parentId: session.id, depth: 1, stage: 'review', member: 'reviewer', childIndex: 0, state: 'ended' },
+      ])
+      expect(result.value).toMatchObject({
+        receipt: { participationCounts: { total: 3, running: 0, idle: 0, ended: 3 } },
+      })
+      expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
+      expect(rendered(result)).toContain('participation 0 running, 0 idle, 3 ended')
+
+      const terminal = snapshot().receipts[runId]!
+      session.append('legion/run-receipt', {
+        ...terminal,
+        participation: [{
+          childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', childIndex: 0,
+          state: 'live', registryStatus: 'ready',
+        }],
+      } as never)
+      expect(snapshot().receipts[runId]).toEqual(terminal)
+      expect(JSON.stringify(terminal)).not.toContain('receipt-unrelated')
+
+      const { participation: _legacyParticipation, ...legacy } = terminal as Record<string, unknown> & { participation: unknown }
+      const legacyRunId = 'team-run-00000000-0000-4000-8000-000000000001'
+      session.append('legion/run-receipt', { ...legacy, schemaVersion: 1, runId: legacyRunId } as never)
+      expect(snapshot().receipts[legacyRunId]).toMatchObject({ schemaVersion: 2, participation: [] })
+    } finally {
+      for (const remove of removers) remove()
+    }
+  })
+
   it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {
     const config = {
       configVersion: 2 as const,
@@ -605,6 +750,7 @@ describe('dsh-legion', () => {
 
   it('freezes one exact route before start and never replays another route', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     let starts = 0
     let request: ResolvedSubagentStartRequest | undefined
     await ctx.plugin(SystemPrompt)
@@ -679,6 +825,7 @@ describe('dsh-legion', () => {
 
   it('rechecks the selected LLM adapter at the child start edge', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     let starts = 0
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -712,6 +859,7 @@ describe('dsh-legion', () => {
   it('fails before child start when every exact route has a known static rejection', async () => {
     let starts = 0
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -743,6 +891,7 @@ describe('dsh-legion', () => {
 
   it('does not replay another route after a selected child fails', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     let starts = 0
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -779,6 +928,7 @@ describe('dsh-legion', () => {
 
   it('surfaces the provider diagnostic beside the stop reason when the Host supplies one', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -819,6 +969,7 @@ describe('dsh-legion', () => {
 
   it('keeps the stop reason alone when the provider supplies no diagnostic', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -851,6 +1002,7 @@ describe('dsh-legion', () => {
     mkdirSync(join(root, 'resources', 'prompts'), { recursive: true })
     writeFileSync(join(root, 'resources', 'prompts', 'review.md'), 'Follow the resource instruction.')
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     let request: SubagentStartRequest | undefined
     try {
       ctx.baseUrl = pathToFileURL(root).href + '/'
@@ -1250,6 +1402,7 @@ describe('dsh-legion', () => {
 
   it('tracks LLM adapter lifecycle for routed profile activation', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -1279,6 +1432,7 @@ describe('dsh-legion', () => {
 
   it('recovers routed tool registration after a transient same-name conflict', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -1339,6 +1493,7 @@ describe('dsh-legion', () => {
 
   it('rejects unknown config fields before publishing tool or prompt effects', async () => {
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
@@ -1365,6 +1520,7 @@ describe('dsh-legion', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-legion-missing-resource-'))
     mkdirSync(join(root, 'resources'))
     const ctx = new Context()
+    await ctx.plugin(AgentRegistry)
     ctx.baseUrl = pathToFileURL(root).href + '/'
     try {
       await ctx.plugin(SystemPrompt)

@@ -316,7 +316,7 @@ export const name = 'dsh-legion'
  * on a composition that serves settings without one of them, and the only
  * symptom would be a card that never appears.
  */
-export const DELEGATION_INJECT = Object.freeze(['tools', 'subagents', 'systemPrompt'] as const)
+export const DELEGATION_INJECT = Object.freeze(['agents', 'tools', 'subagents', 'systemPrompt'] as const)
 
 const PROMPT_ORDER = 116.75
 
@@ -717,6 +717,17 @@ function createToolDefinition(
                       degraded: { type: 'number' as const, required: true as const },
                       cancelled: { type: 'number' as const, required: true as const },
                       failed: { type: 'number' as const, required: true as const },
+                    },
+                  },
+                  participationCounts: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      total: { type: 'number' as const, required: true as const },
+                      running: { type: 'number' as const, required: true as const },
+                      idle: { type: 'number' as const, required: true as const },
+                      ended: { type: 'number' as const, required: true as const },
                     },
                   },
                 },

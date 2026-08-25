@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as legion from '../lib/index.js'
@@ -111,6 +112,7 @@ async function direct(ctx, prompt) {
 
 const ctx = new Context()
 try {
+  await ctx.plugin(AgentRegistry)
   await ctx.plugin(SubagentRuntime)
   ctx.subagents.registerProvider(provider)
   const config = legion.materializeConfig(authored)

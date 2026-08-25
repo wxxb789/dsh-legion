@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
@@ -213,9 +214,10 @@ const quick = {
 const delegationEntry = { profiles: { quick }, defaultProfile: 'quick', toolName: 'crew' }
 const settingsEntry = { role: 'settings' as const, profiles: {} }
 
-/** A Host with the three services a delegation row injects and one settings provider. */
+/** A Host with the services a delegation row injects and one settings provider. */
 async function host(settings?: FakeSettings): Promise<Context> {
   const ctx = new Context()
+  await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -284,8 +286,8 @@ describe('the Host-plane settings row', () => {
     await ctx.fiber.dispose()
   })
 
-  it('registers on a Host offering no tools, subagents, or systemPrompt', async () => {
-    // Counterfactual: declare the three delegation services as package-level
+  it('registers on a Host offering no agents, tools, subagents, or systemPrompt', async () => {
+    // Counterfactual: declare the four delegation services as package-level
     // inject and the fiber never reaches apply, so the namespace is never
     // registered and the only symptom is a PENDING fiber. A settings row
     // publishes no tool, no prompt section, and starts no child.

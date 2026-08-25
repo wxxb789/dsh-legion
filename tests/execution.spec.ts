@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { compileCatalog } from '../src/compiler.ts'
@@ -123,6 +123,7 @@ describe('bounded Strategy execution adapter', () => {
     const runtime = setup((_prompt, index) => index === 0
       ? completed('execution evidence')
       : completed('reviewed', review))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -155,6 +156,7 @@ describe('bounded Strategy execution adapter', () => {
 
   it('materializes objective-v1 when it is the declared completion artifact', async () => {
     const runtime = setup(() => completed('supporting evidence'))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const authored: Config = {
@@ -208,6 +210,7 @@ describe('bounded Strategy execution adapter', () => {
       }
       return completed('panel synthesis')
     })
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -250,6 +253,7 @@ describe('bounded Strategy execution adapter', () => {
       active -= 1
       return completed(`finding-${String(entered)}`)
     })
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -281,6 +285,7 @@ describe('bounded Strategy execution adapter', () => {
         }
         return completed('synthesis')
       })
+      await runtime.ctx.plugin(AgentRegistry)
       await runtime.ctx.plugin(SubagentRuntime)
       runtime.ctx.subagents.registerProvider(runtime.provider)
       const { orchestration, snapshot } = catalogs()
@@ -307,6 +312,7 @@ describe('bounded Strategy execution adapter', () => {
   it('fails without replay and disposes published runs when a provider disappears during fanout admission', async () => {
     let removeProvider: () => void = () => undefined
     const runtime = setup(() => completed('only admitted result'), () => removeProvider())
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     removeProvider = runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -341,6 +347,7 @@ describe('bounded Strategy execution adapter', () => {
       }
       return Promise.reject(new Error('member failed'))
     })
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -366,6 +373,7 @@ describe('bounded Strategy execution adapter', () => {
     const runtime = setup((prompt) => prompt.includes('Panel member: 1')
       ? completed('only finding')
       : Promise.reject(new Error('failed')))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -391,6 +399,7 @@ describe('bounded Strategy execution adapter', () => {
 
   it('settles at the deadline even when a child ignores AbortSignal', async () => {
     const runtime = setup(() => new Promise<SubagentResult>(() => {}))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -417,6 +426,7 @@ describe('bounded Strategy execution adapter', () => {
       const runtime = setup(() => new Promise<SubagentResult>((_resolve, reject) => {
         rejectChild = reject
       }))
+      await runtime.ctx.plugin(AgentRegistry)
       await runtime.ctx.plugin(SubagentRuntime)
       runtime.ctx.subagents.registerProvider(runtime.provider)
       const { orchestration, snapshot } = catalogs()
@@ -451,6 +461,7 @@ describe('bounded Strategy execution adapter', () => {
       undefined,
       () => new Promise<void>(resolve => { releaseDispose = resolve }),
     )
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -474,6 +485,7 @@ describe('bounded Strategy execution adapter', () => {
 
   it('rejects an oversized artifact before committing it to partial outcome state', async () => {
     const runtime = setup(() => completed('oversized'))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -503,6 +515,7 @@ describe('bounded Strategy execution adapter', () => {
       if (signal.aborted) settle()
       else signal.addEventListener('abort', settle, { once: true })
     }))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()
@@ -522,6 +535,7 @@ describe('bounded Strategy execution adapter', () => {
 
   it('rejects a plan when execution Profile policy has drifted', async () => {
     const runtime = setup(() => completed('unused'))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration } = catalogs()
@@ -567,6 +581,7 @@ describe('bounded Strategy execution adapter', () => {
 
   it('rejects a stale Strategy Plan generation before admitting a child', async () => {
     const runtime = setup(() => completed('unused'))
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration } = catalogs()
@@ -615,6 +630,7 @@ describe('bounded Strategy execution adapter', () => {
       expect(prompt).toContain('needs-changes')
       return completed('repaired result')
     })
+    await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
     const { orchestration, snapshot } = catalogs()

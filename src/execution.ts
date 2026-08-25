@@ -19,9 +19,12 @@ import { deepFreeze } from './internal/value.ts'
 import {
   createRunReceipt,
   finishRunReceipt,
+  observeRunReceiptParticipation,
   publishRunReceipt,
+  setRunReceiptParticipation,
   settleRunReceiptStage,
   summarizeRunReceipt,
+  type RunReceiptChildBinding,
   type RunReceiptStageStatus,
   type RunReceiptSummary,
 } from './run-receipt.ts'
@@ -265,6 +268,8 @@ function materializedArtifact(
   })
 }
 
+type ObserveChild = (agent: Agent, binding: RunReceiptChildBinding) => void
+
 async function executeOne(
   ctx: Context,
   catalog: CompiledSpecialistCatalog,
@@ -273,6 +278,8 @@ async function executeOne(
   parent: Agent,
   signal: AbortSignal,
   claimExecutionFailure?: () => void,
+  observeChild?: ObserveChild,
+  childIndex = 0,
 ): Promise<JsonValue> {
   const plan = await delegationPlan(ctx, catalog, primitive, prompt, signal)
   const settlement = await settleChildRun({
@@ -285,17 +292,27 @@ async function executeOne(
         ctx.logger.warn(`dsh-legion: late child cleanup ended ${cleanup.kind}`)
       }
     },
-    start: () => ctx.subagents.start(plan.subagentProvider, {
-      label: plan.label,
-      prompt: [{ type: 'text', text: plan.prompt }],
-      parent,
-      signal,
-      ...plan.agentOptions === undefined ? {} : { agentOptions: plan.agentOptions },
-      ...plan.persona === undefined ? {} : { persona: plan.persona },
-      ...plan.toolFilter === undefined ? {} : { toolFilter: plan.toolFilter },
-      ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
-      ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
-    }),
+    start: async () => {
+      const run = await ctx.subagents.start(plan.subagentProvider, {
+        label: plan.label,
+        prompt: [{ type: 'text', text: plan.prompt }],
+        parent,
+        signal,
+        ...plan.agentOptions === undefined ? {} : { agentOptions: plan.agentOptions },
+        ...plan.persona === undefined ? {} : { persona: plan.persona },
+        ...plan.toolFilter === undefined ? {} : { toolFilter: plan.toolFilter },
+        ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
+        ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
+      })
+      if (run.localAgent !== undefined) {
+        observeChild?.(run.localAgent, {
+          stage: primitive.stage,
+          member: String(primitive.member),
+          childIndex,
+        })
+      }
+      return run
+    },
   })
   const errors: unknown[] = []
   if (settlement.execution.kind === 'failed') errors.push(settlement.execution.error)
@@ -322,6 +339,7 @@ async function executeFanout(
   signal: AbortSignal,
   maxConcurrent: number,
   claimTerminalFailure: () => void,
+  observeChild: ObserveChild,
 ): Promise<{
   artifact?: MaterializedStrategyArtifact
   failures: StrategyMemberFailure[]
@@ -366,6 +384,8 @@ async function executeFanout(
             parent,
             stageSignal,
             markFailure,
+            observeChild,
+            index,
           ),
         }
       } catch (error: unknown) {
@@ -416,13 +436,23 @@ export async function executeStrategyPlan(
   }
   const runId = CohortRunId(`team-run-${randomUUID()}`)
   let receipt = publishRunReceipt(parent.session, createRunReceipt(plan, runId))
+  const participation = observeRunReceiptParticipation(
+    ctx,
+    parent.session.id,
+    receipt.stages.map(stage => stage.id),
+    rows => {
+      receipt = publishRunReceipt(parent.session, setRunReceiptParticipation(receipt, rows))
+    },
+  )
+  const observeChild: ObserveChild = participation.trackChild.bind(participation)
   const settleStage = (
     stage: string,
     status: Exclude<RunReceiptStageStatus, 'pending'>,
   ): void => {
     receipt = publishRunReceipt(parent.session, settleRunReceiptStage(receipt, stage, status))
   }
-  const finishOutcome = <Outcome extends CohortRunResult>(outcome: Outcome) => {
+  const finishOutcome = async <Outcome extends CohortRunResult>(outcome: Outcome) => {
+    await participation.finish()
     receipt = publishRunReceipt(parent.session, finishRunReceipt(receipt, outcome.kind))
     return deepFreeze({ ...outcome, receipt: summarizeRunReceipt(receipt) })
   }
@@ -457,6 +487,7 @@ export async function executeStrategyPlan(
             deadline.signal,
             plan.limits.maxConcurrent,
             () => { terminal.claim('failed') },
+            observeChild,
           )
         } catch (error: unknown) {
           settleStage(primitive.stage, deadline.signal.aborted ? 'cancelled' : 'failed')
@@ -485,6 +516,7 @@ export async function executeStrategyPlan(
             parent,
             deadline.signal,
             () => { terminal.claim('failed') },
+            observeChild,
           )
           artifact = materializedArtifact(primitive.output, value)
         } catch (error: unknown) {
@@ -565,6 +597,7 @@ export async function executeStrategyPlan(
     terminal.claim('failed')
     return finishOutcome({ kind: 'failed', runId, planDigest: plan.planDigest, artifacts: list, failure: memberFailure })
   } finally {
+    participation.dispose()
     deadline.signal.removeEventListener('abort', claimCancellation)
     deadline.dispose()
   }

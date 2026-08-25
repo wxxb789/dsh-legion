@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -26,6 +27,8 @@ describe('Cordis Loader composition', () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-legion-loader-'))
     const configPath = join(root, 'agent.cordis.yml')
     await writeFile(configPath, [
+      "- id: agents",
+      "  name: '@deepseek-ai/dsh-agent'",
       "- id: system-prompt",
       "  name: '@deepseek-ai/dsh-system-prompt'",
       "- id: tools",
@@ -48,6 +51,7 @@ describe('Cordis Loader composition', () => {
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include
     const modules = new Map<string, unknown>([
+      ['@deepseek-ai/dsh-agent', AgentRegistry],
       ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
       ['@deepseek-ai/dsh-tools', ToolRuntime],
       ['@deepseek-ai/dsh-subagent', SubagentRuntime],

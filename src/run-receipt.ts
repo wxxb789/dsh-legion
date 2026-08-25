@@ -1,4 +1,7 @@
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Context } from '@deepseek-ai/cordis'
+import type { Agent, AgentStatus } from '@deepseek-ai/dsh-agent'
+import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { CohortName, CohortRunId, StrategyName, StrategyPlanDigest } from './identity.ts'
 import type { CompiledStrategyPlan } from './orchestration.ts'
 import { deepFreeze } from './internal/value.ts'
@@ -8,6 +11,24 @@ export const RUN_RECEIPT_EVENT_TYPE = 'legion/run-receipt'
 
 export type RunReceiptStageStatus = 'pending' | 'completed' | 'degraded' | 'cancelled' | 'failed'
 export type RunReceiptOutcome = 'running' | Exclude<RunReceiptStageStatus, 'pending'>
+
+interface RunReceiptParticipantBase {
+  readonly childId: SessionId
+  readonly parentId: SessionId
+  readonly depth: number
+  readonly stage: string
+  readonly member: string
+  readonly childIndex: number
+}
+
+export type RunReceiptParticipant =
+  | RunReceiptParticipantBase & {
+      readonly state: 'live'
+      readonly registryStatus: AgentStatus
+    }
+  | RunReceiptParticipantBase & {
+      readonly state: 'ended'
+    }
 
 export interface RunReceiptStage {
   readonly id: string
@@ -19,7 +40,7 @@ export interface RunReceiptStage {
 }
 
 export interface RunReceipt {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly runId: CohortRunId
   readonly strategy: CompiledStrategyPlan['strategy']
   readonly cohort: CompiledStrategyPlan['cohort']
@@ -28,6 +49,7 @@ export interface RunReceipt {
   readonly elapsedMs: number
   readonly outcome: RunReceiptOutcome
   readonly stages: readonly RunReceiptStage[]
+  readonly participation: readonly RunReceiptParticipant[]
 }
 
 export interface RunReceiptProjection {
@@ -45,6 +67,12 @@ export interface RunReceiptSummary {
     readonly degraded: number
     readonly cancelled: number
     readonly failed: number
+  }>
+  readonly participationCounts: Readonly<{
+    readonly total: number
+    readonly running: number
+    readonly idle: number
+    readonly ended: number
   }>
 }
 
@@ -108,12 +136,40 @@ function parseStage(value: unknown, at: string): RunReceiptStage {
   }
 }
 
+function parseParticipant(value: unknown, at: string): RunReceiptParticipant {
+  const candidate = object(value, at)
+  const common = ['childId', 'parentId', 'depth', 'stage', 'member', 'childIndex', 'state'] as const
+  const source = candidate.state === 'live'
+    ? record(value, [...common, 'registryStatus'], at)
+    : record(value, common, at)
+  const depth = nonNegativeInteger(source.depth, `${at}.depth`)
+  if (depth === 0) throw new Error(`dsh-legion: invalid ${at}.depth`)
+  const base: RunReceiptParticipantBase = {
+    childId: SessionId(text(source.childId, `${at}.childId`)),
+    parentId: SessionId(text(source.parentId, `${at}.parentId`)),
+    depth,
+    stage: text(source.stage, `${at}.stage`),
+    member: text(source.member, `${at}.member`),
+    childIndex: nonNegativeInteger(source.childIndex, `${at}.childIndex`),
+  }
+  if (source.state === 'ended') return { ...base, state: 'ended' }
+  if (source.state !== 'live' || (source.registryStatus !== 'idle' && source.registryStatus !== 'running')) {
+    throw new Error(`dsh-legion: invalid ${at} registry state`)
+  }
+  return { ...base, state: 'live', registryStatus: source.registryStatus }
+}
+
 function parseRunReceipt(value: unknown): RunReceipt {
-  const source = record(value, [
+  const candidate = object(value, 'Run Receipt')
+  const common = [
     'schemaVersion', 'runId', 'strategy', 'cohort', 'planDigest',
     'startedAt', 'elapsedMs', 'outcome', 'stages',
-  ], 'Run Receipt')
-  if (source.schemaVersion !== 1) throw new Error('dsh-legion: invalid Run Receipt schemaVersion')
+  ] as const
+  const schemaVersion = candidate.schemaVersion
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw new Error('dsh-legion: invalid Run Receipt schemaVersion')
+  }
+  const source = record(value, schemaVersion === 1 ? common : [...common, 'participation'], 'Run Receipt')
   const outcomes: readonly RunReceiptOutcome[] = [
     'running', 'completed', 'degraded', 'cancelled', 'failed',
   ]
@@ -121,8 +177,15 @@ function parseRunReceipt(value: unknown): RunReceipt {
     throw new Error('dsh-legion: invalid Run Receipt outcome')
   }
   if (!Array.isArray(source.stages)) throw new Error('dsh-legion: invalid Run Receipt stages')
+  const rawParticipation = schemaVersion === 1 ? [] : source.participation
+  if (!Array.isArray(rawParticipation)) throw new Error('dsh-legion: invalid Run Receipt participation')
+  const participation = rawParticipation.map((item, index) =>
+    parseParticipant(item, `Run Receipt participation[${String(index)}]`))
+  if (new Set(participation.map(item => String(item.childId))).size !== participation.length) {
+    throw new Error('dsh-legion: duplicate Run Receipt participant childId')
+  }
   return deepFreeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: CohortRunId(text(source.runId, 'Run Receipt runId')),
     strategy: StrategyName(text(source.strategy, 'Run Receipt strategy')),
     cohort: CohortName(text(source.cohort, 'Run Receipt cohort')),
@@ -131,6 +194,7 @@ function parseRunReceipt(value: unknown): RunReceipt {
     elapsedMs: nonNegativeInteger(source.elapsedMs, 'Run Receipt elapsedMs'),
     outcome: source.outcome as RunReceiptOutcome,
     stages: source.stages.map((stage, index) => parseStage(stage, `Run Receipt stages[${String(index)}]`)),
+    participation,
   })
 }
 
@@ -183,7 +247,7 @@ const runReceiptProjectionSchema: ProjectionSchema<RunReceiptProjection> = { par
 export const runReceiptProjection: RunReceiptProjectionDefinition = {
   key: RUN_RECEIPT_PROJECTION_KEY,
   stateSchema: runReceiptProjectionSchema,
-  stateVersion: 1,
+  stateVersion: 2,
   init: () => EMPTY_RUN_RECEIPT_PROJECTION,
   apply: applyRunReceiptProjection,
   wire: {
@@ -236,7 +300,7 @@ export function createRunReceipt(
     plan.primitives.map(primitive => [String(primitive.output.name), primitive.stage]),
   )
   return deepFreeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId,
     strategy: plan.strategy,
     cohort: plan.cohort,
@@ -255,11 +319,219 @@ export function createRunReceipt(
       ])].sort(),
       status: 'pending' as const,
     })),
+    participation: [],
   })
 }
 
 function elapsed(receipt: RunReceipt, now: number): number {
   return Math.max(receipt.elapsedMs, Math.max(0, now - receipt.startedAt))
+}
+
+export function setRunReceiptParticipation(
+  receipt: RunReceipt,
+  participation: readonly RunReceiptParticipant[],
+  now = Date.now(),
+): RunReceipt {
+  return deepFreeze({
+    ...receipt,
+    elapsedMs: elapsed(receipt, now),
+    participation: participation.map(item => ({ ...item })),
+  })
+}
+
+export interface RunReceiptChildBinding {
+  readonly stage: string
+  readonly member: string
+  readonly childIndex: number
+}
+
+export interface RunReceiptParticipationObserver {
+  trackChild(agent: Agent, binding: RunReceiptChildBinding): void
+  finish(): Promise<void>
+  dispose(): void
+}
+
+interface TrackedChild {
+  readonly agent: Agent
+  readonly binding: RunReceiptChildBinding
+}
+
+interface StoredParticipant {
+  readonly row: RunReceiptParticipant
+  readonly stageOrder: number
+  readonly treeOrder: number
+}
+
+function sameParticipant(left: RunReceiptParticipant, right: RunReceiptParticipant): boolean {
+  return left.childId === right.childId
+    && left.parentId === right.parentId
+    && left.depth === right.depth
+    && left.stage === right.stage
+    && left.member === right.member
+    && left.childIndex === right.childIndex
+    && left.state === right.state
+    && (left.state !== 'live' || (right.state === 'live' && left.registryStatus === right.registryStatus))
+}
+
+/** Sample Host lifecycle events and one cold tree listing; never drive, resume, or dispose an Agent. */
+class HostRunReceiptParticipationObserver implements RunReceiptParticipationObserver {
+  private readonly bindings = new Map<SessionId, TrackedChild>()
+  private readonly live = new Map<SessionId, AgentStatus>()
+  private readonly rows = new Map<SessionId, StoredParticipant>()
+  private readonly stageOrder: ReadonlyMap<string, number>
+  private readonly disposers: Array<() => void>
+  private listening = true
+  private finished = false
+
+  constructor(
+    private readonly ctx: Context,
+    private readonly parentId: SessionId,
+    stages: readonly string[],
+    private readonly onChange: (participation: readonly RunReceiptParticipant[]) => void,
+  ) {
+    this.stageOrder = new Map(stages.map((stage, index) => [stage, index]))
+    this.disposers = [
+      ctx.on('agent/status', ({ agent, status }) => {
+        this.guard(() => {
+          if (ctx.agents.get(agent.id) !== agent) return
+          this.live.set(agent.id, status)
+          this.updateDirect(agent, status)
+        })
+      }),
+      ctx.on('agent/created', ({ agent }) => {
+        this.guard(() => {
+          if (ctx.agents.get(agent.id) !== agent) return
+          this.live.set(agent.id, agent.status)
+          this.updateDirect(agent, agent.status)
+        })
+      }),
+      ctx.on('agent/disposed', ({ agent }) => {
+        this.guard(() => {
+          if (ctx.agents.get(agent.id) !== undefined) return
+          this.live.delete(agent.id)
+          const tracked = this.bindings.get(agent.id)
+          if (tracked?.agent !== agent) return
+          this.setParticipant({
+            childId: agent.id,
+            parentId: this.parentId,
+            depth: 1,
+            ...tracked.binding,
+            state: 'ended',
+          }, 0, true)
+        })
+      }),
+    ]
+    for (const agent of ctx.agents.list()) this.live.set(agent.id, agent.status)
+  }
+
+  trackChild(agent: Agent, binding: RunReceiptChildBinding): void {
+    this.guard(() => {
+      const existing = this.bindings.get(agent.id)
+      if (existing !== undefined) {
+        if (existing.agent !== agent
+          || existing.binding.stage !== binding.stage
+          || existing.binding.member !== binding.member
+          || existing.binding.childIndex !== binding.childIndex) {
+          this.ctx.logger.warn('dsh-legion: Run Receipt child ' + JSON.stringify(agent.id) + ' was published twice')
+        }
+        return
+      }
+      this.bindings.set(agent.id, { agent, binding })
+      const status = this.live.get(agent.id)
+      if (this.ctx.agents.get(agent.id) === agent && status !== undefined) this.updateDirect(agent, agent.status)
+    })
+  }
+
+  async finish(): Promise<void> {
+    if (this.finished) return
+    this.finished = true
+    this.dispose()
+    let entries: readonly SubagentDescendantListEntry[]
+    try {
+      entries = await this.ctx.subagents.listDescendants(this.parentId)
+    } catch (error: unknown) {
+      this.ctx.logger.warn('dsh-legion: failed to read cold Run Receipt child tree: ' + String(error))
+      return
+    }
+    const rootByChild = new Map<SessionId, SessionId>()
+    let changed = false
+    for (const [treeOrder, entry] of entries.entries()) {
+      if (entry.kind !== 'child') continue
+      const direct = this.bindings.get(entry.id)
+      const root = direct === undefined ? rootByChild.get(entry.parentId) : entry.id
+      if (root === undefined) continue
+      rootByChild.set(entry.id, root)
+      const tracked = this.bindings.get(root)
+      if (tracked === undefined) continue
+      const row: RunReceiptParticipant = {
+        childId: entry.id,
+        parentId: entry.parentId,
+        depth: entry.depth,
+        ...tracked.binding,
+        state: 'ended',
+      }
+      changed = this.setParticipant(row, treeOrder, false) || changed
+    }
+    if (changed) this.emit()
+  }
+
+  dispose(): void {
+    if (!this.listening) return
+    this.listening = false
+    for (const dispose of this.disposers.splice(0).reverse()) dispose()
+  }
+
+  private updateDirect(agent: Agent, status: AgentStatus): void {
+    const tracked = this.bindings.get(agent.id)
+    if (tracked?.agent !== agent) return
+    this.setParticipant({
+      childId: agent.id,
+      parentId: this.parentId,
+      depth: 1,
+      ...tracked.binding,
+      state: 'live',
+      registryStatus: status,
+    }, 0, true)
+  }
+
+  private setParticipant(row: RunReceiptParticipant, treeOrder: number, emit: boolean): boolean {
+    const previous = this.rows.get(row.childId)
+    if (previous !== undefined && sameParticipant(previous.row, row) && previous.treeOrder === treeOrder) return false
+    this.rows.set(row.childId, {
+      row: deepFreeze({ ...row }),
+      stageOrder: this.stageOrder.get(row.stage) ?? Number.MAX_SAFE_INTEGER,
+      treeOrder,
+    })
+    if (emit) this.emit()
+    return true
+  }
+
+  private emit(): void {
+    const participation = [...this.rows.values()]
+      .sort((left, right) => left.stageOrder - right.stageOrder
+        || left.row.childIndex - right.row.childIndex
+        || left.treeOrder - right.treeOrder
+        || String(left.row.childId).localeCompare(String(right.row.childId)))
+      .map(item => item.row)
+    this.onChange(deepFreeze(participation))
+  }
+
+  private guard(operation: () => void): void {
+    try {
+      operation()
+    } catch (error: unknown) {
+      this.ctx.logger.warn('dsh-legion: failed to update Run Receipt participation: ' + String(error))
+    }
+  }
+}
+
+export function observeRunReceiptParticipation(
+  ctx: Context,
+  parentId: SessionId,
+  stages: readonly string[],
+  onChange: (participation: readonly RunReceiptParticipant[]) => void,
+): RunReceiptParticipationObserver {
+  return new HostRunReceiptParticipationObserver(ctx, parentId, stages, onChange)
 }
 
 export function settleRunReceiptStage(
@@ -303,11 +575,17 @@ export function summarizeRunReceipt(receipt: RunReceipt): RunReceiptSummary {
     failed: 0,
   }
   for (const stage of receipt.stages) stageCounts[stage.status] += 1
+  const participationCounts = { total: receipt.participation.length, running: 0, idle: 0, ended: 0 }
+  for (const participant of receipt.participation) {
+    if (participant.state === 'ended') participationCounts.ended += 1
+    else participationCounts[participant.registryStatus] += 1
+  }
   return deepFreeze({
     runId: receipt.runId,
     outcome: receipt.outcome,
     elapsedMs: receipt.elapsedMs,
     stageCounts,
+    participationCounts,
   })
 }
 
@@ -315,7 +593,9 @@ export function renderRunReceiptSummary(summary: {
   readonly outcome: string
   readonly elapsedMs: number
   readonly stageCounts: { readonly total: number; readonly pending: number }
+  readonly participationCounts: { readonly running: number; readonly idle: number; readonly ended: number }
 }): string {
   const settled = summary.stageCounts.total - summary.stageCounts.pending
-  return `Run receipt: ${summary.outcome} in ${String(summary.elapsedMs)}ms; stages ${String(settled)}/${String(summary.stageCounts.total)} settled`
+  const participation = summary.participationCounts
+  return `Run receipt: ${summary.outcome} in ${String(summary.elapsedMs)}ms; stages ${String(settled)}/${String(summary.stageCounts.total)} settled; participation ${String(participation.running)} running, ${String(participation.idle)} idle, ${String(participation.ended)} ended`
 }
