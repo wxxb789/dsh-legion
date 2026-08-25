@@ -315,9 +315,9 @@ export const DELEGATION_INJECT = Object.freeze(['tools', 'subagents', 'systemPro
 
 const PROMPT_ORDER = 116.75
 
-interface ProfileToolArgs {
-  readonly kind: 'profile'
-  readonly profile?: string
+interface SpecialistToolArgs {
+  readonly kind: 'specialist'
+  readonly specialist?: string
   readonly description: string
   readonly prompt: string
   readonly run_in_background?: boolean
@@ -334,7 +334,7 @@ interface StrategyToolArgs {
   }
 }
 
-type ToolArgs = ProfileToolArgs | StrategyToolArgs
+type ToolArgs = SpecialistToolArgs | StrategyToolArgs
 
 function argumentRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -415,10 +415,10 @@ function parseToolArgs(
     }
   }
   assertAllowedArguments(input, enableStrategies
-    ? ['kind', 'profile', 'description', 'prompt', 'run_in_background']
-    : ['profile', 'description', 'prompt', 'run_in_background'])
-  if (input.kind !== undefined && input.kind !== 'profile') {
-    throw new Error('dsh-legion: REQUEST_INVALID: kind must be "profile" or "strategy"')
+    ? ['kind', 'specialist', 'profile', 'description', 'prompt', 'run_in_background']
+    : ['specialist', 'profile', 'description', 'prompt', 'run_in_background'])
+  if (input.kind !== undefined && input.kind !== 'specialist' && input.kind !== 'profile') {
+    throw new Error('dsh-legion: REQUEST_INVALID: kind must be "specialist" or "strategy"')
   }
   if (typeof input.description !== 'string' || input.description.trim().length === 0) {
     throw new Error('dsh-legion: REQUEST_INVALID: description must be a non-empty string')
@@ -426,17 +426,24 @@ function parseToolArgs(
   if (typeof input.prompt !== 'string' || input.prompt.trim().length === 0) {
     throw new Error('dsh-legion: REQUEST_INVALID: prompt must be a non-empty string')
   }
+  if (input.specialist !== undefined && typeof input.specialist !== 'string') {
+    throw new Error('dsh-legion: REQUEST_INVALID: specialist must be a string')
+  }
   if (input.profile !== undefined && typeof input.profile !== 'string') {
     throw new Error('dsh-legion: REQUEST_INVALID: profile must be a string')
+  }
+  if (input.specialist !== undefined && input.profile !== undefined) {
+    throw new Error('dsh-legion: REQUEST_INVALID: specialist and deprecated profile cannot be combined')
   }
   if (input.run_in_background !== undefined && typeof input.run_in_background !== 'boolean') {
     throw new Error('dsh-legion: REQUEST_INVALID: run_in_background must be a boolean')
   }
+  const specialist = input.specialist ?? input.profile
   return {
-    kind: 'profile',
+    kind: 'specialist',
     description: input.description,
     prompt: input.prompt,
-    ...input.profile === undefined ? {} : { profile: input.profile },
+    ...specialist === undefined ? {} : { specialist },
     ...input.run_in_background === undefined ? {} : { run_in_background: input.run_in_background },
   }
 }
@@ -563,7 +570,7 @@ function createToolDefinition(
   },
 ): ToolDefinition {
   const { specialists: catalog, orchestration } = snapshot
-  const profileNames = Object.keys(catalog.activeSpecialists)
+  const specialistNames = Object.keys(catalog.activeSpecialists)
   const strategyNames = catalog.enableStrategies
     ? Object.values(orchestration.strategies)
         .filter(strategy => strategy.active)
@@ -573,16 +580,16 @@ function createToolDefinition(
   const hasStrategySurface = strategyNames.length > 0
   const durableExecutionExposed = durable.enabled
     && durableActivationAvailable(durable.capabilities)
-  const profileRequired = catalog.defaultSpecialist === undefined && !hasStrategySurface
-  const profileDescription = catalog.defaultSpecialist === undefined
-    ? 'Configured semantic profile. Choose by task fit, not by raw model preference.'
-    : `Configured semantic profile. Defaults to ${catalog.defaultSpecialist}.`
+  const specialistRequired = catalog.defaultSpecialist === undefined && !hasStrategySurface
+  const specialistDescription = catalog.defaultSpecialist === undefined
+    ? 'Configured Specialist. Choose by task fit, not by raw model preference.'
+    : `Configured Specialist. Defaults to ${catalog.defaultSpecialist}.`
 
   const definition = defineTool({
     name: catalog.toolName,
     description: (hasStrategySurface
-      ? 'Delegate through a configured Legion Profile or execute an explicitly enabled bounded Team Strategy. '
-      : 'Delegate focused work through a configured Legion profile. Each profile fixes child policy. ')
+      ? 'Delegate through a configured Legion Specialist or execute an explicitly enabled bounded Cohort Strategy. '
+      : 'Delegate focused work through a configured Legion Specialist. Each Specialist fixes child policy. ')
       + (catalog.enableRunInBackground
         ? 'Background execution returns a durable child id immediately; foreground execution waits for the final result.'
         : 'This instance only allows foreground execution.'),
@@ -590,15 +597,19 @@ function createToolDefinition(
       ...hasStrategySurface ? {
         kind: {
           type: 'string' as const,
-          enum: ['profile', 'strategy'],
-          description: 'Request discriminator. Strategy calls must set strategy; legacy Profile calls may omit it.',
+          enum: ['specialist', 'profile', 'strategy'],
+          description: 'Request discriminator. Strategy calls must set strategy; Specialist calls may omit it.',
         },
       } : {},
+      specialist: {
+        type: 'string',
+        enum: specialistNames,
+        description: specialistDescription,
+      },
       profile: {
         type: 'string',
-        ...profileRequired ? { required: true as const } : {},
-        enum: profileNames,
-        description: profileDescription,
+        enum: specialistNames,
+        description: 'Deprecated compatibility alias for specialist.',
       },
       description: {
         type: 'string',
@@ -608,7 +619,7 @@ function createToolDefinition(
       prompt: {
         type: 'string',
         ...hasStrategySurface ? {} : { required: true as const },
-        description: 'A complete standalone task for a fresh profile, or focused follow-up context for an inheriting backend.',
+        description: 'A complete standalone task for a fresh Specialist, or focused follow-up context for an inheriting backend.',
       },
       ...hasStrategySurface ? {
         strategy: {
@@ -618,7 +629,7 @@ function createToolDefinition(
         },
         objective: {
           type: 'string' as const,
-          description: 'Complete bounded objective for the Team Strategy.',
+          description: 'Complete bounded objective for the Cohort Strategy.',
         },
         limits: {
           type: 'json' as const,
@@ -634,7 +645,7 @@ function createToolDefinition(
       ...catalog.enableRunInBackground ? {
         run_in_background: {
           type: 'boolean' as const,
-          description: 'Whether to return a durable child id immediately. When omitted, the selected profile decides.',
+          description: 'Whether to return a durable child id immediately. When omitted, the selected Specialist decides.',
         },
       } : {},
     },
@@ -687,7 +698,7 @@ function createToolDefinition(
         text: 'strategy' in value
           ? `Legion Strategy ${value.strategy}\n${renderStrategyOutcome(value.outcome)}`
           : 'subagentId' in value
-            ? `started Legion profile ${value.profile}`
+            ? `started Legion Specialist ${value.profile}`
               + `${selectedRouteId(value.routePlan) === undefined ? '' : ` via route ${selectedRouteId(value.routePlan)}`}`
               + ` as subagent ${value.subagentId}`
             : `${selectedRouteId(value.routePlan) === undefined ? '' : `selected Legion route ${selectedRouteId(value.routePlan)}\n`}`
@@ -737,7 +748,7 @@ function createToolDefinition(
       }
 
       let plan = compileDelegationPlan(catalog, {
-        ...args.profile === undefined ? {} : { profile: args.profile },
+        ...args.specialist === undefined ? {} : { profile: args.specialist },
         description: args.description,
         prompt: args.prompt,
         ...args.run_in_background === undefined ? {} : { runInBackground: args.run_in_background },
@@ -793,15 +804,32 @@ function createToolDefinition(
       )
     },
   })
-  if (!hasStrategySurface) return definition
   const flat = definition.parameters as {
     properties: Record<string, unknown>
   }
-  const profileProperties = Object.fromEntries(
-    ['kind', 'profile', 'description', 'prompt', 'run_in_background']
+  const specialistProperties = Object.fromEntries(
+    ['kind', 'specialist', 'description', 'prompt', 'run_in_background']
       .flatMap(key => flat.properties[key] === undefined ? [] : [[key, flat.properties[key]]]),
   )
-  profileProperties.kind = { type: 'string', const: 'profile' }
+  if (hasStrategySurface) {
+    specialistProperties.kind = { type: 'string', const: 'specialist' }
+  }
+  const specialistRequiredFields = [
+    ...(specialistRequired ? ['specialist'] : []),
+    'description',
+    'prompt',
+  ]
+  if (!hasStrategySurface) {
+    return {
+      ...definition,
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: specialistProperties,
+        required: specialistRequiredFields,
+      },
+    }
+  }
   const strategyProperties = Object.fromEntries(
     ['kind', 'strategy', 'objective', 'execution']
       .flatMap(key => flat.properties[key] === undefined ? [] : [[key, flat.properties[key]]]),
@@ -825,8 +853,8 @@ function createToolDefinition(
         {
           type: 'object',
           additionalProperties: false,
-          properties: profileProperties,
-          required: ['description', 'prompt'],
+          properties: specialistProperties,
+          required: specialistRequiredFields,
         },
         {
           type: 'object',

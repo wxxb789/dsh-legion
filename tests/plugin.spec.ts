@@ -204,18 +204,24 @@ describe('dsh-legion', () => {
     const schema = ctx.tools.schemas().find(item => item.name === 'legion')
     expect(schema).toBeDefined()
     if (schema === undefined) throw new Error('expected Legion tool schema')
-    const properties = (schema.parameters as { properties: Record<string, { enum?: string[]; required?: boolean }> }).properties
-    expect(properties.profile?.enum).toEqual(['deep', 'quick'])
-    expect(properties.profile?.required).not.toBe(true)
+    const properties = (schema.parameters as {
+      properties: Record<string, { description?: string; enum?: string[]; required?: boolean }>
+    }).properties
+    expect(schema.description).toContain('configured Legion Specialist')
+    expect(schema.description).not.toMatch(/\b(?:profile|team)s?\b/iu)
+    expect(properties.specialist?.enum).toEqual(['deep', 'quick'])
+    expect(properties.specialist?.required).not.toBe(true)
+    expect(properties.specialist?.description).toContain('Configured Specialist')
     expect(Object.keys(properties).sort()).toEqual([
-      'description', 'profile', 'prompt', 'run_in_background',
+      'description', 'prompt', 'run_in_background', 'specialist',
     ])
 
     const prompt = await ctx.systemPrompt.assemble()
     const guidance = prompt.sections.find(section => section.name === 'tool:legion')?.text
     expect(guidance).toContain('`quick`: Cheap exploration and summaries.')
     expect(guidance).toContain('fast-route/fast-model')
-    expect(guidance).toContain('Omitting profile selects `quick`.')
+    expect(guidance).toContain('Omitting specialist selects `quick`.')
+    expect(guidance).not.toMatch(/\b(?:profile|team)s?\b/iu)
   })
 
   it('keeps Strategy authority fully absent unless explicitly enabled', async () => {
@@ -225,7 +231,7 @@ describe('dsh-legion', () => {
     expect(properties).not.toHaveProperty('kind')
     expect(properties).not.toHaveProperty('strategy')
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
-      .not.toContain('Team Strategies')
+      .not.toContain('Cohort Strategies')
     const result = await execute(ctx, {
       kind: 'strategy',
       strategy: 'independent-review',
@@ -279,13 +285,17 @@ describe('dsh-legion', () => {
     ])
     const properties = legionParameterProperties(ctx)
     expect(properties.kind).toBeDefined()
+    expect(properties).not.toHaveProperty('profile')
+    expect(properties.specialist?.enum).toEqual(['deep', 'quick', 'review'])
     expect(properties.strategy?.enum).toEqual([
       'independent-review', 'plan-execute-review', 'research-panel',
     ])
     expect(properties.description?.required).not.toBe(true)
     const guidance = (await ctx.systemPrompt.assemble()).sections
       .find(section => section.name === 'tool:legion')?.text
-    expect(guidance).toContain('Configured bounded Team Strategies')
+    expect(guidance).toContain('Configured bounded Cohort Strategies')
+    expect(guidance).toContain('(cohort:')
+    expect(guidance).not.toMatch(/\b(?:profile|team)s?\b/iu)
     expect(guidance).toContain('`independent-review`')
 
     const strategyResult = await execute(ctx, {
@@ -306,6 +316,15 @@ describe('dsh-legion', () => {
     })
     expect(starts).toHaveLength(2)
 
+    const specialistResult = await execute(ctx, {
+      specialist: 'quick',
+      description: 'canonical specialist call',
+      prompt: 'Use the model-facing vocabulary.',
+      run_in_background: false,
+    })
+    expect(specialistResult.isError).toBe(false)
+    expect(starts).toHaveLength(3)
+
     const legacyProfileResult = await execute(ctx, {
       profile: 'quick',
       description: 'legacy profile call',
@@ -313,7 +332,18 @@ describe('dsh-legion', () => {
       run_in_background: false,
     })
     expect(legacyProfileResult.isError).toBe(false)
-    expect(starts).toHaveLength(3)
+    expect(starts).toHaveLength(4)
+
+    const ambiguousSpecialist = await execute(ctx, {
+      specialist: 'quick',
+      profile: 'quick',
+      description: 'ambiguous specialist call',
+      prompt: 'Reject both names together.',
+      run_in_background: false,
+    })
+    expect(ambiguousSpecialist.isError).toBe(true)
+    expect(rendered(ambiguousSpecialist)).toContain('specialist and deprecated profile cannot be combined')
+    expect(starts).toHaveLength(4)
 
     const mixed = await execute(ctx, {
       kind: 'strategy',
@@ -331,7 +361,7 @@ describe('dsh-legion', () => {
     })
     expect(widened.isError).toBe(true)
     expect(rendered(widened)).toContain('STRATEGY_LIMIT_WIDENING')
-    expect(starts).toHaveLength(3)
+    expect(starts).toHaveLength(4)
   })
 
   it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {
@@ -360,7 +390,7 @@ describe('dsh-legion', () => {
     const properties = () => legionParameterProperties(ctx)
     expect(properties()).not.toHaveProperty('strategy')
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
-      .not.toContain('Team Strategies')
+      .not.toContain('Cohort Strategies')
 
     const removeDeep = ctx.subagents.registerProvider(provider('deep-provider'))
     expect(properties().strategy?.enum).toEqual(['research-panel'])
@@ -376,7 +406,7 @@ describe('dsh-legion', () => {
     removeDeep()
     expect(properties()).not.toHaveProperty('strategy')
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === 'tool:legion')?.text)
-      .not.toContain('Team Strategies')
+      .not.toContain('Cohort Strategies')
     expect(register).not.toHaveBeenCalled()
   })
 
@@ -800,7 +830,7 @@ describe('dsh-legion', () => {
         maxDepth: 3,
       }),
     }))
-    expect(rendered(result)).toContain('started Legion profile deep as subagent durable-child')
+    expect(rendered(result)).toContain('started Legion Specialist deep as subagent durable-child')
   })
 
   it('lets the continuation manager own depth, persona, and tool filtering', async () => {
@@ -1022,8 +1052,8 @@ describe('dsh-legion', () => {
       properties: Record<string, { enum?: string[] }>
       required?: string[]
     }
-    expect(parameters.properties.profile?.enum).toEqual(['local'])
-    expect(parameters.required).toContain('profile')
+    expect(parameters.properties.specialist?.enum).toEqual(['local'])
+    expect(parameters.required).toContain('specialist')
     const guidance = (await ctx.systemPrompt.assemble()).sections
       .find(section => section.name === 'tool:legion')?.text
     expect(guidance).toContain('`local`')
@@ -1127,7 +1157,7 @@ describe('dsh-legion', () => {
 
     disposeConflict()
     expect(ctx.tools.schemas().find(schema => schema.name === 'legion')?.description)
-      .toContain('configured Legion profile')
+      .toContain('configured Legion Specialist')
   })
 
   it('omits and enforces run_in_background when disabled', async () => {

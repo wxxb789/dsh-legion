@@ -54,10 +54,10 @@ export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
     throw new Error('dsh-legion: coordinator guidance requires a compiler-owned catalog')
   }
   const lines = [
-    `Use \`${config.toolName}\` to delegate focused work through semantic profiles.`,
-    'Choose a profile by task fit; do not choose raw models in tool calls.',
+    `Use \`${config.toolName}\` to delegate focused work through configured Specialists.`,
+    'Choose a Specialist by task fit; do not choose raw models in tool calls.',
     '',
-    'Configured profiles:',
+    'Configured Specialists:',
   ]
 
   for (const [name, profile] of Object.entries(config.specialists)) {
@@ -80,11 +80,11 @@ export function renderCoordinatorGuidance(config: CoordinatorCatalog): string {
     '',
     'Start independent delegations together and continue useful work while background children run.',
     'Use foreground execution only when the next action depends on the child result.',
-    'A profile is a fixed capability policy: do not ask a child to widen its tools, model route, or depth.',
+    'A Specialist is a fixed capability policy: do not ask a child to widen its tools, model route, or depth.',
   )
 
   if (config.defaultSpecialist !== undefined) {
-    lines.push(`Omitting profile selects \`${config.defaultSpecialist}\`.`)
+    lines.push(`Omitting specialist selects \`${config.defaultSpecialist}\`.`)
   }
   if (config.guidance?.trim()) lines.push('', config.guidance.trim())
   return lines.join('\n')

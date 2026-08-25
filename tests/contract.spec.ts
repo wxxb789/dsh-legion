@@ -17,11 +17,21 @@ describe('public contract v1', () => {
     expect(result.stdout).toContain('public contract v1 verified')
   })
 
-  it('freezes strict Profile and Strategy request field sets', () => {
+  it('freezes canonical Specialist and Strategy request field sets with the legacy alias', () => {
     const contract = JSON.parse(readFileSync(join(ROOT, 'contracts/v1.json'), 'utf8')) as {
+      cohortRunOutcomes: string[]
+      specialistRequestFields: string[]
+      specialistRequiredFields: string[]
       profileRequestFields: string[]
       strategyRequestFields: string[]
     }
+    expect(contract.cohortRunOutcomes).toEqual([
+      'completed', 'degraded', 'cancelled', 'failed',
+    ])
+    expect(contract.specialistRequestFields).toEqual([
+      'kind', 'specialist', 'description', 'prompt', 'run_in_background',
+    ])
+    expect(contract.specialistRequiredFields).toEqual(['description', 'prompt'])
     expect(contract.profileRequestFields).toEqual([
       'kind', 'profile', 'description', 'prompt', 'run_in_background',
     ])

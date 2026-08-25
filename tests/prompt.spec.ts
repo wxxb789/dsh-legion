@@ -21,8 +21,9 @@ describe('compiler-owned coordinator guidance', () => {
   }
 
   it('renders only a branded compiler-owned catalog', () => {
-    expect(renderCoordinatorGuidance(createCoordinatorCatalog(input)))
-      .toContain('Configured profiles:')
+    const guidance = renderCoordinatorGuidance(createCoordinatorCatalog(input))
+    expect(guidance).toContain('Configured Specialists:')
+    expect(guidance).not.toMatch(/\b(?:profile|team)s?\b/iu)
     expect(() => renderCoordinatorGuidance(input as unknown as CoordinatorCatalog))
       .toThrow(/requires a compiler-owned catalog/)
   })

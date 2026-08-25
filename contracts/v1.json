@@ -70,6 +70,12 @@
   ],
   "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2",
   "configVersion": 2,
+  "cohortRunOutcomes": [
+    "completed",
+    "degraded",
+    "cancelled",
+    "failed"
+  ],
   "contextFreshnessKinds": [
     "timeless",
     "fresh",
@@ -694,6 +700,17 @@
     "run_in_background"
   ],
   "profileRequiredFields": [
+    "description",
+    "prompt"
+  ],
+  "specialistRequestFields": [
+    "kind",
+    "specialist",
+    "description",
+    "prompt",
+    "run_in_background"
+  ],
+  "specialistRequiredFields": [
     "description",
     "prompt"
   ],

@@ -857,10 +857,10 @@ export function renderOrchestrationGuidance(catalog: CompiledOrchestrationCatalo
     .sort((left, right) => String(left.name).localeCompare(String(right.name)))
   if (strategies.length === 0) return ''
   return [
-    'Configured bounded Team Strategies (use the strategy argument instead of profile):',
+    'Configured bounded Cohort Strategies (use the strategy argument instead of specialist):',
     ...strategies.map(strategy =>
       `- \`${strategy.name}\`: ${strategy.description} `
-      + `(team: ${strategy.cohort}; max agents: ${String(strategy.limits.maxAgents)}; foreground)`),
+      + `(cohort: ${strategy.cohort}; max agents: ${String(strategy.limits.maxAgents)}; foreground)`),
     'Strategy calls are foreground and return completed, degraded, cancelled, or failed outcomes.',
   ].join('\n')
 }

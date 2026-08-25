@@ -139,7 +139,10 @@ const checks = [
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],
   ['strategyLimitFields', contract.strategyLimitFields, legion.STRATEGY_LIMIT_FIELDS],
+  ['cohortRunOutcomes', contract.cohortRunOutcomes, legion.TEAM_RUN_OUTCOMES],
   ['teamRunOutcomes', contract.teamRunOutcomes, legion.TEAM_RUN_OUTCOMES],
+  ['specialistRequestFields', contract.specialistRequestFields, ['kind', 'specialist', 'description', 'prompt', 'run_in_background']],
+  ['specialistRequiredFields', contract.specialistRequiredFields, ['description', 'prompt']],
   ['profileRequestFields', contract.profileRequestFields, ['kind', 'profile', 'description', 'prompt', 'run_in_background']],
   ['profileRequiredFields', contract.profileRequiredFields, ['description', 'prompt']],
   ['strategyRequestFields', contract.strategyRequestFields, [

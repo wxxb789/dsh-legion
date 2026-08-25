@@ -281,21 +281,21 @@ describe('ACP catalog against the real compiler', () => {
     return ctx
   }
 
-  function profileEnum(ctx: Context): string[] {
+  function specialistEnum(ctx: Context): string[] {
     const schema = ctx.tools.schemas().find(item => item.name === 'legion')
     const parameters = schema?.parameters as { properties: Record<string, { enum?: string[] }> }
-    return parameters.properties.profile?.enum ?? []
+    return parameters.properties.specialist?.enum ?? []
   }
 
   it('compiles clean and stays inactive while the ACP provider is unmounted', async () => {
     const ctx = await setup([localProvider('spawn')])
-    expect(profileEnum(ctx)).toEqual(['quick'])
+    expect(specialistEnum(ctx)).toEqual(['quick'])
     await ctx.fiber.dispose()
   })
 
   it('activates the ACP Profile once its provider is registered', async () => {
     const ctx = await setup([localProvider('spawn'), acpProvider('sample-agent')])
-    expect(profileEnum(ctx)).toEqual(['quick', 'sample-agent'])
+    expect(specialistEnum(ctx)).toEqual(['quick', 'sample-agent'])
     await ctx.fiber.dispose()
   })
 

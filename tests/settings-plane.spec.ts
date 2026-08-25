@@ -346,7 +346,7 @@ describe('a delegation row beside a served namespace', () => {
     await ctx.plugin(legion, delegationEntry as unknown as legion.LegionConfig)
     expect(toolNames(ctx)).toEqual(['crew'])
     const schema = toolSchema(ctx, 'crew')
-    expect((schema?.parameters.properties['profile'] as { enum: string[] }).enum).toEqual(['quick'])
+    expect((schema?.parameters.properties['specialist'] as { enum: string[] }).enum).toEqual(['quick'])
     expect(schema?.parameters.properties).not.toHaveProperty('run_in_background')
     expect(settings.registerCalls).toBe(1)
     await ctx.fiber.dispose()
@@ -417,7 +417,7 @@ describe('a delegation row beside a served namespace', () => {
     // publishes its tool, and it publishes it from its OWN entry: reading the
     // owner value would have carried the owner's empty Profile catalog.
     expect(toolNames(ctx)).toEqual(['crew'])
-    expect((toolSchema(ctx, 'crew')?.parameters.properties['profile'] as { enum: string[] }).enum)
+    expect((toolSchema(ctx, 'crew')?.parameters.properties['specialist'] as { enum: string[] }).enum)
       .toEqual(['quick'])
     await ctx.fiber.dispose()
   })

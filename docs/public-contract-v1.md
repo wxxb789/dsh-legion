@@ -4,19 +4,19 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 
 ## Stable authored data
 
-- Config Document version is 2. Legacy unversioned/v1 Profile documents migrate with model Strategy exposure off.
-- Profiles, Catalog Layers, TeamSpec, StrategySpec, artifact contracts, and limits are readonly declarative data.
+- Config Document version is 2. Legacy unversioned/v1 documents migrate with model Strategy exposure off.
+- Specialists, Catalog Layers, CohortSpec, StrategySpec, artifact contracts, and limits are readonly declarative data.
 - Catalog Layers add new names, replace complete same-name entries, disable by tombstone, and permit later revival.
 - Strategy stages are exactly `delegate | fanout | synthesize`; every accepted stage is executable.
-- Strategy limits are exactly agents, per-Team-Run concurrency, deadline, and accepted artifact bytes.
+- Strategy limits are exactly agents, per-Cohort-Run concurrency, deadline, and accepted artifact bytes.
 
 ## Stable invocation and results
 
-- Profile requests allow only `kind?, profile?, description, prompt, run_in_background?`; `description` and `prompt` are required, while legacy calls may omit the explicit `kind: profile` discriminator.
+- Specialist requests allow only `kind?, specialist?, description, prompt, run_in_background?`; `description` and `prompt` are required, while calls may omit the explicit `kind: specialist` discriminator. The retired `profile` field remains an accepted, non-advertised compatibility alias for one minor version and cannot be combined with `specialist`.
 - Strategy tool calls require `{ kind: strategy, strategy, objective, limits? }` and deployment `enableStrategies: true`.
 - Branch fields cannot be mixed and invocation limits can only narrow authored limits.
-- Team Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.
-- Opaque Plans and execution snapshots bind one branded Strategy generation (policy + runtime Profile catalog + orchestration), Objective, and limits before child admission.
+- Cohort Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.
+- Opaque Plans and execution snapshots bind one branded Strategy generation (policy + runtime Specialist catalog + orchestration), Objective, and limits before child admission.
 
 ## Evidence receipt contracts
 
@@ -32,7 +32,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 - Aggregate token and monetary-cost admission are not v1 fields because no authoritative Host reservation seam exists (ADR 0013).
 - Model facts are point observations, not an atomic adapter-generation lease; DSH remains start authority (ADR 0007).
 - Every published child is cleanup-owned; a provider that ignores disposal is reported as cleanup pending rather than falsely declared quiescent.
-- No retry, route replay, hidden default branch, persistent Team runtime, mailbox, or task store is implied.
+- No retry, route replay, hidden default branch, persistent Cohort runtime, mailbox, or task store is implied.
 - Open benchmark packs and explicit opt-in do not constitute signed held-out evidence for automatic curated exposure.
 
 Removing or reinterpreting these contracts after 1.0 requires a new major version. Additive optional fields and new versioned result contracts remain possible when old documents and invocations preserve their meaning.
