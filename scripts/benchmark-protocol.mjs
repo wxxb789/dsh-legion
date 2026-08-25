@@ -2,13 +2,14 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as legion from '../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const thresholds = JSON.parse(await readFile(join(root, 'benchmarks', 'protocol-thresholds.json'), 'utf8'))
-const parent = { id: SessionId('benchmark-parent') }
+const parentSession = Session.create(SessionId('benchmark-parent'))
+const parent = { id: parentSession.id, session: parentSession }
 const calls = []
 
 const review = {

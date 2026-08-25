@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import {
   CallId,
   LlmAdapter,
@@ -14,7 +14,7 @@ import {
   type LlmResolvedModelInfo,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
@@ -52,7 +52,8 @@ class RouteAdapter extends LlmAdapter {
 }
 
 function parent(id = 'parent'): Agent {
-  return { id: SessionId(id) } as unknown as Agent
+  const session = Session.create(SessionId(id))
+  return { id: session.id, session } as unknown as Agent
 }
 
 function provider(
@@ -63,7 +64,7 @@ function provider(
     capabilities?: SubagentProvider['capabilities']
     continuable?: boolean
     resultError?: Error
-    result?: (request: ResolvedSubagentStartRequest) => SubagentResult
+    result?: (request: ResolvedSubagentStartRequest) => Promise<SubagentResult> | SubagentResult
     structured?: unknown
     disposeError?: Error
     onDispose?: () => void
@@ -102,6 +103,47 @@ function provider(
     result.prepareContinuable = async () => ({})
   }
   return result
+}
+
+interface TestProjectionDefinition {
+  readonly key: string
+  readonly stateSchema: { parse(value: unknown): unknown }
+  init(): unknown
+  apply(state: unknown, event: SessionEvent): unknown
+  readonly wire?: {
+    readonly viewSchema: { parse(value: unknown): unknown }
+    view(state: unknown): unknown
+  }
+}
+
+class TestProjectionRegistry extends Service {
+  private readonly definitions = new Map<string, TestProjectionDefinition>()
+
+  constructor(ctx: Context) {
+    super(ctx, 'sessionProjections')
+  }
+
+  register(definition: TestProjectionDefinition): () => void {
+    this.definitions.set(definition.key, definition)
+    return () => { this.definitions.delete(definition.key) }
+  }
+
+  snapshot(session: Session): { asOfSeq: number; values: Record<string, unknown> } {
+    const values: Record<string, unknown> = {}
+    for (const definition of this.definitions.values()) {
+      let state = definition.init()
+      for (const event of session.events) state = definition.apply(state, event)
+      state = definition.stateSchema.parse(state)
+      if (definition.wire !== undefined) {
+        values[definition.key] = definition.wire.viewSchema.parse(definition.wire.view(state))
+      }
+    }
+    return { asOfSeq: session.seq - 1, values }
+  }
+}
+
+function projections(ctx: Context): TestProjectionRegistry {
+  return (ctx as unknown as { get(name: string): unknown }).get('sessionProjections') as TestProjectionRegistry
 }
 
 async function setup(
@@ -362,6 +404,125 @@ describe('dsh-legion', () => {
     expect(widened.isError).toBe(true)
     expect(rendered(widened)).toContain('STRATEGY_LIMIT_WIDENING')
     expect(starts).toHaveLength(4)
+  })
+
+  it('publishes a settlement-driven Run Receipt and bounded tool summary', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_700_000_000_000)
+    try {
+      const first = Promise.withResolvers<SubagentResult>()
+      const second = Promise.withResolvers<SubagentResult>()
+      const starts: Array<Record<string, unknown>> = []
+      let ctx!: Context
+      let session!: Session
+      let index = 0
+      const capture = provider('spawn', {
+        onStart: () => {
+          starts.push(structuredClone(
+            projections(ctx).snapshot(session).values['legion/run-receipts'] as Record<string, unknown>,
+          ))
+        },
+        result: () => index++ === 0 ? first.promise : second.promise,
+      })
+      ctx = new Context()
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(TestProjectionRegistry)
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SubagentRuntime)
+      ctx.subagents.registerProvider(capture)
+      await ctx.plugin(legion, {
+        configVersion: 2,
+        toolName: 'legion',
+        enableRunInBackground: true,
+        enableStrategies: true,
+        catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
+        profiles: {
+          deep: {
+            description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2,
+            defaultRunInBackground: false, result: 'text',
+          },
+          quick: {
+            description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2,
+            defaultRunInBackground: false, result: 'text',
+          },
+          review: {
+            description: 'Review.', subagentProvider: 'spawn', maxDepth: 2,
+            defaultRunInBackground: false, result: 'review-v1',
+          },
+        },
+        defaultProfile: 'quick',
+      })
+      session = ctx.sessions.create(SessionId('receipt-parent'))
+      const agent = { id: session.id, session } as unknown as Agent
+
+      const pending = execute(ctx, {
+        kind: 'strategy',
+        strategy: 'independent-review',
+        objective: 'Publish the graph before execution.',
+      }, agent)
+      for (let step = 0; step < 30 && starts.length < 1; step += 1) await Promise.resolve()
+
+      const beforeFirstStart = starts[0] as { receipts: Record<string, { stages: unknown[] }> }
+      const runId = Object.keys(beforeFirstStart.receipts)[0]!
+      expect(beforeFirstStart.receipts[runId]).toMatchObject({
+        runId,
+        strategy: 'independent-review',
+        cohort: 'independent-review',
+        outcome: 'running',
+        elapsedMs: 0,
+        stages: [
+          { id: 'execute', after: [], status: 'pending' },
+          { id: 'review', after: ['execute'], status: 'pending' },
+        ],
+      })
+
+      vi.setSystemTime(1_700_000_000_100)
+      first.resolve({ output: [{ type: 'text', text: 'execution evidence' }], stopReason: 'completed' })
+      for (let step = 0; step < 30 && starts.length < 2; step += 1) await Promise.resolve()
+      const beforeSecondStart = starts[1] as typeof beforeFirstStart
+      expect(beforeSecondStart.receipts[runId]?.stages).toMatchObject([
+        { id: 'execute', status: 'completed' },
+        { id: 'review', status: 'pending' },
+      ])
+
+      vi.setSystemTime(1_700_000_000_250)
+      second.resolve({
+        output: [{ type: 'text', text: 'reviewed' }],
+        structured: { verdict: 'pass', summary: 'Good.', findings: [], verification: ['checked'] },
+        stopReason: 'completed',
+      })
+      const result = await pending
+      expect(result.isError).toBe(false)
+      if (result.isError) throw new Error(rendered(result))
+
+      const projection = projections(ctx).snapshot(session).values['legion/run-receipts'] as {
+        receipts: Record<string, Record<string, unknown>>
+      }
+      expect(projection.receipts[runId]).toMatchObject({
+        outcome: 'completed',
+        elapsedMs: 250,
+        stages: [
+          { id: 'execute', status: 'completed' },
+          { id: 'review', status: 'completed' },
+        ],
+      })
+      expect(JSON.stringify(projection.receipts[runId])).not.toMatch(/money|cost|price|currency/iu)
+      expect(result.value).toMatchObject({
+        kind: 'strategy',
+        strategy: 'independent-review',
+        receipt: {
+          runId,
+          outcome: 'completed',
+          elapsedMs: 250,
+          stageCounts: { total: 2, pending: 0, completed: 2, degraded: 0, cancelled: 0, failed: 0 },
+        },
+      })
+      expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
+      expect(rendered(result)).toContain('Run receipt: completed in 250ms; stages 2/2 settled')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {

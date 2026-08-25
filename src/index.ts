@@ -28,6 +28,11 @@ import {
   type RuntimeSnapshot,
 } from './compiler.ts'
 import { createCoordinatorCatalog, renderCoordinatorGuidance } from './prompt.ts'
+import {
+  installRunReceiptProjection,
+  renderRunReceiptSummary,
+  type RunReceiptProjectionHostContext,
+} from './run-receipt.ts'
 import { outputText, settleForeground } from './settlement.ts'
 import {
   assertOrchestrationCatalogUsable,
@@ -689,6 +694,33 @@ function createToolDefinition(
               strategy: { type: 'string' as const, required: true as const },
               planDigest: { type: 'string' as const, required: true as const },
               outcome: { type: 'json' as const, required: true as const },
+              receipt: {
+                type: 'object' as const,
+                required: true as const,
+                additionalProperties: false,
+                properties: {
+                  runId: { type: 'string' as const, required: true as const },
+                  outcome: {
+                    type: 'string' as const,
+                    required: true as const,
+                    enum: ['completed', 'degraded', 'cancelled', 'failed'],
+                  },
+                  elapsedMs: { type: 'number' as const, required: true as const },
+                  stageCounts: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      total: { type: 'number' as const, required: true as const },
+                      pending: { type: 'number' as const, required: true as const },
+                      completed: { type: 'number' as const, required: true as const },
+                      degraded: { type: 'number' as const, required: true as const },
+                      cancelled: { type: 'number' as const, required: true as const },
+                      failed: { type: 'number' as const, required: true as const },
+                    },
+                  },
+                },
+              },
             },
           }] : [],
         ],
@@ -696,7 +728,7 @@ function createToolDefinition(
       render: (_args, value) => [{
         type: 'text',
         text: 'strategy' in value
-          ? `Legion Strategy ${value.strategy}\n${renderStrategyOutcome(value.outcome)}`
+          ? `Legion Strategy ${value.strategy}\n${renderStrategyOutcome(value.outcome)}\n${renderRunReceiptSummary(value.receipt)}`
           : 'subagentId' in value
             ? `started Legion Specialist ${value.profile}`
               + `${selectedRouteId(value.routePlan) === undefined ? '' : ` via route ${selectedRouteId(value.routePlan)}`}`
@@ -738,12 +770,15 @@ function createToolDefinition(
             + 'this build binds no durable Strategy activation adapter, so journal mode cannot start',
           )
         }
-        const outcome = await executeStrategyPlan(ctx, snapshot, compiled.plan, parent, exec.signal)
+        const { receipt, ...outcome } = await executeStrategyPlan(
+          ctx, snapshot, compiled.plan, parent, exec.signal,
+        )
         return {
           kind: 'strategy' as const,
           strategy: args.strategy,
           planDigest: compiled.plan.planDigest,
           outcome: outcome as unknown as JsonValue,
+          receipt,
         }
       }
 
@@ -985,6 +1020,7 @@ export async function apply(ctx: Context, config: LegionConfig): Promise<void> {
 
 async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
+  installRunReceiptProjection(ctx as unknown as RunReceiptProjectionHostContext)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,
   )

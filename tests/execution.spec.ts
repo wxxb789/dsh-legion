@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
@@ -10,7 +10,8 @@ import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
 
-const parent = { id: SessionId('strategy-parent') } as unknown as Agent
+const parentSession = Session.create(SessionId('strategy-parent'))
+const parent = { id: parentSession.id, session: parentSession } as unknown as Agent
 const review = {
   verdict: 'needs-changes',
   summary: 'One issue.',

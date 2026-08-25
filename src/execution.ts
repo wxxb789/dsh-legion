@@ -16,6 +16,15 @@ import type {
 } from './orchestration.ts'
 import { CohortRunId, type CohortRunId as CohortRunIdType } from './identity.ts'
 import { deepFreeze } from './internal/value.ts'
+import {
+  createRunReceipt,
+  finishRunReceipt,
+  publishRunReceipt,
+  settleRunReceiptStage,
+  summarizeRunReceipt,
+  type RunReceiptStageStatus,
+  type RunReceiptSummary,
+} from './run-receipt.ts'
 import { materializeStructuredResult } from './result-contract.ts'
 import { applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -46,7 +55,7 @@ export interface StrategyMemberFailure {
   readonly message: string
 }
 
-export type CohortRunOutcome =
+type CohortRunResult =
   | {
       readonly kind: 'completed'
       readonly runId: CohortRunIdType
@@ -76,6 +85,8 @@ export type CohortRunOutcome =
       readonly artifacts: readonly MaterializedStrategyArtifact[]
       readonly failure: StrategyMemberFailure
     }
+
+export type CohortRunOutcome = CohortRunResult & { readonly receipt: RunReceiptSummary }
 
 type TerminalClaim = CohortRunOutcome['kind']
 
@@ -404,6 +415,17 @@ export async function executeStrategyPlan(
     throw new Error('dsh-legion: Strategy Plan generation does not match execution snapshot')
   }
   const runId = CohortRunId(`team-run-${randomUUID()}`)
+  let receipt = publishRunReceipt(parent.session, createRunReceipt(plan, runId))
+  const settleStage = (
+    stage: string,
+    status: Exclude<RunReceiptStageStatus, 'pending'>,
+  ): void => {
+    receipt = publishRunReceipt(parent.session, settleRunReceiptStage(receipt, stage, status))
+  }
+  const finishOutcome = <Outcome extends CohortRunResult>(outcome: Outcome) => {
+    receipt = publishRunReceipt(parent.session, finishRunReceipt(receipt, outcome.kind))
+    return deepFreeze({ ...outcome, receipt: summarizeRunReceipt(receipt) })
+  }
   const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
   const terminal = new TerminalArbiter()
   const claimCancellation = () => { terminal.claim('cancelled') }
@@ -424,25 +446,34 @@ export async function executeStrategyPlan(
       deadline.signal.throwIfAborted()
       const prompt = renderPrompt(primitive, plan.objective, artifacts)
       if (primitive.kind === 'dsh-subagent-fanout') {
-        const fanout = await executeFanout(
-          ctx,
-          catalog,
-          primitive,
-          prompt,
-          parent,
-          deadline.signal,
-          plan.limits.maxConcurrent,
-          () => { terminal.claim('failed') },
-        )
+        let fanout: Awaited<ReturnType<typeof executeFanout>>
+        try {
+          fanout = await executeFanout(
+            ctx,
+            catalog,
+            primitive,
+            prompt,
+            parent,
+            deadline.signal,
+            plan.limits.maxConcurrent,
+            () => { terminal.claim('failed') },
+          )
+        } catch (error: unknown) {
+          settleStage(primitive.stage, deadline.signal.aborted ? 'cancelled' : 'failed')
+          throw error
+        }
         failures.push(...fanout.failures)
         if (fanout.artifact === undefined) {
+          settleStage(primitive.stage, deadline.signal.aborted ? 'cancelled' : 'failed')
           throw new PrimitiveFailure(failure(primitive, 'MIN_SUCCESS_UNSATISFIED', 'fanout did not reach minSuccess'))
         }
         if (outputBytes + fanout.artifact.bytes > plan.limits.maxOutputBytes) {
+          settleStage(primitive.stage, 'failed')
           throw new PrimitiveFailure(failure(primitive, 'OUTPUT_LIMIT_EXCEEDED', 'strategy output limit exceeded'))
         }
         artifacts.set(fanout.artifact.name, fanout.artifact)
         outputBytes += fanout.artifact.bytes
+        settleStage(primitive.stage, fanout.failures.length === 0 ? 'completed' : 'degraded')
       } else {
         let artifact: MaterializedStrategyArtifact
         try {
@@ -457,13 +488,16 @@ export async function executeStrategyPlan(
           )
           artifact = materializedArtifact(primitive.output, value)
         } catch (error: unknown) {
+          settleStage(primitive.stage, deadline.signal.aborted ? 'cancelled' : 'failed')
           throw new PrimitiveFailure(failure(primitive, 'MEMBER_FAILED', error))
         }
         if (outputBytes + artifact.bytes > plan.limits.maxOutputBytes) {
+          settleStage(primitive.stage, 'failed')
           throw new PrimitiveFailure(failure(primitive, 'OUTPUT_LIMIT_EXCEEDED', 'strategy output limit exceeded'))
         }
         artifacts.set(artifact.name, artifact)
         outputBytes += artifact.bytes
+        settleStage(primitive.stage, 'completed')
       }
     }
     const final = artifacts.get(String(plan.completion.artifact))
@@ -483,7 +517,7 @@ export async function executeStrategyPlan(
     const kind = failures.length === 0 ? 'completed' : 'degraded'
     if (!terminal.claim(kind)) {
       if (terminal.value === 'failed') {
-        return deepFreeze({
+        return finishOutcome({
           kind: 'failed',
           runId,
           planDigest: plan.planDigest,
@@ -496,7 +530,7 @@ export async function executeStrategyPlan(
           },
         })
       }
-      return deepFreeze({
+      return finishOutcome({
         kind: 'cancelled',
         runId,
         planDigest: plan.planDigest,
@@ -504,7 +538,7 @@ export async function executeStrategyPlan(
         reason: boundedMessage(deadline.signal.reason),
       })
     }
-    return deepFreeze(kind === 'completed'
+    return finishOutcome(kind === 'completed'
       ? { kind, runId, planDigest: plan.planDigest, artifacts: list, final }
       : { kind, runId, planDigest: plan.planDigest, artifacts: list, final, failures })
   } catch (error: unknown) {
@@ -512,7 +546,7 @@ export async function executeStrategyPlan(
     if (terminal.value === 'cancelled'
       || (terminal.value === undefined && deadline.signal.aborted)) {
       terminal.claim('cancelled')
-      return deepFreeze({
+      return finishOutcome({
         kind: 'cancelled',
         runId,
         planDigest: plan.planDigest,
@@ -529,7 +563,7 @@ export async function executeStrategyPlan(
           message: boundedMessage(error),
         }
     terminal.claim('failed')
-    return deepFreeze({ kind: 'failed', runId, planDigest: plan.planDigest, artifacts: list, failure: memberFailure })
+    return finishOutcome({ kind: 'failed', runId, planDigest: plan.planDigest, artifacts: list, failure: memberFailure })
   } finally {
     deadline.signal.removeEventListener('abort', claimCancellation)
     deadline.dispose()
