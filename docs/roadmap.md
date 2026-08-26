@@ -91,6 +91,9 @@ Legion keeps one configuration vocabulary. The DSH settings service, which from 
 - [x] Widen a published generation's inputs to configuration, prompt-fragment resources, and runtime facts, with serialized last-commit-wins republication.
 - [x] Degrade a rejected registration or unpublishable commit to the last publishable generation instead of withdrawing the delegation surface.
 - [x] Ship the browser settings card as an ordinary DSH client bundle, verified by executing the artifact under the loader's protocol.
+- [x] Render the current Session's Run Receipt in the additive `shell.overlay` seat with persisted dock, position, and per-run dismissal state.
+
+Run Receipt overlay verification executes the built client artifact at the loader-protocol seam. No automated gate renders the overlay in a browser; coexistence with another plugin's overlay remains a manual check.
 
 ## v1.2 — Optional ACP delegation
 

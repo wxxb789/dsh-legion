@@ -13,6 +13,10 @@ export type LegionCardKey =
   | 'overridden' | 'reset'
   | 'invalidText' | 'invalidBytes'
   | 'save' | 'saving' | 'discard' | 'saveFailed'
+  | 'receiptTitle' | 'receiptMove' | 'receiptDock' | 'receiptDismiss'
+  | 'receiptElapsed' | 'receiptStages' | 'receiptParticipation' | 'receiptTokens'
+  | 'receiptRootStage' | 'receiptAfter'
+  | 'receiptTotal' | 'receiptInput' | 'receiptOutput' | 'receiptCacheRead' | 'receiptCacheWrite'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -50,6 +54,21 @@ export const en: Record<LegionCardKey, string> = {
   saving: 'Saving…',
   discard: 'Discard',
   saveFailed: 'The last save did not land. Retry, or discard to reload what the Host holds.',
+  receiptTitle: 'Run Receipt',
+  receiptMove: 'Drag to move the Run Receipt',
+  receiptDock: 'Dock',
+  receiptDismiss: 'Dismiss',
+  receiptElapsed: 'Elapsed',
+  receiptStages: 'Stages',
+  receiptParticipation: 'Participation',
+  receiptTokens: 'Token account',
+  receiptRootStage: 'Starts immediately',
+  receiptAfter: 'After',
+  receiptTotal: 'Total',
+  receiptInput: 'Input',
+  receiptOutput: 'Output',
+  receiptCacheRead: 'Cache read',
+  receiptCacheWrite: 'Cache write',
 }
 
 /** Simplified Chinese copy. */
@@ -81,4 +100,19 @@ export const zh: Record<LegionCardKey, string> = {
   saving: '保存中…',
   discard: '放弃',
   saveFailed: '上次保存未生效。请重试，或放弃以重新读取 Host 的当前值。',
+  receiptTitle: '运行回执',
+  receiptMove: '拖动运行回执',
+  receiptDock: '停靠',
+  receiptDismiss: '关闭',
+  receiptElapsed: '耗时',
+  receiptStages: '阶段',
+  receiptParticipation: '成员参与',
+  receiptTokens: 'Token 账户',
+  receiptRootStage: '立即开始',
+  receiptAfter: '依赖',
+  receiptTotal: '总计',
+  receiptInput: '输入',
+  receiptOutput: '输出',
+  receiptCacheRead: '缓存读取',
+  receiptCacheWrite: '缓存写入',
 }

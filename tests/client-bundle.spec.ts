@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { Config } from '../src/config.ts'
+import { RUN_RECEIPT_PROJECTION_KEY } from '../src/run-receipt.ts'
 import { LEGION_SETTINGS_NAMESPACE } from '../src/settings.ts'
 import { CLIENT_BANNER, CLIENT_EXTERNALS, CLIENT_FOOTER, CLIENT_INTRO } from '../tsdown.client.config.ts'
 
@@ -47,6 +48,28 @@ function renderedIds(node: unknown): string[] {
   return walk(node).flatMap(element => typeof element.props?.id === 'string' ? [element.props.id] : [])
 }
 
+/** Plain text visible in a rendered stub tree. */
+function renderedText(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(renderedText).join(' ')
+  if (!isElement(node)) return ''
+  return node.children.map(renderedText).join(' ')
+}
+
+interface StubStoreHandle {
+  spec: {
+    init(): Record<string, unknown>
+    persist?: string
+    actions: Record<string, (state: Record<string, unknown>, ...args: unknown[]) => void>
+  }
+  create(): {
+    getSnapshot(): Record<string, unknown>
+    subscribe(listener: () => void): () => void
+    actions: Record<string, (...args: unknown[]) => void>
+  }
+}
+
 /**
  * Materialize the shipped bundle exactly as the Host loader does: evaluate it
  * with a `window.__ModuleLoader__`, capture the handoff, and run its factory
@@ -58,14 +81,20 @@ interface StyleTag {
   textContent: string
 }
 
-function materialize(options: { document?: boolean } = {}): {
+function materialize(options: { document?: boolean; storage?: Map<string, string> } = {}): {
   id: string
   exports: Record<string, unknown>
   required: string[]
   styles: StyleTag[]
+  storage: Map<string, string>
+  effects: (() => void | (() => void))[]
+  intervals: (() => void)[]
 } {
   const required: string[] = []
   const styles: StyleTag[] = []
+  const storage = options.storage ?? new Map<string, string>()
+  const effects: (() => void | (() => void))[] = []
+  const intervals: (() => void)[] = []
   let handoff: { id: string; factory: (require: (spec: string) => unknown) => unknown } | undefined
   // The loader claims `style:not([data-plugin])` right after the factory
   // returns, so the stub records what the bundle injected and when.
@@ -82,6 +111,8 @@ function materialize(options: { document?: boolean } = {}): {
       },
     },
     ...options.document === false ? {} : { document: stubDocument },
+    setInterval(callback: () => void) { intervals.push(callback); return intervals.length },
+    clearInterval() {},
     console,
   }
   runInNewContext(bundle(), sandbox, { filename: 'lib/client.js' })
@@ -90,6 +121,8 @@ function materialize(options: { document?: boolean } = {}): {
     react: {
       createElement: (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) =>
         ({ type, props, children }),
+      useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
+      useState: (initial: unknown) => [typeof initial === 'function' ? (initial as () => unknown)() : initial, () => {}],
     },
     '@deepseek-ai/dsh-client-ui-primitives': {
       IconChevronDownOutline14: function IconChevronDownOutline14() { return null },
@@ -99,6 +132,27 @@ function materialize(options: { document?: boolean } = {}): {
         let current = initial
         return { set: (next: unknown) => { current = next }, get: () => current }
       },
+      defineStore: (spec: StubStoreHandle['spec']): StubStoreHandle => ({
+        spec,
+        create() {
+          const listeners = new Set<() => void>()
+          const raw = spec.persist === undefined ? undefined : storage.get(spec.persist)
+          let current = raw === undefined ? spec.init() : JSON.parse(raw) as Record<string, unknown>
+          const actions = Object.fromEntries(Object.entries(spec.actions).map(([name, mutate]) => [
+            name,
+            (...args: unknown[]) => {
+              mutate(current, ...args)
+              if (spec.persist !== undefined) storage.set(spec.persist, JSON.stringify(current))
+              for (const listener of listeners) listener()
+            },
+          ]))
+          return {
+            getSnapshot: () => current,
+            subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
+            actions,
+          }
+        },
+      }),
     },
   }
   const exports = handoff.factory((spec: string) => {
@@ -108,7 +162,7 @@ function materialize(options: { document?: boolean } = {}): {
     if (entry === undefined) throw new Error(`require("${spec}") missed the module table`)
     return entry
   }) as Record<string, unknown>
-  return { id: handoff.id, exports, required, styles }
+  return { id: handoff.id, exports, required, styles, storage, effects, intervals }
 }
 
 describe('client bundle artifact', () => {
@@ -143,7 +197,7 @@ describe('client bundle artifact', () => {
     expect(tag.textContent).toContain('.dsh-legion-card')
   })
 
-  it('styles every class the card actually renders', () => {
+  it('styles every class the browser surfaces render', () => {
     const { styles } = materialize()
     const css = styles[0]!.textContent
     for (const className of [
@@ -158,6 +212,11 @@ describe('client bundle artifact', () => {
       'dsh-legion-card__hint', 'dsh-legion-card__invalid',
       'dsh-legion-card__footer', 'dsh-legion-card__error',
       'dsh-legion-card__discard', 'dsh-legion-card__save',
+      'dsh-legion-receipt', 'dsh-legion-receipt__drag', 'dsh-legion-receipt__title',
+      'dsh-legion-receipt__actions', 'dsh-legion-receipt__button', 'dsh-legion-receipt__meta',
+      'dsh-legion-receipt__metric', 'dsh-legion-receipt__section', 'dsh-legion-receipt__heading',
+      'dsh-legion-receipt__list', 'dsh-legion-receipt__row', 'dsh-legion-receipt__primary',
+      'dsh-legion-receipt__secondary', 'dsh-legion-receipt__status', 'dsh-legion-receipt__tokens',
     ]) {
       expect(css, className).toContain(`.${className}`)
     }
@@ -305,11 +364,19 @@ describe('client plugin behaviour', () => {
     }
   }
 
-  /** Mount the bundle and return the card's registration, face, and store. */
+  /** Mount the materialized browser plugin under the loader protocol. */
+  function mount(
+    harness: ReturnType<typeof context>,
+    client = materialize(),
+  ): ReturnType<typeof materialize> {
+    ;(client.exports.apply as (ctx: unknown) => void)(harness.ctx)
+    return client
+  }
+
+  /** Mount the bundle and return the settings card registration, face, and store. */
   function card(harness: ReturnType<typeof context>) {
-    const { exports } = materialize()
-    ;(exports.apply as (ctx: unknown) => void)(harness.ctx)
-    const registration = harness.registrations[0]!
+    const { exports } = mount(harness)
+    const registration = harness.registrations.find(entry => entry.name === 'settings.plugin.item')!
     const face = (registration.inject as () => Record<string, unknown>)()
     const store = (face.hooks as { legionCard: { get(): Record<string, unknown> } }).legionCard
     const render = () => (registration.component as (props: unknown) => unknown)({
@@ -324,6 +391,67 @@ describe('client plugin behaviour', () => {
     return { exports, registration, face, store, render }
   }
 
+  const receiptProjection = {
+    receipts: {
+      'run-1': {
+        schemaVersion: 3,
+        runId: 'run-1',
+        strategy: 'independent-review',
+        cohort: 'reviewers',
+        planDigest: 'sha256:plan',
+        startedAt: 100,
+        elapsedMs: 1500,
+        outcome: 'running',
+        stages: [
+          { id: 'research', kind: 'dsh-delegate', member: 'analyst', expectedChildren: 1, after: [], status: 'completed' },
+          { id: 'write', kind: 'dsh-delegate', member: 'writer', expectedChildren: 1, after: ['research'], status: 'pending' },
+        ],
+        participation: [
+          { childId: 'child-1', parentId: 'parent', depth: 1, stage: 'research', member: 'analyst', childIndex: 0, state: 'live', registryStatus: 'running' },
+          { childId: 'child-2', parentId: 'parent', depth: 1, stage: 'write', member: 'writer', childIndex: 0, state: 'ended' },
+        ],
+        tokenAccount: {
+          totals: { totalTokens: 48, uncachedInputTokens: 20, outputTokens: 10, cacheReadTokens: 12, cacheWriteTokens: 6 },
+          sessions: [],
+        },
+      },
+    },
+  }
+
+  /** Mount and render the root-scoped Run Receipt overlay. */
+  function overlay(
+    harness: ReturnType<typeof context>,
+    projection: unknown = receiptProjection,
+    client = materialize(),
+  ) {
+    const { exports } = mount(harness, client)
+    const registration = harness.registrations.find(entry => entry.name === 'shell.overlay')!
+    const instance = (registration.store as StubStoreHandle).create()
+    const sessions = {
+      ids: ['parent'],
+      byId: {
+        parent: {
+          id: 'parent', displayTitle: 'Parent', running: true, blank: false, updatedAt: 100,
+          projectionValues: projection === null ? {} : { 'legion/run-receipts': projection },
+        },
+      },
+      current: 'parent',
+      phase: 'ready',
+      subagentsByParent: {},
+      jobsBySession: {},
+      currentAddress: undefined,
+    }
+    const copy = exports.en as Record<string, string>
+    const render = () => (registration.component as (props: unknown) => unknown)({
+      useStore: (selector: (state: Record<string, unknown>) => unknown) => selector(instance.getSnapshot()),
+      actions: instance.actions,
+      useSessions: (selector: (state: typeof sessions) => unknown) => selector(sessions),
+      useWorkspaces: () => undefined,
+      t: (key: string) => copy[key] ?? key,
+    })
+    return { registration, instance, render, client }
+  }
+
   /** Let both the write and the read-back settle. */
   const settle = async () => { for (let tick = 0; tick < 6; tick += 1) await Promise.resolve() }
 
@@ -331,10 +459,100 @@ describe('client plugin behaviour', () => {
     const harness = context()
     const { registration } = card(harness)
     expect(harness.bound).toEqual([LEGION_SETTINGS_NAMESPACE])
-    expect(harness.registrations).toHaveLength(1)
+    expect(harness.registrations.filter(entry => entry.name === 'settings.plugin.item')).toHaveLength(1)
     expect(registration.name).toBe('settings.plugin.item')
     expect(registration.key).toBe(LEGION_SETTINGS_NAMESPACE)
     expect(harness.dictionaries).toEqual(['settings.legion'])
+  })
+
+  it('adds a distinct overlay registration without replacing an existing entry', () => {
+    const harness = context()
+    harness.ctx.slots.register({ name: 'shell.overlay', id: 'other-plugin' }, () => null)
+    mount(harness)
+    const overlays = harness.registrations.filter(entry => entry.name === 'shell.overlay')
+    expect(overlays.map(entry => entry.id)).toEqual(['other-plugin', 'legion.run-receipt'])
+    expect(overlays[1]).not.toHaveProperty('children')
+  })
+
+  it('uses the projection key published by the Host half', () => {
+    expect(materialize().exports.LEGION_RUN_RECEIPT_PROJECTION_KEY).toBe(RUN_RECEIPT_PROJECTION_KEY)
+  })
+
+  it('renders no overlay without a current Run Receipt projection', () => {
+    const harness = context()
+    expect(overlay(harness, null).render()).toBeNull()
+  })
+
+  it('renders the stage graph, participation, elapsed time, and token account', () => {
+    const harness = context()
+    const mounted = overlay(harness)
+    const tree = mounted.render()
+    const text = renderedText(tree)
+    for (const visible of [
+      'Run Receipt', 'independent-review', 'reviewers', '1.5 s',
+      'research', 'analyst', 'completed', 'write', 'writer', 'pending',
+      'running', 'ended', '48', '20', '10', '12', '6',
+    ]) expect(text, visible).toContain(visible)
+    expect(text).toContain('research') // The write stage exposes its dependency edge.
+    expect((tree as Element).props?.['data-run-id']).toBe('run-1')
+    const client = mounted.client
+    client.effects[0]!()
+    expect(client.intervals).toHaveLength(1)
+  })
+
+  it('persists dock, position, and per-run dismissal through the official store seat', () => {
+    const harness = context()
+    const storage = new Map<string, string>()
+    const mounted = overlay(harness, receiptProjection, materialize({ storage }))
+    const handle = mounted.registration.store as StubStoreHandle
+    expect(handle.spec.persist).toBe('dsh-legion.run-receipt-overlay.v1')
+    const initial = mounted.render() as Element
+    expect(initial.props?.['data-docked']).toBe(true)
+
+    let captured = false
+    const currentTarget = {
+      dataset: {} as Record<string, string>,
+      closest: () => ({
+        parentElement: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 700 }) },
+        getBoundingClientRect: () => ({ left: 40, top: 50, width: 360, height: 300 }),
+      }),
+      setPointerCapture: () => { captured = true },
+      hasPointerCapture: () => captured,
+      releasePointerCapture: () => { captured = false },
+    }
+    const drag = walk(initial).find(node => node.props?.className === 'dsh-legion-receipt__title')!
+    const pointer = (clientX: number, clientY: number) => ({ currentTarget, clientX, clientY, pointerId: 1 })
+    ;(drag.props?.onPointerDown as (event: unknown) => void)(pointer(100, 100))
+    ;(drag.props?.onPointerMove as (event: unknown) => void)(pointer(180, 140))
+
+    const moved = mounted.render() as Element
+    expect(moved.props?.['data-docked']).toBeUndefined()
+    expect(moved.props?.style).toMatchObject({
+      left: expect.stringContaining('120px'),
+      top: expect.stringContaining('90px'),
+    })
+
+    const dock = walk(moved).find(node => node.type === 'button' && renderedText(node) === 'Dock')!
+    ;(dock.props?.onClick as () => void)()
+    const docked = mounted.render() as Element
+    expect(docked.props?.['data-docked']).toBe(true)
+    const dismiss = walk(docked).find(node => node.type === 'button' && renderedText(node) === 'Dismiss')!
+    ;(dismiss.props?.onClick as () => void)()
+    expect(mounted.render()).toBeNull()
+
+    expect(handle.create().getSnapshot()).toMatchObject({
+      docked: true, x: 120, y: 90, dismissedRunId: 'run-1',
+    })
+
+    const offscreen = new Map([[
+      'dsh-legion.run-receipt-overlay.v1',
+      JSON.stringify({ docked: false, x: 4000, y: 4000, dismissedRunId: null }),
+    ]])
+    const restored = overlay(context(), receiptProjection, materialize({ storage: offscreen })).render() as Element
+    expect(restored.props?.style).toMatchObject({
+      left: expect.stringMatching(/^clamp\(12px, 4000px,/),
+      top: expect.stringMatching(/^clamp\(12px, 4000px,/),
+    })
   })
 
   it('declares the browser services it needs', () => {

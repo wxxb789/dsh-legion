@@ -1,5 +1,5 @@
 /**
- * Legion's browser half: one settings card keyed on the `legion` namespace.
+ * Legion's browser half: the settings card and the Run Receipt overlay.
  *
  * DSH serves every registered settings namespace and keys the plugin
  * configuration tab's cards on the namespace they edit, so a plugin that
@@ -21,11 +21,25 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import './styles.ts'
 import { LegionCard, type LegionCardFace, type LegionCardState } from './LegionCard.ts'
 import {
+  LEGION_RUN_RECEIPT_OVERLAY_ID,
+  LEGION_RUN_RECEIPT_OVERLAY_SLOT,
+  RunReceiptOverlay,
+  runReceiptOverlayStore,
+} from './RunReceiptOverlay.ts'
+import {
   SettingsForm, booleanField, numberField, textField,
 } from './settings-form.ts'
 import { en, zh } from './locales.ts'
 
 export type { LegionCardProps, LegionCardState } from './LegionCard.ts'
+export {
+  LEGION_RUN_RECEIPT_OVERLAY_ID,
+  LEGION_RUN_RECEIPT_OVERLAY_SLOT,
+  LEGION_RUN_RECEIPT_PROJECTION_KEY,
+  RunReceiptOverlay,
+  runReceiptOverlayStore,
+} from './RunReceiptOverlay.ts'
+export type { RunReceiptOverlayProps, RunReceiptOverlayState } from './RunReceiptOverlay.ts'
 export type { FieldSpec, FieldState, FormActions, FormShell } from './settings-form.ts'
 export { en, zh } from './locales.ts'
 
@@ -133,4 +147,11 @@ export function apply(ctx: ClientContext): void {
     locale: LEGION_LOCALE_NS,
     inject: () => controller.inject(),
   }, LegionCard))
+  ctx.slots.inject(LEGION_RUN_RECEIPT_OVERLAY_SLOT, () => ctx.slots.register({
+    name: LEGION_RUN_RECEIPT_OVERLAY_SLOT,
+    id: LEGION_RUN_RECEIPT_OVERLAY_ID,
+    order: 100,
+    locale: LEGION_LOCALE_NS,
+    store: runReceiptOverlayStore,
+  }, RunReceiptOverlay))
 }

@@ -1,9 +1,9 @@
 /**
- * The card's own stylesheet.
+ * Styles for Legion's browser surfaces.
  *
  * DSH's client bundle preset compiles `.module.css` through lightningcss and
  * emits exactly this injection. That preset is unpublished and its compiler is
- * not a dependency Legion can add, so the card carries its stylesheet as text
+ * not a dependency Legion can add, so the client bundle carries its stylesheet as text
  * and injects it itself. The end state is identical: one
  * `<style data-plugin="dsh-legion">` tag the loader owns.
  *
@@ -280,6 +280,136 @@ const CSS = `
 .dsh-legion-card__save:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 1px;
+}
+
+.dsh-legion-receipt {
+  position: absolute;
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+  pointer-events: auto;
+}
+.dsh-legion-receipt__drag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.dsh-legion-receipt__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.dsh-legion-receipt__actions { display: flex; align-items: center; gap: 6px; }
+.dsh-legion-receipt__button {
+  appearance: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  padding: 3px 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.dsh-legion-receipt__button:hover { color: var(--dsw-alias-label-primary); }
+.dsh-legion-receipt__button:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+.dsh-legion-receipt__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.dsh-legion-receipt__metric {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-legion-receipt__section {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+.dsh-legion-receipt__heading {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+}
+.dsh-legion-receipt__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsh-legion-receipt__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.dsh-legion-receipt__primary {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-legion-receipt__secondary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+}
+.dsh-legion-receipt__status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.dsh-legion-receipt__status[data-status='failed'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+.dsh-legion-receipt__tokens {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px 6px;
+  margin: 0;
+  text-align: right;
+}
+.dsh-legion-receipt__tokens dt {
+  grid-row: 1;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
+.dsh-legion-receipt__tokens dd {
+  grid-row: 2;
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+@media (max-width: 520px) {
+  .dsh-legion-receipt { width: calc(100% - 24px); }
 }
 `
 
