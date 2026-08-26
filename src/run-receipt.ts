@@ -39,8 +39,32 @@ export interface RunReceiptStage {
   readonly status: RunReceiptStageStatus
 }
 
+export interface RunReceiptTokenTotals {
+  /** Sum of the four disjoint cumulative provider-usage buckets. */
+  readonly totalTokens: number
+  readonly uncachedInputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+}
+
+export interface RunReceiptTokenSample extends RunReceiptTokenTotals {
+  readonly childId: SessionId
+  readonly parentId: SessionId
+  readonly depth: number
+  readonly stage: string
+  readonly member: string
+  readonly childIndex: number
+  readonly logRevision: number
+}
+
+export interface RunReceiptTokenAccount {
+  readonly totals: RunReceiptTokenTotals
+  readonly sessions: readonly RunReceiptTokenSample[]
+}
+
 export interface RunReceipt {
-  readonly schemaVersion: 2
+  readonly schemaVersion: 3
   readonly runId: CohortRunId
   readonly strategy: CompiledStrategyPlan['strategy']
   readonly cohort: CompiledStrategyPlan['cohort']
@@ -50,6 +74,7 @@ export interface RunReceipt {
   readonly outcome: RunReceiptOutcome
   readonly stages: readonly RunReceiptStage[]
   readonly participation: readonly RunReceiptParticipant[]
+  readonly tokenAccount: RunReceiptTokenAccount
 }
 
 export interface RunReceiptProjection {
@@ -74,6 +99,7 @@ export interface RunReceiptSummary {
     readonly idle: number
     readonly ended: number
   }>
+  readonly tokenTotals: RunReceiptTokenTotals
 }
 
 declare module '@deepseek-ai/dsh-session/types' {
@@ -109,6 +135,98 @@ function nonNegativeInteger(value: unknown, at: string): number {
     throw new Error(`dsh-legion: invalid ${at}`)
   }
   return value as number
+}
+
+const TOKEN_TOTAL_FIELDS = [
+  'totalTokens',
+  'uncachedInputTokens',
+  'outputTokens',
+  'cacheReadTokens',
+  'cacheWriteTokens',
+] as const
+
+function zeroTokenTotals(): RunReceiptTokenTotals {
+  return {
+    totalTokens: 0,
+    uncachedInputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  }
+}
+
+function tokenTotal(
+  uncachedInputTokens: number,
+  outputTokens: number,
+  cacheReadTokens: number,
+  cacheWriteTokens: number,
+): number {
+  return uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+}
+
+function sumTokenSamples(sessions: readonly RunReceiptTokenSample[]): RunReceiptTokenTotals {
+  return sessions.reduce<RunReceiptTokenTotals>((totals, sample) => ({
+    totalTokens: totals.totalTokens + sample.totalTokens,
+    uncachedInputTokens: totals.uncachedInputTokens + sample.uncachedInputTokens,
+    outputTokens: totals.outputTokens + sample.outputTokens,
+    cacheReadTokens: totals.cacheReadTokens + sample.cacheReadTokens,
+    cacheWriteTokens: totals.cacheWriteTokens + sample.cacheWriteTokens,
+  }), zeroTokenTotals())
+}
+
+function parseTokenTotals(value: unknown, at: string): RunReceiptTokenTotals {
+  const source = record(value, TOKEN_TOTAL_FIELDS, at)
+  const totals = {
+    totalTokens: nonNegativeInteger(source.totalTokens, `${at}.totalTokens`),
+    uncachedInputTokens: nonNegativeInteger(source.uncachedInputTokens, `${at}.uncachedInputTokens`),
+    outputTokens: nonNegativeInteger(source.outputTokens, `${at}.outputTokens`),
+    cacheReadTokens: nonNegativeInteger(source.cacheReadTokens, `${at}.cacheReadTokens`),
+    cacheWriteTokens: nonNegativeInteger(source.cacheWriteTokens, `${at}.cacheWriteTokens`),
+  }
+  if (totals.totalTokens !== tokenTotal(
+    totals.uncachedInputTokens,
+    totals.outputTokens,
+    totals.cacheReadTokens,
+    totals.cacheWriteTokens,
+  )) throw new Error(`dsh-legion: invalid ${at}.totalTokens sum`)
+  return totals
+}
+
+function parseTokenSample(value: unknown, at: string): RunReceiptTokenSample {
+  const source = record(value, [
+    'childId', 'parentId', 'depth', 'stage', 'member', 'childIndex', 'logRevision', ...TOKEN_TOTAL_FIELDS,
+  ], at)
+  const depth = nonNegativeInteger(source.depth, `${at}.depth`)
+  if (depth === 0) throw new Error(`dsh-legion: invalid ${at}.depth`)
+  return {
+    childId: SessionId(text(source.childId, `${at}.childId`)),
+    parentId: SessionId(text(source.parentId, `${at}.parentId`)),
+    depth,
+    stage: text(source.stage, `${at}.stage`),
+    member: text(source.member, `${at}.member`),
+    childIndex: nonNegativeInteger(source.childIndex, `${at}.childIndex`),
+    logRevision: nonNegativeInteger(source.logRevision, `${at}.logRevision`),
+    ...parseTokenTotals(
+      Object.fromEntries(TOKEN_TOTAL_FIELDS.map(field => [field, source[field]])),
+      at,
+    ),
+  }
+}
+
+function parseTokenAccount(value: unknown): RunReceiptTokenAccount {
+  const source = record(value, ['totals', 'sessions'], 'Run Receipt tokenAccount')
+  if (!Array.isArray(source.sessions)) throw new Error('dsh-legion: invalid Run Receipt tokenAccount.sessions')
+  const sessions = source.sessions.map((item, index) =>
+    parseTokenSample(item, `Run Receipt tokenAccount.sessions[${String(index)}]`))
+  if (new Set(sessions.map(item => String(item.childId))).size !== sessions.length) {
+    throw new Error('dsh-legion: duplicate Run Receipt token sample childId')
+  }
+  const totals = parseTokenTotals(source.totals, 'Run Receipt tokenAccount.totals')
+  const sum = sumTokenSamples(sessions)
+  if (TOKEN_TOTAL_FIELDS.some(field => totals[field] !== sum[field])) {
+    throw new Error('dsh-legion: Run Receipt tokenAccount totals do not match sessions')
+  }
+  return { totals, sessions }
 }
 
 function parseStage(value: unknown, at: string): RunReceiptStage {
@@ -166,10 +284,15 @@ function parseRunReceipt(value: unknown): RunReceipt {
     'startedAt', 'elapsedMs', 'outcome', 'stages',
   ] as const
   const schemaVersion = candidate.schemaVersion
-  if (schemaVersion !== 1 && schemaVersion !== 2) {
+  if (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3) {
     throw new Error('dsh-legion: invalid Run Receipt schemaVersion')
   }
-  const source = record(value, schemaVersion === 1 ? common : [...common, 'participation'], 'Run Receipt')
+  const fields = schemaVersion === 1
+    ? common
+    : schemaVersion === 2
+      ? [...common, 'participation']
+      : [...common, 'participation', 'tokenAccount']
+  const source = record(value, fields, 'Run Receipt')
   const outcomes: readonly RunReceiptOutcome[] = [
     'running', 'completed', 'degraded', 'cancelled', 'failed',
   ]
@@ -184,8 +307,11 @@ function parseRunReceipt(value: unknown): RunReceipt {
   if (new Set(participation.map(item => String(item.childId))).size !== participation.length) {
     throw new Error('dsh-legion: duplicate Run Receipt participant childId')
   }
+  const tokenAccount = schemaVersion === 3
+    ? parseTokenAccount(source.tokenAccount)
+    : { totals: zeroTokenTotals(), sessions: [] }
   return deepFreeze({
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId: CohortRunId(text(source.runId, 'Run Receipt runId')),
     strategy: StrategyName(text(source.strategy, 'Run Receipt strategy')),
     cohort: CohortName(text(source.cohort, 'Run Receipt cohort')),
@@ -195,6 +321,7 @@ function parseRunReceipt(value: unknown): RunReceipt {
     outcome: source.outcome as RunReceiptOutcome,
     stages: source.stages.map((stage, index) => parseStage(stage, `Run Receipt stages[${String(index)}]`)),
     participation,
+    tokenAccount,
   })
 }
 
@@ -247,7 +374,7 @@ const runReceiptProjectionSchema: ProjectionSchema<RunReceiptProjection> = { par
 export const runReceiptProjection: RunReceiptProjectionDefinition = {
   key: RUN_RECEIPT_PROJECTION_KEY,
   stateSchema: runReceiptProjectionSchema,
-  stateVersion: 2,
+  stateVersion: 3,
   init: () => EMPTY_RUN_RECEIPT_PROJECTION,
   apply: applyRunReceiptProjection,
   wire: {
@@ -300,7 +427,7 @@ export function createRunReceipt(
     plan.primitives.map(primitive => [String(primitive.output.name), primitive.stage]),
   )
   return deepFreeze({
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId,
     strategy: plan.strategy,
     cohort: plan.cohort,
@@ -320,6 +447,7 @@ export function createRunReceipt(
       status: 'pending' as const,
     })),
     participation: [],
+    tokenAccount: { totals: zeroTokenTotals(), sessions: [] },
   })
 }
 
@@ -327,15 +455,20 @@ function elapsed(receipt: RunReceipt, now: number): number {
   return Math.max(receipt.elapsedMs, Math.max(0, now - receipt.startedAt))
 }
 
-export function setRunReceiptParticipation(
+export function setRunReceiptObservation(
   receipt: RunReceipt,
   participation: readonly RunReceiptParticipant[],
+  tokenAccount: RunReceiptTokenAccount,
   now = Date.now(),
 ): RunReceipt {
   return deepFreeze({
     ...receipt,
     elapsedMs: elapsed(receipt, now),
     participation: participation.map(item => ({ ...item })),
+    tokenAccount: {
+      totals: { ...tokenAccount.totals },
+      sessions: tokenAccount.sessions.map(item => ({ ...item })),
+    },
   })
 }
 
@@ -346,13 +479,26 @@ export interface RunReceiptChildBinding {
 }
 
 export interface RunReceiptParticipationObserver {
-  trackChild(agent: Agent, binding: RunReceiptChildBinding): void
+  trackChild(childId: SessionId, agent: Agent | undefined, binding: RunReceiptChildBinding): void
+  sample(): void
   finish(): Promise<void>
   dispose(): void
 }
 
+interface HostTokenMeter {
+  measure(session: Session): unknown
+}
+
+interface HostSessionProjections {
+  snapshot(session: Session): { readonly values: Readonly<Record<string, unknown>> }
+}
+
+interface HostSessionStore {
+  get(id: SessionId): Session | undefined
+}
+
 interface TrackedChild {
-  readonly agent: Agent
+  readonly agent: Agent | undefined
   readonly binding: RunReceiptChildBinding
 }
 
@@ -360,6 +506,36 @@ interface StoredParticipant {
   readonly row: RunReceiptParticipant
   readonly stageOrder: number
   readonly treeOrder: number
+}
+
+function hostTokenMeter(value: unknown): HostTokenMeter | undefined {
+  return typeof value === 'object' && value !== null && typeof (value as { measure?: unknown }).measure === 'function'
+    ? value as HostTokenMeter
+    : undefined
+}
+
+function hostSessionProjections(value: unknown): HostSessionProjections | undefined {
+  return typeof value === 'object' && value !== null && typeof (value as { snapshot?: unknown }).snapshot === 'function'
+    ? value as HostSessionProjections
+    : undefined
+}
+
+function hostSessionStore(value: unknown): HostSessionStore | undefined {
+  return typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function'
+    ? value as HostSessionStore
+    : undefined
+}
+
+function tokenUsage(value: unknown): Omit<RunReceiptTokenTotals, 'totalTokens'> {
+  const source = record(value, [
+    'uncachedInputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens',
+  ], 'Host tokenUsage projection')
+  return {
+    uncachedInputTokens: nonNegativeInteger(source.uncachedInputTokens, 'Host tokenUsage.uncachedInputTokens'),
+    outputTokens: nonNegativeInteger(source.outputTokens, 'Host tokenUsage.outputTokens'),
+    cacheReadTokens: nonNegativeInteger(source.cacheReadTokens, 'Host tokenUsage.cacheReadTokens'),
+    cacheWriteTokens: nonNegativeInteger(source.cacheWriteTokens, 'Host tokenUsage.cacheWriteTokens'),
+  }
 }
 
 function sameParticipant(left: RunReceiptParticipant, right: RunReceiptParticipant): boolean {
@@ -377,17 +553,22 @@ function sameParticipant(left: RunReceiptParticipant, right: RunReceiptParticipa
 class HostRunReceiptParticipationObserver implements RunReceiptParticipationObserver {
   private readonly bindings = new Map<SessionId, TrackedChild>()
   private readonly live = new Map<SessionId, AgentStatus>()
+  private readonly sessions = new Map<SessionId, Session>()
   private readonly rows = new Map<SessionId, StoredParticipant>()
   private readonly stageOrder: ReadonlyMap<string, number>
   private readonly disposers: Array<() => void>
   private listening = true
   private finished = false
+  private samplingFailure: unknown
 
   constructor(
     private readonly ctx: Context,
     private readonly parentId: SessionId,
     stages: readonly string[],
-    private readonly onChange: (participation: readonly RunReceiptParticipant[]) => void,
+    private readonly onChange: (
+      participation: readonly RunReceiptParticipant[],
+      tokenAccount: RunReceiptTokenAccount,
+    ) => void,
   ) {
     this.stageOrder = new Map(stages.map((stage, index) => [stage, index]))
     this.disposers = [
@@ -395,54 +576,68 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         this.guard(() => {
           if (ctx.agents.get(agent.id) !== agent) return
           this.live.set(agent.id, status)
-          this.updateDirect(agent, status)
+          this.sessions.set(agent.id, agent.session)
+          this.updateParticipant(agent, status)
         })
       }),
       ctx.on('agent/created', ({ agent }) => {
         this.guard(() => {
           if (ctx.agents.get(agent.id) !== agent) return
           this.live.set(agent.id, agent.status)
-          this.updateDirect(agent, agent.status)
+          this.sessions.set(agent.id, agent.session)
+          this.updateParticipant(agent, agent.status)
         })
       }),
       ctx.on('agent/disposed', ({ agent }) => {
         this.guard(() => {
           if (ctx.agents.get(agent.id) !== undefined) return
           this.live.delete(agent.id)
-          const tracked = this.bindings.get(agent.id)
-          if (tracked?.agent !== agent) return
-          this.setParticipant({
-            childId: agent.id,
-            parentId: this.parentId,
-            depth: 1,
-            ...tracked.binding,
-            state: 'ended',
-          }, 0, true)
+          this.sessions.set(agent.id, agent.session)
+          this.endParticipant(agent)
         })
       }),
     ]
-    for (const agent of ctx.agents.list()) this.live.set(agent.id, agent.status)
+    for (const agent of ctx.agents.list()) {
+      this.live.set(agent.id, agent.status)
+      this.sessions.set(agent.id, agent.session)
+    }
   }
 
-  trackChild(agent: Agent, binding: RunReceiptChildBinding): void {
+  trackChild(childId: SessionId, agent: Agent | undefined, binding: RunReceiptChildBinding): void {
     this.guard(() => {
-      const existing = this.bindings.get(agent.id)
+      const existing = this.bindings.get(childId)
       if (existing !== undefined) {
         if (existing.agent !== agent
           || existing.binding.stage !== binding.stage
           || existing.binding.member !== binding.member
           || existing.binding.childIndex !== binding.childIndex) {
-          this.ctx.logger.warn('dsh-legion: Run Receipt child ' + JSON.stringify(agent.id) + ' was published twice')
+          this.ctx.logger.warn('dsh-legion: Run Receipt child ' + JSON.stringify(childId) + ' was published twice')
         }
         return
       }
-      this.bindings.set(agent.id, { agent, binding })
-      const status = this.live.get(agent.id)
-      if (this.ctx.agents.get(agent.id) === agent && status !== undefined) this.updateDirect(agent, agent.status)
+      const liveAgent = agent ?? this.ctx.agents.get(childId)
+      const session = liveAgent?.session ?? hostSessionStore(this.ctx.get('sessions'))?.get(childId)
+      this.bindings.set(childId, { agent: liveAgent, binding })
+      if (session !== undefined) this.sessions.set(childId, session)
+      const status = this.live.get(childId)
+      if (liveAgent !== undefined && this.ctx.agents.get(childId) === liveAgent && status !== undefined) {
+        this.updateParticipant(liveAgent, liveAgent.status)
+      }
+      for (const candidate of this.ctx.agents.list()) this.updateParticipant(candidate, candidate.status)
     })
   }
 
+  sample(): void {
+    if (this.samplingFailure !== undefined) {
+      throw new Error('dsh-legion: Run Receipt token accounting failed', { cause: this.samplingFailure })
+    }
+    this.emit()
+  }
+
   async finish(): Promise<void> {
+    if (this.samplingFailure !== undefined) {
+      throw new Error('dsh-legion: Run Receipt token accounting failed', { cause: this.samplingFailure })
+    }
     if (this.finished) return
     this.finished = true
     this.dispose()
@@ -451,10 +646,10 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       entries = await this.ctx.subagents.listDescendants(this.parentId)
     } catch (error: unknown) {
       this.ctx.logger.warn('dsh-legion: failed to read cold Run Receipt child tree: ' + String(error))
-      return
+      throw new Error('dsh-legion: incomplete Run Receipt child tree', { cause: error })
     }
     const rootByChild = new Map<SessionId, SessionId>()
-    let changed = false
+    const sessions = hostSessionStore(this.ctx.get('sessions'))
     for (const [treeOrder, entry] of entries.entries()) {
       if (entry.kind !== 'child') continue
       const direct = this.bindings.get(entry.id)
@@ -463,6 +658,8 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       rootByChild.set(entry.id, root)
       const tracked = this.bindings.get(root)
       if (tracked === undefined) continue
+      const session = this.sessions.get(entry.id) ?? sessions?.get(entry.id)
+      if (session !== undefined) this.sessions.set(entry.id, session)
       const row: RunReceiptParticipant = {
         childId: entry.id,
         parentId: entry.parentId,
@@ -470,9 +667,9 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         ...tracked.binding,
         state: 'ended',
       }
-      changed = this.setParticipant(row, treeOrder, false) || changed
+      this.setParticipant(row, treeOrder, false)
     }
-    if (changed) this.emit()
+    this.emit()
   }
 
   dispose(): void {
@@ -481,16 +678,58 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     for (const dispose of this.disposers.splice(0).reverse()) dispose()
   }
 
-  private updateDirect(agent: Agent, status: AgentStatus): void {
-    const tracked = this.bindings.get(agent.id)
-    if (tracked?.agent !== agent) return
+  private participantPosition(agent: Agent): {
+    readonly tracked: TrackedChild
+    readonly parentId: SessionId
+    readonly depth: number
+  } | undefined {
+    const direct = this.bindings.get(agent.id)
+    if (direct !== undefined) {
+      return direct.agent === undefined || direct.agent === agent
+        ? { tracked: direct, parentId: this.parentId, depth: 1 }
+        : undefined
+    }
+    const immediateParent = agent.session.header.parentSession
+    if (immediateParent === undefined) return undefined
+    let parentId: SessionId | undefined = immediateParent
+    let depth = 1
+    const seen = new Set<SessionId>()
+    while (parentId !== undefined && !seen.has(parentId)) {
+      seen.add(parentId)
+      depth += 1
+      const tracked = this.bindings.get(parentId)
+      if (tracked !== undefined) return { tracked, parentId: immediateParent, depth }
+      const parent: Session | undefined = this.sessions.get(parentId)
+        ?? hostSessionStore(this.ctx.get('sessions'))?.get(parentId)
+      if (parent === undefined) return undefined
+      this.sessions.set(parentId, parent)
+      parentId = parent.header.parentSession
+    }
+    return undefined
+  }
+
+  private updateParticipant(agent: Agent, status: AgentStatus): void {
+    const position = this.participantPosition(agent)
+    if (position === undefined) return
     this.setParticipant({
       childId: agent.id,
-      parentId: this.parentId,
-      depth: 1,
-      ...tracked.binding,
+      parentId: position.parentId,
+      depth: position.depth,
+      ...position.tracked.binding,
       state: 'live',
       registryStatus: status,
+    }, 0, true)
+  }
+
+  private endParticipant(agent: Agent): void {
+    const position = this.participantPosition(agent)
+    if (position === undefined) return
+    this.setParticipant({
+      childId: agent.id,
+      parentId: position.parentId,
+      depth: position.depth,
+      ...position.tracked.binding,
+      state: 'ended',
     }, 0, true)
   }
 
@@ -510,16 +749,60 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     const participation = [...this.rows.values()]
       .sort((left, right) => left.stageOrder - right.stageOrder
         || left.row.childIndex - right.row.childIndex
+        || left.row.depth - right.row.depth
         || left.treeOrder - right.treeOrder
         || String(left.row.childId).localeCompare(String(right.row.childId)))
       .map(item => item.row)
-    this.onChange(deepFreeze(participation))
+    const frozen = deepFreeze(participation)
+    this.onChange(frozen, this.sampleTokens(frozen))
+  }
+
+  private sampleTokens(participation: readonly RunReceiptParticipant[]): RunReceiptTokenAccount {
+    const meter = hostTokenMeter(this.ctx.get('tokenMeter'))
+    const projections = hostSessionProjections(this.ctx.get('sessionProjections'))
+    if (meter === undefined || projections === undefined) {
+      throw new Error('dsh-legion: Run Receipt token accounting Host services are unavailable')
+    }
+    const sessions = participation.flatMap((participant): RunReceiptTokenSample[] => {
+      const session = this.sessions.get(participant.childId)
+      if (session === undefined) {
+        throw new Error('dsh-legion: Run Receipt child Session is unavailable for ' + JSON.stringify(participant.childId))
+      }
+      try {
+        const measurement = object(meter.measure(session), 'Host token measurement')
+        const usage = tokenUsage(projections.snapshot(session).values.tokenUsage)
+        return [{
+          childId: participant.childId,
+          parentId: participant.parentId,
+          depth: participant.depth,
+          stage: participant.stage,
+          member: participant.member,
+          childIndex: participant.childIndex,
+          logRevision: nonNegativeInteger(measurement.logRevision, 'Host token measurement.logRevision'),
+          totalTokens: tokenTotal(
+            usage.uncachedInputTokens,
+            usage.outputTokens,
+            usage.cacheReadTokens,
+            usage.cacheWriteTokens,
+          ),
+          ...usage,
+        }]
+      } catch (error: unknown) {
+        this.ctx.logger.warn(
+          'dsh-legion: failed to sample Run Receipt tokens for '
+          + JSON.stringify(participant.childId) + ': ' + String(error),
+        )
+        throw error
+      }
+    })
+    return deepFreeze({ totals: sumTokenSamples(sessions), sessions })
   }
 
   private guard(operation: () => void): void {
     try {
       operation()
     } catch (error: unknown) {
+      this.samplingFailure ??= error
       this.ctx.logger.warn('dsh-legion: failed to update Run Receipt participation: ' + String(error))
     }
   }
@@ -529,7 +812,10 @@ export function observeRunReceiptParticipation(
   ctx: Context,
   parentId: SessionId,
   stages: readonly string[],
-  onChange: (participation: readonly RunReceiptParticipant[]) => void,
+  onChange: (
+    participation: readonly RunReceiptParticipant[],
+    tokenAccount: RunReceiptTokenAccount,
+  ) => void,
 ): RunReceiptParticipationObserver {
   return new HostRunReceiptParticipationObserver(ctx, parentId, stages, onChange)
 }
@@ -586,6 +872,7 @@ export function summarizeRunReceipt(receipt: RunReceipt): RunReceiptSummary {
     elapsedMs: receipt.elapsedMs,
     stageCounts,
     participationCounts,
+    tokenTotals: receipt.tokenAccount.totals,
   })
 }
 
@@ -594,8 +881,10 @@ export function renderRunReceiptSummary(summary: {
   readonly elapsedMs: number
   readonly stageCounts: { readonly total: number; readonly pending: number }
   readonly participationCounts: { readonly running: number; readonly idle: number; readonly ended: number }
+  readonly tokenTotals: RunReceiptTokenTotals
 }): string {
   const settled = summary.stageCounts.total - summary.stageCounts.pending
   const participation = summary.participationCounts
-  return `Run receipt: ${summary.outcome} in ${String(summary.elapsedMs)}ms; stages ${String(settled)}/${String(summary.stageCounts.total)} settled; participation ${String(participation.running)} running, ${String(participation.idle)} idle, ${String(participation.ended)} ended`
+  const tokens = summary.tokenTotals
+  return `Run receipt: ${summary.outcome} in ${String(summary.elapsedMs)}ms; stages ${String(settled)}/${String(summary.stageCounts.total)} settled; participation ${String(participation.running)} running, ${String(participation.idle)} idle, ${String(participation.ended)} ended; tokens ${String(tokens.totalTokens)} total; ${String(tokens.uncachedInputTokens)} uncached input, ${String(tokens.cacheReadTokens)} cache-read, ${String(tokens.outputTokens)} output, ${String(tokens.cacheWriteTokens)} cache-write`
 }

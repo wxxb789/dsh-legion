@@ -88,6 +88,17 @@ try {
   await ctx.plugin(Loader)
   if (ctx.loader.internal === undefined) throw new Error('real Loader internal resolver is unavailable')
   await ctx.plugin(AgentRegistry)
+  if (ctx.get('sessionProjections') === undefined) {
+    ctx.provide('sessionProjections', {
+      register() { return () => undefined },
+      snapshot() { return { asOfSeq: -1, values: {} } },
+    })
+  }
+  ctx.provide('tokenMeter', {
+    measure(session) {
+      return { logRevision: session.events.length, totalTokens: 0, surfaceTokens: 0 }
+    },
+  })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)

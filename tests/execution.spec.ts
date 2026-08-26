@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
@@ -9,6 +9,7 @@ import { materializeConfig, type Config } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
+import { TestSessionProjections, TestTokenMeter } from './token-meter-test-service.ts'
 
 const parentSession = Session.create(SessionId('strategy-parent'))
 const parent = { id: parentSession.id, session: parentSession } as unknown as Agent
@@ -71,6 +72,9 @@ function setup(
   dispose?: () => Promise<void> | void,
 ) {
   const ctx = new Context()
+  new SessionStore(ctx)
+  new TestSessionProjections(ctx)
+  new TestTokenMeter(ctx)
   const starts: string[] = []
   const disposed: string[] = []
   let index = 0
@@ -86,11 +90,17 @@ function setup(
         .map(block => block.text)
         .join('')
       starts.push(prompt)
+      const session = ctx.sessions.create(SessionId(`strategy-child-${String(current)}`), {
+        meta: { parentSession: request.parent.session.id, origin: 'subagent', delegationDepth: 1 },
+      })
+      const agent = { id: session.id, session, status: 'running' } as unknown as Agent
+      const remove = ctx.agents.register(agent)
       return {
-        id: SessionId(`strategy-child-${String(current)}`),
-        localAgent: undefined,
+        id: agent.id,
+        localAgent: agent,
         result: Promise.resolve().then(() => reply(prompt, current, request.signal!)),
         async dispose() {
+          remove()
           disposed.push(prompt)
           await dispose?.()
         },

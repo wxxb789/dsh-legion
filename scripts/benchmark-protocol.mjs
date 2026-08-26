@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as legion from '../lib/index.js'
 
@@ -12,6 +12,35 @@ const thresholds = JSON.parse(await readFile(join(root, 'benchmarks', 'protocol-
 const parentSession = Session.create(SessionId('benchmark-parent'))
 const parent = { id: parentSession.id, session: parentSession }
 const calls = []
+
+class BenchmarkSessionProjections extends Service {
+  definitions = new Map()
+
+  constructor(ctx) { super(ctx, 'sessionProjections') }
+
+  register(definition) {
+    this.definitions.set(definition.key, definition)
+    return () => { this.definitions.delete(definition.key) }
+  }
+
+  snapshot(session) {
+    const values = {}
+    for (const definition of this.definitions.values()) {
+      let state = definition.init()
+      for (const event of session.events) state = definition.apply(state, event)
+      if (definition.wire !== undefined) values[definition.key] = definition.wire.view(state)
+    }
+    values.tokenUsage ??= {
+      uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    }
+    return { asOfSeq: session.seq - 1, values }
+  }
+}
+
+class BenchmarkTokenMeter extends Service {
+  constructor(ctx) { super(ctx, 'tokenMeter') }
+  measure(session) { return { logRevision: session.events.length, totalTokens: 0, surfaceTokens: 0 } }
+}
 
 const review = {
   verdict: 'needs-changes',
@@ -60,11 +89,16 @@ const provider = {
     } else {
       result = textResult('execution evidence')
     }
+    const session = ctx.sessions.create(SessionId(`benchmark-child-${String(index)}`), {
+      meta: { parentSession: request.parent.session.id, origin: 'subagent', delegationDepth: 1 },
+    })
+    const agent = { id: session.id, session, status: 'running' }
+    const remove = ctx.agents.register(agent)
     return {
-      id: SessionId(`benchmark-child-${String(index)}`),
-      localAgent: undefined,
+      id: agent.id,
+      localAgent: agent,
       result: Promise.resolve(result),
-      async dispose() {},
+      async dispose() { remove() },
     }
   },
 }
@@ -112,6 +146,9 @@ async function direct(ctx, prompt) {
 
 const ctx = new Context()
 try {
+  new SessionStore(ctx)
+  new BenchmarkSessionProjections(ctx)
+  new BenchmarkTokenMeter(ctx)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SubagentRuntime)
   ctx.subagents.registerProvider(provider)

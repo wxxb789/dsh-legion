@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { settleChildRun } from './child-run.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-tools'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
@@ -21,7 +22,7 @@ import {
   finishRunReceipt,
   observeRunReceiptParticipation,
   publishRunReceipt,
-  setRunReceiptParticipation,
+  setRunReceiptObservation,
   settleRunReceiptStage,
   summarizeRunReceipt,
   type RunReceiptChildBinding,
@@ -268,7 +269,11 @@ function materializedArtifact(
   })
 }
 
-type ObserveChild = (agent: Agent, binding: RunReceiptChildBinding) => void
+type ObserveChild = (
+  childId: SessionId,
+  agent: Agent | undefined,
+  binding: RunReceiptChildBinding,
+) => void
 
 async function executeOne(
   ctx: Context,
@@ -304,13 +309,11 @@ async function executeOne(
         ...plan.maxDepth === undefined ? {} : { maxDepth: plan.maxDepth },
         ...plan.outputSchema === undefined ? {} : { outputSchema: plan.outputSchema },
       })
-      if (run.localAgent !== undefined) {
-        observeChild?.(run.localAgent, {
-          stage: primitive.stage,
-          member: String(primitive.member),
-          childIndex,
-        })
-      }
+      observeChild?.(run.id, run.localAgent, {
+        stage: primitive.stage,
+        member: String(primitive.member),
+        childIndex,
+      })
       return run
     },
   })
@@ -440,8 +443,8 @@ export async function executeStrategyPlan(
     ctx,
     parent.session.id,
     receipt.stages.map(stage => stage.id),
-    rows => {
-      receipt = publishRunReceipt(parent.session, setRunReceiptParticipation(receipt, rows))
+    (rows, tokenAccount) => {
+      receipt = publishRunReceipt(parent.session, setRunReceiptObservation(receipt, rows, tokenAccount))
     },
   )
   const observeChild: ObserveChild = participation.trackChild.bind(participation)
@@ -449,6 +452,7 @@ export async function executeStrategyPlan(
     stage: string,
     status: Exclude<RunReceiptStageStatus, 'pending'>,
   ): void => {
+    participation.sample()
     receipt = publishRunReceipt(parent.session, settleRunReceiptStage(receipt, stage, status))
   }
   const finishOutcome = async <Outcome extends CohortRunResult>(outcome: Outcome) => {

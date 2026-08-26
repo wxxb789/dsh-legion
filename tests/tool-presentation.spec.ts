@@ -11,6 +11,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as legion from '../src/index.ts'
+import { mountTestTokenAccounting } from './token-meter-test-service.ts'
 import { DELEGATION_INJECT } from '../src/index.ts'
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url))
@@ -53,6 +54,7 @@ async function warningsFromMount(withRuntime: boolean): Promise<string[]> {
   const ctx = new Context()
   const warnings: string[] = []
   await ctx.plugin(AgentRegistry)
+  await mountTestTokenAccounting(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -115,7 +117,9 @@ describe('Code Mode is composed from the official row, never owned', () => {
     // would instead make the Legion row itself unmountable on native-only
     // deployments, where Legion works perfectly well.
     expect(DELEGATION_INJECT).not.toContain('codeRuntime')
-    expect(DELEGATION_INJECT).toEqual(['agents', 'tools', 'subagents', 'systemPrompt'])
+    expect(DELEGATION_INJECT).toEqual([
+      'agents', 'sessionProjections', 'tokenMeter', 'tools', 'subagents', 'systemPrompt',
+    ])
     // Declared on the delegation half, not on the package: the Host-plane
     // settings row publishes none of these and must not wait for them.
     expect(legion).not.toHaveProperty('inject')

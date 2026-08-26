@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import {
   CallId,
   LlmAdapter,
@@ -14,7 +14,7 @@ import {
   type LlmResolvedModelInfo,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { emitAgentEvent, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
@@ -27,6 +27,11 @@ import type {
   SubagentStartRequest,
 } from '@deepseek-ai/dsh-subagent'
 import * as legion from '../src/index.ts'
+import {
+  mountTestTokenAccounting,
+  TestSessionProjections,
+  TestTokenMeter,
+} from './token-meter-test-service.ts'
 
 const signal = new AbortController().signal
 let callSequence = 0
@@ -57,8 +62,16 @@ function parent(id = 'parent'): Agent {
   return { id: session.id, session } as unknown as Agent
 }
 
-function registryAgent(id: string, status: AgentStatus): Agent {
-  const session = Session.create(SessionId(id))
+function registryAgent(id: string, status: AgentStatus, parentId?: SessionId): Agent {
+  const initial = Session.create(SessionId(id))
+  const session = parentId === undefined
+    ? initial
+    : Session.create(initial.id, [], {
+        ...initial.header,
+        parentSession: parentId,
+        origin: 'subagent',
+        delegationDepth: 1,
+      })
   return { id: session.id, session, status } as unknown as Agent
 }
 
@@ -115,45 +128,28 @@ function provider(
   return result
 }
 
-interface TestProjectionDefinition {
-  readonly key: string
-  readonly stateSchema: { parse(value: unknown): unknown }
-  init(): unknown
-  apply(state: unknown, event: SessionEvent): unknown
-  readonly wire?: {
-    readonly viewSchema: { parse(value: unknown): unknown }
-    view(state: unknown): unknown
-  }
+function projections(ctx: Context): TestSessionProjections {
+  return (ctx as unknown as { get(name: string): unknown }).get('sessionProjections') as TestSessionProjections
 }
 
-class TestProjectionRegistry extends Service {
-  private readonly definitions = new Map<string, TestProjectionDefinition>()
-
-  constructor(ctx: Context) {
-    super(ctx, 'sessionProjections')
-  }
-
-  register(definition: TestProjectionDefinition): () => void {
-    this.definitions.set(definition.key, definition)
-    return () => { this.definitions.delete(definition.key) }
-  }
-
-  snapshot(session: Session): { asOfSeq: number; values: Record<string, unknown> } {
-    const values: Record<string, unknown> = {}
-    for (const definition of this.definitions.values()) {
-      let state = definition.init()
-      for (const event of session.events) state = definition.apply(state, event)
-      state = definition.stateSchema.parse(state)
-      if (definition.wire !== undefined) {
-        values[definition.key] = definition.wire.viewSchema.parse(definition.wire.view(state))
-      }
-    }
-    return { asOfSeq: session.seq - 1, values }
-  }
+function setTokenSample(
+  ctx: Context,
+  session: Session,
+  usage: {
+    readonly uncachedInputTokens: number
+    readonly outputTokens: number
+    readonly cacheReadTokens: number
+    readonly cacheWriteTokens: number
+  },
+  measurement: { readonly totalTokens: number; readonly surfaceTokens: number },
+): void {
+  projections(ctx).setValue(session, 'tokenUsage', usage)
+  ;((ctx as unknown as { get(name: string): unknown }).get('tokenMeter') as TestTokenMeter).set(session, measurement)
 }
 
-function projections(ctx: Context): TestProjectionRegistry {
-  return (ctx as unknown as { get(name: string): unknown }).get('sessionProjections') as TestProjectionRegistry
+async function mountAccountingServices(ctx: Context): Promise<void> {
+  await ctx.plugin(SessionStore)
+  await mountTestTokenAccounting(ctx)
 }
 
 async function setup(
@@ -161,6 +157,7 @@ async function setup(
   providers: SubagentProvider[] = [provider('spawn')],
 ): Promise<Context> {
   const ctx = new Context()
+  await mountAccountingServices(ctx)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -436,9 +433,8 @@ describe('dsh-legion', () => {
         result: () => index++ === 0 ? first.promise : second.promise,
       })
       ctx = new Context()
+      await mountAccountingServices(ctx)
       await ctx.plugin(AgentRegistry)
-      await ctx.plugin(SessionStore)
-      await ctx.plugin(TestProjectionRegistry)
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SubagentRuntime)
@@ -537,22 +533,31 @@ describe('dsh-legion', () => {
     }
   })
 
-  it('derives live participation from the Host registry and the ended tree from cold listing', async () => {
+  it('samples per-session tokens on status and settlement and explicitly sums the child tree', async () => {
     const results = [Promise.withResolvers<SubagentResult>(), Promise.withResolvers<SubagentResult>()]
     const first = registryAgent('receipt-live-first', 'running')
+    const nested = registryAgent('receipt-cold-grandchild', 'running', first.id)
     const unrelated = registryAgent('receipt-unrelated', 'running')
     const second = registryAgent('receipt-live-second', 'running')
     const removers: Array<() => void> = []
     let starts = 0
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(TestProjectionRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
-    // The first child predates the run observer, so its live row can only come from backfill.
-    removers.push(ctx.agents.register(first), ctx.agents.register(unrelated))
+    // These Agents predate the run observer, so their sessions can only come from backfill.
+    removers.push(ctx.agents.register(first), ctx.agents.register(nested), ctx.agents.register(unrelated))
+    const zeroUsage = {
+      uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    }
+    setTokenSample(ctx, first.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
+    setTokenSample(ctx, nested.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
+    setTokenSample(ctx, second.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
+    setTokenSample(ctx, unrelated.session, {
+      uncachedInputTokens: 100, outputTokens: 100, cacheReadTokens: 100, cacheWriteTokens: 100,
+    }, { totalTokens: 400, surfaceTokens: 400 })
     ctx.subagents.registerProvider({
       name: 'spawn',
       capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
@@ -572,7 +577,7 @@ describe('dsh-legion', () => {
     })
     const coldChildren: SubagentDescendantListEntry[] = [
       { kind: 'child', id: first.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: true, mode: 'one-shot', label: 'execute executor' },
-      { kind: 'child', id: SessionId('receipt-cold-grandchild'), parentId: first.id, depth: 2, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'nested child' },
+      { kind: 'child', id: nested.id, parentId: first.id, depth: 2, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'nested child' },
       { kind: 'child', id: second.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'review reviewer' },
     ]
     vi.spyOn(ctx.subagents, 'listDescendants').mockImplementation(async () => {
@@ -596,7 +601,13 @@ describe('dsh-legion', () => {
     const session = ctx.sessions.create(SessionId('receipt-registry-parent'))
     const agent = { id: session.id, session } as unknown as Agent
     const snapshot = () => projections(ctx).snapshot(session).values['legion/run-receipts'] as {
-      receipts: Record<string, { participation: Array<Record<string, unknown>> }>
+      receipts: Record<string, {
+        participation: Array<Record<string, unknown>>
+        tokenAccount: {
+          totals: Record<string, number>
+          sessions: Array<Record<string, unknown>>
+        }
+      }>
     }
 
     try {
@@ -616,20 +627,65 @@ describe('dsh-legion', () => {
         childIndex: 0,
         state: 'live',
         registryStatus: 'running',
+      }, {
+        childId: nested.id,
+        parentId: first.id,
+        depth: 2,
+        stage: 'execute',
+        member: 'executor',
+        childIndex: 0,
+        state: 'live',
+        registryStatus: 'running',
       }])
 
+      setTokenSample(ctx, first.session, {
+        uncachedInputTokens: 10, outputTokens: 4, cacheReadTokens: 7, cacheWriteTokens: 2,
+      }, { totalTokens: 30, surfaceTokens: 11 })
+      // Reading the projection does not sample the O(surface) Host meter.
+      expect(snapshot().receipts[runId]?.tokenAccount.totals.totalTokens).toBe(0)
       setAgentStatus(first, 'idle')
       emitAgentEvent(ctx, first, 'agent/status', { status: 'idle' })
-      expect(snapshot().receipts[runId]?.participation).toMatchObject([{
-        childId: first.id, state: 'live', registryStatus: 'idle',
-      }])
+      expect(snapshot().receipts[runId]?.participation).toMatchObject([
+        { childId: first.id, state: 'live', registryStatus: 'idle' },
+        { childId: nested.id, state: 'live', registryStatus: 'running' },
+      ])
+      expect(snapshot().receipts[runId]?.tokenAccount).toMatchObject({
+        totals: {
+          totalTokens: 23,
+          uncachedInputTokens: 10,
+          outputTokens: 4,
+          cacheReadTokens: 7,
+          cacheWriteTokens: 2,
+        },
+        sessions: [
+          { childId: first.id, stage: 'execute', member: 'executor', totalTokens: 23 },
+          { childId: nested.id, stage: 'execute', member: 'executor', totalTokens: 0 },
+        ],
+      })
+      setTokenSample(ctx, nested.session, {
+        uncachedInputTokens: 3, outputTokens: 1, cacheReadTokens: 5, cacheWriteTokens: 0,
+      }, { totalTokens: 12, surfaceTokens: 5 })
+      expect(snapshot().receipts[runId]?.tokenAccount.totals.totalTokens).toBe(23)
+      setAgentStatus(nested, 'idle')
+      emitAgentEvent(ctx, nested, 'agent/status', { status: 'idle' })
+      expect(snapshot().receipts[runId]?.tokenAccount.totals).toMatchObject({
+        totalTokens: 32,
+        uncachedInputTokens: 13,
+        outputTokens: 5,
+        cacheReadTokens: 12,
+        cacheWriteTokens: 2,
+      })
 
       results[0]!.resolve({ output: [], stopReason: 'completed' })
       await vi.waitFor(() => expect(starts).toBe(2))
       expect(snapshot().receipts[runId]?.participation).toMatchObject([
         { childId: first.id, state: 'ended' },
+        { childId: nested.id, state: 'live', registryStatus: 'idle' },
         { childId: second.id, state: 'live', registryStatus: 'running' },
       ])
+      setTokenSample(ctx, second.session, {
+        uncachedInputTokens: 6, outputTokens: 2, cacheReadTokens: 8, cacheWriteTokens: 1,
+      }, { totalTokens: 20, surfaceTokens: 8 })
 
       results[1]!.resolve({
         output: [],
@@ -641,14 +697,38 @@ describe('dsh-legion', () => {
       if (result.isError) throw new Error(rendered(result))
       expect(snapshot().receipts[runId]?.participation).toEqual([
         { childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
-        { childId: SessionId('receipt-cold-grandchild'), parentId: first.id, depth: 2, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
+        { childId: nested.id, parentId: first.id, depth: 2, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
         { childId: second.id, parentId: session.id, depth: 1, stage: 'review', member: 'reviewer', childIndex: 0, state: 'ended' },
       ])
+      expect(snapshot().receipts[runId]?.tokenAccount).toMatchObject({
+        totals: {
+          totalTokens: 49,
+          uncachedInputTokens: 19,
+          outputTokens: 7,
+          cacheReadTokens: 20,
+          cacheWriteTokens: 3,
+        },
+        sessions: [
+          { childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', totalTokens: 23 },
+          { childId: nested.id, parentId: first.id, depth: 2, stage: 'execute', member: 'executor', totalTokens: 9 },
+          { childId: second.id, parentId: session.id, depth: 1, stage: 'review', member: 'reviewer', totalTokens: 17 },
+        ],
+      })
       expect(result.value).toMatchObject({
-        receipt: { participationCounts: { total: 3, running: 0, idle: 0, ended: 3 } },
+        receipt: {
+          participationCounts: { total: 3, running: 0, idle: 0, ended: 3 },
+          tokenTotals: {
+            totalTokens: 49,
+            uncachedInputTokens: 19,
+            outputTokens: 7,
+            cacheReadTokens: 20,
+            cacheWriteTokens: 3,
+          },
+        },
       })
       expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
       expect(rendered(result)).toContain('participation 0 running, 0 idle, 3 ended')
+      expect(rendered(result)).toContain('tokens 49 total; 19 uncached input, 20 cache-read')
 
       const terminal = snapshot().receipts[runId]!
       session.append('legion/run-receipt', {
@@ -659,15 +739,73 @@ describe('dsh-legion', () => {
         }],
       } as never)
       expect(snapshot().receipts[runId]).toEqual(terminal)
+      session.append('legion/run-receipt', {
+        ...terminal,
+        tokenAccount: {
+          ...terminal.tokenAccount,
+          totals: { ...terminal.tokenAccount.totals, totalTokens: 50 },
+        },
+      } as never)
+      expect(snapshot().receipts[runId]).toEqual(terminal)
       expect(JSON.stringify(terminal)).not.toContain('receipt-unrelated')
 
-      const { participation: _legacyParticipation, ...legacy } = terminal as Record<string, unknown> & { participation: unknown }
+      const { tokenAccount: _v2TokenAccount, ...versionTwo } = terminal
+      const versionTwoRunId = 'team-run-00000000-0000-4000-8000-000000000002'
+      session.append('legion/run-receipt', {
+        ...versionTwo, schemaVersion: 2, runId: versionTwoRunId,
+      } as never)
+      expect(snapshot().receipts[versionTwoRunId]).toMatchObject({
+        schemaVersion: 3,
+        participation: terminal.participation,
+        tokenAccount: { totals: { totalTokens: 0 }, sessions: [] },
+      })
+
+      const {
+        participation: _legacyParticipation,
+        tokenAccount: _legacyTokenAccount,
+        ...legacy
+      } = terminal as Record<string, unknown> & { participation: unknown; tokenAccount: unknown }
       const legacyRunId = 'team-run-00000000-0000-4000-8000-000000000001'
       session.append('legion/run-receipt', { ...legacy, schemaVersion: 1, runId: legacyRunId } as never)
-      expect(snapshot().receipts[legacyRunId]).toMatchObject({ schemaVersion: 2, participation: [] })
+      expect(snapshot().receipts[legacyRunId]).toMatchObject({
+        schemaVersion: 3,
+        participation: [],
+        tokenAccount: { totals: { totalTokens: 0 }, sessions: [] },
+      })
     } finally {
       for (const remove of removers) remove()
     }
+  })
+
+  it('fails closed when the Host cannot enumerate the complete token tree', async () => {
+    const ctx = await setup({
+      configVersion: 2,
+      enableStrategies: true,
+      catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
+      profiles: {
+        deep: { description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
+        quick: { description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
+        review: { description: 'Review.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'review-v1' },
+      },
+      defaultProfile: 'quick',
+    }, [provider('spawn', {
+      result: request => request.outputSchema === undefined
+        ? { output: [], stopReason: 'completed' }
+        : {
+            output: [],
+            structured: { verdict: 'pass', summary: 'Done.', findings: [], verification: [] },
+            stopReason: 'completed',
+          },
+    })])
+    vi.spyOn(ctx.subagents, 'listDescendants').mockRejectedValue(new Error('tree unavailable'))
+
+    const result = await execute(ctx, {
+      kind: 'strategy',
+      strategy: 'independent-review',
+      objective: 'Require a complete account.',
+    })
+    expect(result.isError).toBe(true)
+    expect(rendered(result)).toContain('incomplete Run Receipt child tree')
   })
 
   it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {
@@ -750,6 +888,7 @@ describe('dsh-legion', () => {
 
   it('freezes one exact route before start and never replays another route', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     let starts = 0
     let request: ResolvedSubagentStartRequest | undefined
@@ -825,6 +964,7 @@ describe('dsh-legion', () => {
 
   it('rechecks the selected LLM adapter at the child start edge', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     let starts = 0
     await ctx.plugin(SystemPrompt)
@@ -859,6 +999,7 @@ describe('dsh-legion', () => {
   it('fails before child start when every exact route has a known static rejection', async () => {
     let starts = 0
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -891,6 +1032,7 @@ describe('dsh-legion', () => {
 
   it('does not replay another route after a selected child fails', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     let starts = 0
     await ctx.plugin(SystemPrompt)
@@ -928,6 +1070,7 @@ describe('dsh-legion', () => {
 
   it('surfaces the provider diagnostic beside the stop reason when the Host supplies one', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -969,6 +1112,7 @@ describe('dsh-legion', () => {
 
   it('keeps the stop reason alone when the provider supplies no diagnostic', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -1002,6 +1146,7 @@ describe('dsh-legion', () => {
     mkdirSync(join(root, 'resources', 'prompts'), { recursive: true })
     writeFileSync(join(root, 'resources', 'prompts', 'review.md'), 'Follow the resource instruction.')
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     let request: SubagentStartRequest | undefined
     try {
@@ -1402,6 +1547,7 @@ describe('dsh-legion', () => {
 
   it('tracks LLM adapter lifecycle for routed profile activation', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -1432,6 +1578,7 @@ describe('dsh-legion', () => {
 
   it('recovers routed tool registration after a transient same-name conflict', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -1493,6 +1640,7 @@ describe('dsh-legion', () => {
 
   it('rejects unknown config fields before publishing tool or prompt effects', async () => {
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
@@ -1520,6 +1668,7 @@ describe('dsh-legion', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-legion-missing-resource-'))
     mkdirSync(join(root, 'resources'))
     const ctx = new Context()
+    await mountAccountingServices(ctx)
     await ctx.plugin(AgentRegistry)
     ctx.baseUrl = pathToFileURL(root).href + '/'
     try {
@@ -1616,7 +1765,7 @@ describe('dsh-legion', () => {
         execution: { durability: 'journal', advancement: 'checkpoint' },
       })
       expect(durable.isError).toBe(true)
-      expect(rendered(durable)).toContain('LEGION_DURABLE_FLUSH_UNAVAILABLE')
+      expect(rendered(durable)).toContain('LEGION_DURABLE_COORDINATION_UNAVAILABLE')
       expect(starts).toBe(1)
       expect(legion.detectDurableCapabilities(ctx as never).durableMutation).toBe(false)
     } finally {

@@ -156,6 +156,34 @@ try {
   writeFileSync(join(resourceRoot, 'packed.md'), 'Use the packed artifact instruction.\n')
 
   await mountAgentLoopTestDependencies(ctx)
+  if (ctx.get('sessionProjections') === undefined) {
+    ctx.provide('sessionProjections', {
+      register() { return () => undefined },
+      snapshot(session) {
+        const byStep = new Map()
+        for (const event of session.events) {
+          const usage = event.type === 'assistant/chunk' && event.data.chunk.type === 'usage'
+            ? event.data.chunk.usage
+            : event.type === 'assistant/message'
+              ? event.data.usage
+              : undefined
+          if (usage !== undefined) byStep.set(`${String(event.data.turn)}:${String(event.data.step)}`, usage)
+        }
+        const tokenUsage = [...byStep.values()].reduce((total, usage) => ({
+          uncachedInputTokens: total.uncachedInputTokens + usage.inputTokens,
+          outputTokens: total.outputTokens + usage.outputTokens,
+          cacheReadTokens: total.cacheReadTokens + (usage.cacheReadTokens ?? 0),
+          cacheWriteTokens: total.cacheWriteTokens + (usage.cacheWriteTokens ?? 0),
+        }), { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })
+        return { asOfSeq: session.seq - 1, values: { tokenUsage } }
+      },
+    })
+  }
+  ctx.provide('tokenMeter', {
+    measure(session) {
+      return { logRevision: session.events.length, totalTokens: 0, surfaceTokens: 0 }
+    },
+  })
   await ctx.plugin(JsonlSessionPersistence, { root: sessionRoot })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubagentRuntime)
