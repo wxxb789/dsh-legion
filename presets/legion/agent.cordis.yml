@@ -72,7 +72,7 @@
   name: dsh-legion
   config:
     configVersion: 2
-    # This preset ships no DSH Host services; durable mutation remains off.
+    # No activation adapter is bound, and the assessed DSH line lacks atomic run coordination.
     enableDurableRuns: false
     durableRunPolicy:
       maxStartsPerActivation: 8

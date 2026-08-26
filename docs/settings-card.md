@@ -60,7 +60,7 @@ Three DSH facts shape the implementation, and all three are worth knowing before
 
 Legion now imports the published runtime, slot, locale, settings, and UI-primitives declarations directly. The card props are composed from the Host's `PropsRuntime`, `PropsLocale`, and `InjectFace` contracts, so an upstream surface change fails `typecheck` instead of the page. `@deepseek-ai/dsh-client-ui-renderer` is deliberately absent: it is boot-once shell machinery, not a plugin API. The removed schema-form and React-web package names are likewise absent because neither has a source package or manifest.
 
-## Remaining upstream hand-maintenance
+## Permanent client-plane limitations
 
-1. Publish the client bundle preset so the artifact format is versioned rather than copied.
-2. Put the settings-card layout in the module table — `PluginCard` and the field controls, or their equivalent in `ui-primitives` — so a third-party card inherits the tab's chrome instead of re-deriving it from upstream source each release.
+1. DSH does not publish its client bundle build preset, so Legion copies the artifact format and pins it with the loader-protocol test.
+2. DSH does not expose the settings-card layout through the module table, so Legion derives the tab's chrome from Host source instead of importing `PluginCard` and the field controls.

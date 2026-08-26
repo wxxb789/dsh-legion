@@ -119,19 +119,6 @@ DSH owns the Agent Client Protocol backend. Legion contributes the delegation po
 - [ ] Complete two paired held-out real-model quality campaigns per curated Strategy with safety/cost/latency gates.
 - [ ] Automatically expose `independent-review` and `research-panel` only after their signed evidence passes; explicit deployment opt-in remains available.
 
-## Upstream DSH proposals
-
-- Published `clientBundle` preset so a third-party settings card need not reproduce the loader artifact format.
-- Published `settings.plugin.item` slot declaration so a third-party card need not re-declare it.
-- Client packages published on the same line as the Host, so a third party can typecheck against the version it targets instead of declaring that surface locally.
-- Child reasoning-effort override at the AgentOptions/request seam.
-- Per-child named preset composition with durable resume semantics.
-- Unified scoped child-setup contributions for one-shot, continuable activation, and cold resume, enabling specialist-local DSH Skill registrations.
-- Redacted provider health only if startup-time health becomes a real requirement.
-- Unified recovery seam before Legion attempts cross-route fallback.
-- Generation-bound LLM resolve/reserve/start lease before Route observations can claim atomic adapter topology.
-- Host-owned `Team` budget admission/reservation/reconciliation seam before Legion declares aggregate token or monetary-cost limits.
-
 ## Non-goals
 
 - Another Agent/Session/subagent/workflow/goal runtime.

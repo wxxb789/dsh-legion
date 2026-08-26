@@ -2,5 +2,5 @@ name: Legion
 
 description: Multi-model coordinator with semantic deep, quick, and review Specialists.
 
-# Includes an advanced stair-step Strategy definition; durable mutation stays disabled
-# until deployment supplies DSH projection and atomic coordination Host services.
+# Includes an advanced stair-step Strategy definition; journal execution is unavailable:
+# Legion binds no activation adapter, and the assessed DSH line lacks atomic run coordination.

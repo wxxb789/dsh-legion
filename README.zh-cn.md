@@ -514,10 +514,14 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 已知限制：
 
 - Curated Strategy 不会自动向模型开放；部署者可显式设置 `enableStrategies: true`。
-- 已选择的子智能体失败后，Legion 不会重试或切换模型。
-- 进程内子智能体继承父级命名 DSH Agent Preset；Specialist 仍可改变 Model、Persona、Tool、Backend 和限制。
+- DSH 没有统一负责 Provider Retry 与 Route Candidate 恢复的 Owner，因此 Legion 只启动已选择的子智能体，失败后不会重试或切换模型。
+- DSH 会把 Prepared Call 绑定到单个 Adapter Generation 和一次 Dispatch，但 Legion 启动前观察到的 Route 事实只是时间点上的 best-effort 信息，并非 Adapter 拓扑的原子快照。
+- Specialist 不能覆盖子智能体的 Reasoning Effort。
+- 进程内子智能体继承父级命名 DSH Agent Preset；One-shot、Continuable 和 Cold-resume 路径均不支持 Per-child Named Preset 或 Specialist-local DSH Skill Setup。Specialist 仍可改变 Model、Persona、Tool、Backend 和限制。
+- Legion 不检查实时 Provider Health、凭据、授权、Quota、可达性或延迟；Route Plan 会把这些事实报告为 unknown。
+- 总 Token 或货币成本的准入控制仍属于 [Companion Package Backlog](docs/legion-v2-plan.md)；当前限制只覆盖成员、并发、截止时间、接收输出、工具和可用路由。
 - GUI 设置卡片只编辑四个标量策略；Specialist、Cohort、Strategy 与 Catalog Layer 仍由配置文档管理。
-- 卡片的浏览器半侧是手工复刻 DSH 尚未发布的客户端 Bundle 格式，上游若变更该格式，失败会发生在加载期而不是构建期。
+- DSH 现已发布与评估 Host 版本线一致的 Client Contract，包括 `settings.plugin.item` Slot 声明，但仍未发布 `clientBundle` Build Preset。因此 Legion 使用公开 Package 做 Typecheck，同时手工复刻 Loader Artifact 格式；Host 格式变更会在加载期而不是构建期失败。
 - Specialist 的 `result` Schema 目前仍接受 `plan-delta-v1`，但该契约是为 Durable Run 的 Plan 提案设计的，并非普通委派用途。在它被显式收口或正式公开之前，请视为 Specialist 不支持该取值。
 - 不支持在缺少兼容 DSH Peer 的环境中直接运行裸 Package。
 

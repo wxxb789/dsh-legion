@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-23
 - Horizon: 6 weeks, three milestones
-- Supersedes the "Upstream DSH proposals" section of [docs/roadmap.md](roadmap.md)
+- Records the final dispositions of the former "Upstream DSH proposals" roadmap section
 
 This plan is the output of a design interview. Every decision below was put to the
 repository owner and answered; nothing here is inferred. Supporting evidence lives in
@@ -197,13 +197,16 @@ Delete the section and redistribute:
 
 | Former proposal | Disposition |
 |---|---|
-| Unified recovery seam | **Permanent limitation.** Cross-route recovery stays disabled; say so in the README. |
-| Host-owned budget admission | **Companion backlog** (M3.4 successor). |
-| Generation-bound LLM resolve/reserve/start lease | **Permanent limitation.** Route observations remain best-effort, never atomic topology. |
+| Unified recovery seam | **Permanent limitation.** Cross-route recovery stays disabled; the README states that Legion starts only the selected child. |
+| Host-owned budget admission | **Companion backlog.** Aggregate admission belongs in a successor to the M3.4 coordination package, not in Legion. |
+| Generation-bound LLM resolve/reserve/start lease | **Partly satisfied upstream, with a permanent limit.** DSH binds one prepared adapter generation to one dispatch; Legion's pre-start Route observations remain best-effort and never claim atomic adapter topology. |
 | Child reasoning-effort override | **Permanent limitation.** A Specialist cannot set a child's reasoning effort. |
-| Per-child preset composition; unified child-setup contributions | **Permanent limitation.** In-process children inherit the parent's preset. |
-| Published `clientBundle` preset; client packages on the Host's line | **Already satisfied.** All 40 client packages are public at 0.1.1-rc.2 (M1.2). |
-| Redacted provider health | **Drop.** Never a requirement. |
+| Per-child named preset composition | **Permanent limitation.** In-process children inherit the parent's named preset. |
+| Unified child-setup contributions | **Permanent limitation.** Legion cannot add Specialist-local DSH Skill registrations to one-shot, continuable, and cold-resume paths. |
+| Published `clientBundle` preset | **Permanent limitation.** DSH does not publish the build preset, so Legion mirrors the loader artifact format under a protocol test. |
+| Published `settings.plugin.item` slot declaration | **Already satisfied upstream.** The public `@deepseek-ai/dsh-client-ui-settings-plugins` package declares the slot. |
+| Client packages on the Host's line | **Already satisfied upstream.** The assessed 0.1.1-rc.2 client contracts are public and drive Legion's client typecheck. |
+| Redacted provider health | **Permanent limitation.** Legion does not inspect live provider health and reports it as unknown; no health capability is planned. |
 
 ## 9. What Legion may and may not say
 

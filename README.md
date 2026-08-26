@@ -512,10 +512,14 @@ The source tree declares version `1.2.0` and config contract v2. Check [CHANGELO
 Known limitations:
 
 - Curated Strategies are not automatically model-exposed; deployment owners may opt in with `enableStrategies: true`.
-- Legion does not retry or switch models after a selected child fails.
-- In-process children inherit the parent's named DSH agent preset; Specialists can still vary model, persona, tools, backend, and limits.
+- DSH has no unified recovery owner across provider retries and Route Candidates, so Legion starts only the selected child and never retries or switches models after failure.
+- DSH binds a prepared call to one adapter generation and one dispatch, but Legion's pre-start Route observations are point-in-time, best-effort facts rather than an atomic adapter-topology snapshot.
+- A Specialist cannot override a child's reasoning effort.
+- In-process children inherit the parent's named DSH agent preset; no per-child named preset or Specialist-local DSH Skill setup is available across one-shot, continuable, and cold-resume paths. Specialists can still vary model, persona, tools, backend, and limits.
+- Legion does not inspect live provider health, credentials, authorization, quota, reachability, or latency; Route Plans report those facts as unknown.
+- Aggregate token or monetary-cost admission remains a [companion-package backlog item](docs/legion-v2-plan.md); current limits cover members, concurrency, deadlines, accepted output, tools, and eligible routes.
 - The GUI settings card edits four scalar policies; Specialists, Cohorts, Strategies, and catalog layers stay in the configuration document.
-- The card's browser half reproduces DSH's unpublished client bundle format by hand, so an upstream change to that format fails at load time rather than at build time.
+- DSH now publishes assessed-line client contracts, including the `settings.plugin.item` slot declaration, but not its `clientBundle` build preset. Legion therefore typechecks against public packages while reproducing the loader artifact format by hand; a Host format change fails at load time rather than at build time.
 - The Specialist `result` schema still accepts `plan-delta-v1`, a contract meant for durable-run plan proposals rather than ordinary delegation. Treat it as unsupported for Specialists until it is either gated or deliberately published.
 - A bare package without compatible DSH peers is unsupported.
 
