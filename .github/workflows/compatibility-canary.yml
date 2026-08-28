@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DSH_REGISTRY: https://registry.npmjs.org
+
 jobs:
   rolling-compatible:
     runs-on: ubuntu-24.04
@@ -21,7 +24,7 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --registry=$DSH_REGISTRY
       - run: pnpm run build
       - run: pnpm run verify:dependency-preflight
       - run: pnpm run test:packed-delegation

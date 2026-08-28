@@ -36,19 +36,38 @@ describe('reproducible CI and release contracts', () => {
 
   it('pins lower-bound Windows quality and packed DSH compatibility matrices', () => {
     const workflow = readFileSync(join(ROOT, '.github/workflows/quality-gates.yml'), 'utf8')
-    expect(() => load(workflow)).not.toThrow()
+    const parsedWorkflow = load(workflow) as {
+      jobs: Record<'quality' | 'compatibility', {
+        strategy: { matrix: { dsh?: unknown } }
+        steps: Array<{ if?: string; run?: string }>
+      }>
+    }
+    const sourceInstall = {
+      if: "inputs.dsh-source-artifact != ''",
+      run: 'node scripts/install-dsh-tarballs.mjs --from dsh-npm',
+    }
+    for (const job of Object.values(parsedWorkflow.jobs)) {
+      expect(job.steps.filter(step => step.run?.includes('install-dsh-tarballs'))).toEqual([sourceInstall])
+    }
+    expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('minimum')
+    expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('latest-tested')
     expect(readFileSync(join(ROOT, '.npmrc'), 'utf8'))
       .toBe('registry=https://mirrors.cloud.tencent.com/npm/\n')
-    expect(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8'))
-      .toContain('uses: ./.github/workflows/quality-gates.yml')
+    const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')
+    expect(() => load(ci)).not.toThrow()
+    expect(ci).toContain('uses: ./.github/workflows/quality-gates.yml')
+    expect(ci).toContain('repository: deepseek-ai/deepseek-harness')
+    expect(ci).toContain('dsh-source-artifact: dsh-npm-source')
+    expect(ci).toContain('dsh-pnpm-workspace.yaml')
+    expect(ci).toContain('package_json_file: deepseek-harness/package.json')
+    expect(workflow).toContain('node scripts/install-dsh-tarballs.mjs')
+    expect(workflow).toContain('DSH_REGISTRY: https://registry.npmjs.org')
     expect(workflow).toContain('windows-latest')
     expect(workflow).toContain('22.19.0')
     expect(workflow).toContain('24.19.0')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
     expect(workflow).toContain('pnpm run verify:journal-contract')
     expect(workflow).toContain('pnpm run test:recovery')
-    expect(workflow).toContain('channel: minimum')
-    expect(workflow).toContain('channel: latest-tested')
     // Version values are resolved from the compatibility contract at runtime;
     // the workflow carries only stable channel names, never a duplicate literal.
     expect(workflow).toContain('DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}')
@@ -57,7 +76,6 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('pnpm run test:packed-delegation')
     expect(workflow).toContain('test:packed-delegation-supplied')
     expect(workflow).toContain('{ id: win32, os: windows-latest }')
-    expect(workflow).toContain('packedProfile: true')
     expect(workflow).toContain('DSH_COMPATIBILITY_RECEIPT')
     expect(workflow).toContain('actions/upload-artifact@')
     const canary = readFileSync(join(ROOT, '.github/workflows/compatibility-canary.yml'), 'utf8')
@@ -65,13 +83,14 @@ describe('reproducible CI and release contracts', () => {
     // The rolling canary selects the peer-range channel; the packed verifier
     // reads the exact range from the compatibility contract.
     expect(canary).toContain('DSH_VERSION_CHANNEL: peer-range')
+    expect(canary).toContain('DSH_REGISTRY: https://registry.npmjs.org')
     expect(canary).not.toContain('DSH_VERSION:')
     expect(canary).toContain('compatibility-rolling-compatible-24.19.0')
     for (const name of [
       'ci.yml', 'compatibility-canary.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml',
     ]) {
       const source = readFileSync(join(ROOT, '.github/workflows', name), 'utf8')
-      expect(source).not.toMatch(/pnpm install[^\n]*--registry=/)
+      expect(source).not.toMatch(/pnpm install[^\n]*--registry=https?:/)
       const refs = [...source.matchAll(/uses:\s+([^\s#]+)/g)]
         .map(match => match[1])
         .filter(reference => !reference?.startsWith('./'))
@@ -81,6 +100,13 @@ describe('reproducible CI and release contracts', () => {
   })
 
   it('resolves one exact DSH generation before installing every packed consumer dependency', () => {
+    const sourceInstaller = readFileSync(join(ROOT, 'scripts/install-dsh-tarballs.mjs'), 'utf8')
+    expect(sourceInstaller).toContain('tarballs.set(manifest.name')
+    expect(sourceInstaller).toContain('manifest.devDependencies[name] = tarballs.get(name).spec')
+    expect(sourceInstaller).toContain('restoreProjectFiles(originals, installError)')
+    const sourceRestorer = readFileSync(join(ROOT, 'scripts/source-install-restore.mjs'), 'utf8')
+    expect(sourceRestorer).toContain('throw new AggregateError')
+    expect(sourceInstaller).not.toContain('0.1.2-alpha.1')
     const script = readFileSync(join(ROOT, 'scripts/verify-packed-delegation.mjs'), 'utf8')
     expect(script).toContain('const dshVersion = resolveDshVersion(dshVersionSpec)')
     expect(script).toContain('resolveNpmRegistry(projectRoot)')

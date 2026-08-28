@@ -8,6 +8,48 @@ on:
 permissions:
   contents: read
 
+env:
+  DSH_REGISTRY: https://registry.npmjs.org
+
 jobs:
+  dsh-source:
+    name: pack assessed DSH source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: dsh
+        run: |
+          version=$(node -e "const p=require('./contracts/compatibility.json'); if(p.minimumDshVersion!==p.latestTestedDshVersion) throw new Error('source CI requires one assessed DSH version'); process.stdout.write(p.latestTestedDshVersion)")
+          echo "tag=dsh-v$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ steps.dsh.outputs.tag }}
+          path: deepseek-harness
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: deepseek-harness/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: deepseek-harness/pnpm-lock.yaml
+      - run: pnpm --dir deepseek-harness install --frozen-lockfile --registry=$DSH_REGISTRY
+      - run: pnpm --dir deepseek-harness run build:official
+      - run: pnpm --dir deepseek-harness run release:pack --family dsh --out dist/npm --concurrency 8
+      - run: cp deepseek-harness/pnpm-workspace.yaml deepseek-harness/dist/npm/dsh-pnpm-workspace.yaml
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dsh-npm-source
+          path: |
+            deepseek-harness/dist/npm/*.tgz
+            deepseek-harness/dist/npm/dsh-pnpm-workspace.yaml
+          if-no-files-found: error
+          retention-days: 1
+
   gates:
+    needs: dsh-source
     uses: ./.github/workflows/quality-gates.yml
+    with:
+      dsh-source-artifact: dsh-npm-source

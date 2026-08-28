@@ -17,7 +17,7 @@
 
 ## Carried over
 
-- `devDependencies` and the compatibility contract target DSH 0.1.2-alpha.1 as one coordinated generation. CI carries stable `minimum`, `latest-tested`, and `peer-range` channel names; `scripts/verify-packed-delegation.mjs` resolves their values from `contracts/compatibility.json`, so workflow literals cannot drift. The committed lockfile and all packed slots still require proof from a registry that resolves the complete alpha package graph; a mirror 404 is not evidence that npmjs lacks a package.
+- `devDependencies` and the compatibility contract target DSH 0.1.2-alpha.1 as one coordinated generation. Main CI derives that source tag, packs it once, and installs its manifest-indexed tarballs without resolving DSH through npm. The scheduled `peer-range` canary and tag-release matrices retain public-registry installs because source compatibility does not prove distribution availability. `scripts/verify-packed-delegation.mjs` still resolves channel values from `contracts/compatibility.json`, so workflow version literals cannot drift.
 
 - The compatibility receipt's `capabilityMode` is the frozen literal `rc6-replay-only-fail-closed`, named after a floor the package no longer supports. Producer and verifier agree on the string and no invariant is violated, but renaming it moves `compatibilityReceiptVersion`, so it waits for the next receipt-schema change rather than riding a version bump.
 

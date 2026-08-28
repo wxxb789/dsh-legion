@@ -8,9 +8,17 @@ on:
         required: false
         type: string
         default: ''
+      dsh-source-artifact:
+        description: Optional artifact containing packed DSH source dependencies.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
+
+env:
+  DSH_REGISTRY: https://registry.npmjs.org
 
 jobs:
   quality:
@@ -23,10 +31,8 @@ jobs:
         include:
           - os: windows-latest
             node: 22.19.0
-            packedProfile: true
           - os: ubuntu-24.04
             node: 24.19.0
-            packedProfile: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -36,7 +42,15 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - if: inputs.dsh-source-artifact != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.dsh-source-artifact }}
+          path: dsh-npm
+      - if: inputs.dsh-source-artifact == ''
+        run: pnpm install --frozen-lockfile --registry=$DSH_REGISTRY
+      - if: inputs.dsh-source-artifact != ''
+        run: node scripts/install-dsh-tarballs.mjs --from dsh-npm
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run verify:contract
@@ -47,18 +61,18 @@ jobs:
       # A declared Host line that upstream never published fails here in
       # seconds, naming the package and the range, instead of surfacing minutes
       # later as a raw resolver error inside the packed install.
-      - if: matrix.packedProfile
+      - if: inputs.dsh-source-artifact == ''
         run: pnpm run verify:dependency-preflight -- --record dependency-preflight-snapshot.json
       # The recorded registry answer is the gate's evidence: keeping it lets a
       # live verdict be replayed offline instead of re-run against a registry
       # that has already moved.
-      - if: matrix.packedProfile && always()
+      - if: inputs.dsh-source-artifact == '' && always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: dependency-preflight-${{ matrix.os }}-${{ matrix.node }}
           path: dependency-preflight-snapshot.json
           if-no-files-found: warn
-      - if: matrix.packedProfile
+      - if: inputs.dsh-source-artifact == ''
         run: pnpm run test:profile-install
 
   compatibility:
@@ -72,9 +86,7 @@ jobs:
           - { id: linux, os: ubuntu-24.04 }
           - { id: win32, os: windows-latest }
         node: [22.19.0, 24.19.0]
-        dsh:
-          - channel: minimum
-          - channel: latest-tested
+        dsh: ${{ fromJSON(inputs.dsh-source-artifact != '' && '[{"channel":"latest-tested"}]' || '[{"channel":"minimum"},{"channel":"latest-tested"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - if: inputs.tarball-artifact != ''
@@ -82,6 +94,11 @@ jobs:
         with:
           name: ${{ inputs.tarball-artifact }}
           path: package-tarball
+      - if: inputs.dsh-source-artifact != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.dsh-source-artifact }}
+          path: dsh-npm
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 11.21.0
@@ -89,7 +106,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - if: inputs.dsh-source-artifact == ''
+        run: pnpm install --frozen-lockfile --registry=$DSH_REGISTRY
+      - if: inputs.dsh-source-artifact != ''
+        run: node scripts/install-dsh-tarballs.mjs --from dsh-npm
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract
@@ -98,13 +118,16 @@ jobs:
         run: pnpm run test:packed-delegation
         env:
           DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}
-          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+          DSH_LEGION_OFFLINE: ${{ inputs.dsh-source-artifact != '' && '1' || '0' }}
+          DSH_COMPATIBILITY_RECEIPT: ${{ inputs.dsh-source-artifact == '' && format('compatibility-{0}-{1}-{2}.json', matrix.platform.id, matrix.dsh.channel, matrix.node) || '' }}
       - if: inputs.tarball-artifact != ''
         run: pnpm run test:packed-delegation-supplied -- package-tarball
         env:
           DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}
-          DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+          DSH_LEGION_OFFLINE: ${{ inputs.dsh-source-artifact != '' && '1' || '0' }}
+          DSH_COMPATIBILITY_RECEIPT: ${{ inputs.dsh-source-artifact == '' && format('compatibility-{0}-{1}-{2}.json', matrix.platform.id, matrix.dsh.channel, matrix.node) || '' }}
+      - if: inputs.dsh-source-artifact == ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}
           path: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.*

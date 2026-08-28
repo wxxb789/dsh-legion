@@ -223,7 +223,7 @@ try {
     join(consumerDir, 'packed-delegation-consumer.mjs'),
   )
   runNode(['packed-delegation-consumer.mjs'], consumerDir)
-  const receiptPath = process.env.DSH_COMPATIBILITY_RECEIPT
+  const receiptPath = process.env.DSH_COMPATIBILITY_RECEIPT || undefined
   if (receiptPath !== undefined) {
     const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
     const installedManifest = JSON.parse(await readFile(

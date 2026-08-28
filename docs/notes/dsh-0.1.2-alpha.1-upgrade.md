@@ -553,11 +553,10 @@ Accordingly:
 
 This preserves the same measurement boundary recorded in the earlier DSH upgrade notes.
 
-For the completed Legion migration, repository `.npmrc` selects the Tencent npm mirror as the
-single install-registry source of truth. CI install commands no longer override that setting, and
-preflight/packed scripts derive it through `scripts/registry-config.mjs`; `DSH_REGISTRY` remains an
-explicit deployment override. Package publication stays directed to public npm through
-`publishConfig.registry`, independently of the install mirror.
+For constrained local development, repository `.npmrc` selects the Tencent npm mirror. GitHub
+Actions explicitly sets `DSH_REGISTRY` to public npm, and preflight/packed scripts resolve that
+environment override before the project setting. Package publication independently stays directed
+to public npm through `publishConfig.registry`.
 
 ## Local release-artifact verification
 
@@ -567,6 +566,19 @@ integrities of all 22 DSH packages Legion names directly in `devDependencies` ma
 when the machine-local proxy's unavailable release-age metadata is excluded from that local-only
 policy check. This verifies the dependency graph and lockfile against official release artifacts; it
 does not substitute for the unrestricted public-registry CI matrix.
+
+## Source-backed compatibility CI
+
+Main CI derives the exact DSH tag from `contracts/compatibility.json`, checks out that source, uses
+its declared pnpm version and build policy, and packs the DSH family once. Quality jobs scan the
+tarball manifests and install the recursively required DSH package closure through temporary
+`file:` dependencies; neither package names nor source paths are copied into Legion configuration. The installer restores
+`package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml` before validation. Public npm remains the
+source for ordinary third-party dependencies.
+
+The scheduled compatibility canary and release workflow deliberately keep the public-registry
+install path. A green source job proves API/source compatibility; only those separate jobs can prove
+that the published distribution is complete.
 
 ## Ordered migration checklist
 
