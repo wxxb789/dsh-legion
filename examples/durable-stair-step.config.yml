@@ -1,6 +1,6 @@
 # Advanced durable Strategy example using only dsh-legion public config contracts.
-# No DSH release through 0.1.1-rc.2 publishes the atomic coordination service
-# required for mutation; enabling this config there fails closed.
+# DSH 0.1.2-alpha.1 provides neither the atomic coordination service nor a
+# persistence registration seam for legion/* events; this config fails closed.
 configVersion: 2
 enableStrategies: true
 enableDurableRuns: true

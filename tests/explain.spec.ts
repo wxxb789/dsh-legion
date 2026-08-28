@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type { Config } from '../src/config.ts'
 import { compileCatalog, type RuntimeSnapshot } from '../src/compiler.ts'
 import {
@@ -33,7 +34,7 @@ const providers: RuntimeSnapshot = {
   providers: {
     spawn: {
       continuable: true,
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
     },
   },
 }
@@ -124,7 +125,7 @@ describe('explainCatalog', () => {
       providers: {
         remote: {
           continuable: false,
-          capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+          capabilities: NO_START_CAPABILITIES,
         },
       },
     }), { providerSnapshot: 'fixture' })

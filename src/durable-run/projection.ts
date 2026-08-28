@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
 import { deepCopy, deepFreeze } from '../internal/value.ts'
 import type {
   ArtifactRef,
@@ -308,24 +308,23 @@ export interface ProjectionSchema<Value> {
  * unit in the session, not just this one — the first time a checkpoint row for
  * this key is usable.
  *
- * The declared range now starts at 0.1.1-rc.1, so only the newer spelling is
- * required. Both are still carried: the older one costs one member, and it is
- * what keeps a build mounted on a pre-0.1.1 Host from defeating that Host's
- * projection cache silently. Legion's
+ * The declared range uses the newer spelling. Both are still carried: the
+ * older one costs one member, and it is what keeps a build mounted on a
+ * pre-0.1.1 Host from defeating that Host's projection cache silently. Legion's
  * `view` is the identity, so one parser is both the state parser and the wire
  * parser and the two members share it. `wire` is deliberately absent: run
  * state is host-only, and no Legion surface reads it from a client snapshot.
  */
 export interface LegionProjectionDefinition {
   readonly key: typeof LEGION_RUN_PROJECTION_KEY
-  /** DSH 0.1.1-rc.1 and later: validates persisted state before it seeds a fold. */
+  /** Current Host contract: validates persisted state before it seeds a fold. */
   readonly stateSchema: ProjectionSchema<LegionProjectionState>
-  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8, below the declared floor: the same parser under its former name. */
+  /** Legacy pre-0.1.1 Host parser spelling. */
   readonly schema: ProjectionSchema<LegionProjectionState>
   readonly stateVersion: number
-  init(): LegionProjectionState
+  init(header: SessionHeader): LegionProjectionState
   apply(state: LegionProjectionState, event: SessionEvent): LegionProjectionState
-  /** DSH 0.1.0-rc.6 through 0.1.0-rc.8 only, below the declared floor; 0.1.1-rc.1 reads a client view from `wire`, which a host-only unit omits. */
+  /** Legacy pre-0.1.1 Host view; current hosts use optional `wire`. */
   view(state: LegionProjectionState): LegionProjectionState
 }
 

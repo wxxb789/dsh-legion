@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { defineConfig } from 'tsdown'
 
 /**
@@ -11,44 +13,33 @@ import { defineConfig } from 'tsdown'
  * exactly rather than approximating it.
  *
  * DSH's own preset for this lives at `packages/client/tsdown.client.ts` and is
- * not published, so the constants below are a hand-maintained mirror. They have
- * no compile-time link to upstream: a change to the module table or the wrapper
- * strings breaks the card at load time, not at build time. `tests/client-bundle.spec.ts`
- * pins every one of them so a local edit cannot drift silently.
+ * not published. The wrapper strings below remain an unavoidable wire-format
+ * mirror, while bare imports are discovered rather than copied from DSH's
+ * platform-module roster. `tests/client-bundle.spec.ts` executes the artifact
+ * against the Host seam so either kind of drift fails locally.
  */
 
-/** Must equal the package name: the loader validates the id it is handed. */
-const ID = 'dsh-legion'
+interface PackageManifest { readonly name?: unknown }
+
+const manifest = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as PackageManifest
+if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
+  throw new Error('client bundle package.json must declare a non-empty name')
+}
+
+/** Package identity comes from the same manifest the Host module registry reads. */
+const ID = manifest.name
 
 /**
- * Specifiers the Host's module table answers for every dynamic client bundle.
- * Mirrors `PLATFORM_MODULES` plus `PRELOADED_CLIENT_EXTERNALS` in
- * `packages/client/web/src/platform.ts`. Anything not listed here MUST inline:
- * a `require` the table cannot answer throws at load.
- *
- * DSH 0.1.0-rc.8 split the single upstream list in two and dropped three rows
- * this mirror used to carry: `dsh-client-web-react` (renamed to
- * `dsh-client-ui-renderer` and delisted), `dsh-client-ui-attachment` (now an
- * ordinary client plugin), and `dsh-client-schema-form` (deleted; schema
- * handling moved into `dsh-client-ui-settings`). It also replaced the exported
- * `CLIENT_EXTERNALS` constant and the hardcoded runtime-store exemption with a
- * per-package computation, so a bundle needing a row beyond this baseline now
- * declares it in `package.json` under `dsh.client.external`. Legion needs none:
- * it requires only the preloaded runtime store and the ui-primitives table row.
+ * Keep every bare runtime import as a loader request and bundle only local files.
+ * The artifact test supplies the Host platform table and therefore fails on any
+ * newly requested package the Host does not expose. This avoids copying the
+ * upstream platform-module roster into Legion, where it could drift silently.
  */
-export const CLIENT_EXTERNALS: readonly string[] = [
-  // PLATFORM_MODULES: shared into the frozen module table by the shell.
-  'react',
-  'react/jsx-runtime',
-  'react-dom',
-  'react-dom/client',
-  '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-ui-slots',
-  '@deepseek-ai/dsh-client-ui-primitives',
-  // PRELOADED_CLIENT_EXTERNALS: factories the parser registers before the shell
-  // starts, so no boot-graph edge is needed to reach them.
-  '@deepseek-ai/dsh-client-runtime/client',
-]
+function isClientExternal(id: string): boolean {
+  return !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !isAbsolute(id)
+}
 
 const MODE = process.env.NODE_ENV ?? 'production'
 
@@ -71,10 +62,12 @@ export default defineConfig({
   dts: false,
   sourcemap: true,
   clean: false,
-  external: [...CLIENT_EXTERNALS],
-  // tsdown auto-externalizes package dependencies. Anything not in the module
-  // table must inline instead, so the rule is the table list itself.
-  noExternal: (id: string) => (CLIENT_EXTERNALS.includes(id) ? undefined : true),
+  deps: {
+    neverBundle: isClientExternal,
+    // Counter tsdown's dependency defaults: relative/absolute local modules must
+    // inline, while every bare import remains visible to the loader-protocol test.
+    alwaysBundle: (id: string) => !isClientExternal(id),
+  },
   define: {
     'process.env.NODE_ENV': JSON.stringify(MODE),
     'import.meta.env.MODE': JSON.stringify(MODE),

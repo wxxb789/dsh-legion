@@ -86,7 +86,7 @@ describe('Cordis Loader composition', () => {
     expect(ctx.tools.schemas().map(schema => schema.name)).not.toContain('legion')
     ctx.subagents.registerProvider({
       name: 'spawn',
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       inheritsParentContext: false,
       async start() { throw new Error('not used by this composition test') },
       async prepareContinuable() { return {} },

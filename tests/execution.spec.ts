@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime, { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { compileCatalog } from '../src/compiler.ts'
 import { materializeConfig, type Config } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
-import { TestSessionProjections, TestTokenMeter } from './token-meter-test-service.ts'
+import { mountTestSessionQuery, TestSessionProjections, TestTokenMeter } from './token-meter-test-service.ts'
 
 const parentSession = Session.create(SessionId('strategy-parent'))
 const parent = { id: parentSession.id, session: parentSession } as unknown as Agent
@@ -75,12 +75,13 @@ function setup(
   new SessionStore(ctx)
   new TestSessionProjections(ctx)
   new TestTokenMeter(ctx)
+  mountTestSessionQuery(ctx)
   const starts: string[] = []
   const disposed: string[] = []
   let index = 0
   const provider: SubagentProvider = {
     name: 'spawn',
-    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
     inheritsParentContext: false,
     async start(request) {
       onStart?.()
@@ -116,7 +117,7 @@ function catalogs(authored: Config = config()) {
     providers: {
       spawn: {
         continuable: true,
-        capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       },
     },
   })
@@ -559,7 +560,7 @@ describe('bounded Strategy execution adapter', () => {
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         },
       },
     })
@@ -575,11 +576,11 @@ describe('bounded Strategy execution adapter', () => {
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         },
         unused: {
           continuable: false,
-          capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+          capabilities: NO_START_CAPABILITIES,
         },
       },
     })
@@ -613,7 +614,7 @@ describe('bounded Strategy execution adapter', () => {
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         },
       },
     })

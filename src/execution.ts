@@ -18,6 +18,7 @@ import type {
 import { CohortRunId, type CohortRunId as CohortRunIdType } from './identity.ts'
 import { deepFreeze } from './internal/value.ts'
 import {
+  canPublishRunReceipt,
   createRunReceipt,
   finishRunReceipt,
   observeRunReceiptParticipation,
@@ -25,6 +26,7 @@ import {
   setRunReceiptObservation,
   settleRunReceiptStage,
   summarizeRunReceipt,
+  type RunReceipt,
   type RunReceiptChildBinding,
   type RunReceiptStageStatus,
   type RunReceiptSummary,
@@ -438,13 +440,18 @@ export async function executeStrategyPlan(
     throw new Error('dsh-legion: Strategy Plan generation does not match execution snapshot')
   }
   const runId = CohortRunId(`team-run-${randomUUID()}`)
-  let receipt = publishRunReceipt(parent.session, createRunReceipt(plan, runId))
+  const publishReceiptEvent = canPublishRunReceipt(ctx)
+  const publishReceipt = (next: RunReceipt): RunReceipt => {
+    if (publishReceiptEvent) publishRunReceipt(parent.session, next)
+    return next
+  }
+  let receipt = publishReceipt(createRunReceipt(plan, runId))
   const participation = observeRunReceiptParticipation(
     ctx,
     parent.session.id,
     receipt.stages.map(stage => stage.id),
     (rows, tokenAccount) => {
-      receipt = publishRunReceipt(parent.session, setRunReceiptObservation(receipt, rows, tokenAccount))
+      receipt = publishReceipt(setRunReceiptObservation(receipt, rows, tokenAccount))
     },
   )
   const observeChild: ObserveChild = participation.trackChild.bind(participation)
@@ -453,11 +460,11 @@ export async function executeStrategyPlan(
     status: Exclude<RunReceiptStageStatus, 'pending'>,
   ): void => {
     participation.sample()
-    receipt = publishRunReceipt(parent.session, settleRunReceiptStage(receipt, stage, status))
+    receipt = publishReceipt(settleRunReceiptStage(receipt, stage, status))
   }
   const finishOutcome = async <Outcome extends CohortRunResult>(outcome: Outcome) => {
     await participation.finish()
-    receipt = publishRunReceipt(parent.session, finishRunReceipt(receipt, outcome.kind))
+    receipt = publishReceipt(finishRunReceipt(receipt, outcome.kind))
     return deepFreeze({ ...outcome, receipt: summarizeRunReceipt(receipt) })
   }
   const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)

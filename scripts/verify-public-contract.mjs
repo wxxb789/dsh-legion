@@ -29,11 +29,12 @@ const checks = [
   ['compatibilityPolicy.peerRanges', [...new Set(Object.entries(manifest.peerDependencies)
     .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
     .map(([, range]) => range))], [compatibilityPolicy.dshPeerRange]],
-  ['compatibilityPolicy.minimumDshVersion', compatibilityPolicy.minimumDshVersion, '0.1.1-rc.1'],
-  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, '0.1.1-rc.2'],
+  ['compatibilityPolicy.latestTestedDshVersion', compatibilityPolicy.latestTestedDshVersion, manifest.devDependencies['@deepseek-ai/dsh-agent']],
   ['compatibilityPolicy.assessedDshVersions', compatibilityPolicy.assessedDshVersions, [
-    compatibilityPolicy.minimumDshVersion,
-    compatibilityPolicy.latestTestedDshVersion,
+    ...new Set([
+      compatibilityPolicy.minimumDshVersion,
+      compatibilityPolicy.latestTestedDshVersion,
+    ]),
   ]],
   ['settingsNamespace', contract.settingsNamespace, legion.LEGION_SETTINGS_NAMESPACE],
   ['settingsServiceKey', contract.settingsServiceKey, legion.LEGION_SETTINGS_SERVICE_KEY],

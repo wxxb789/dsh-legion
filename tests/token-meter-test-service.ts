@@ -1,5 +1,6 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
 
 interface TestProjectionDefinition {
   readonly key: string
@@ -70,6 +71,13 @@ export class TestTokenMeter extends Service {
       totalTokens: 0,
       surfaceTokens: 0,
     })
+  }
+}
+
+/** Mount exact Session Query reads without opening the unused full-text index. */
+export function mountTestSessionQuery(ctx: Context): void {
+  if (ctx.get('sessionQuery') === undefined) {
+    new SqliteSessionQuery(ctx, { path: ':memory:', openAt: 'never' })
   }
 }
 

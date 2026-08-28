@@ -16,7 +16,7 @@ import { mountTestTokenAccounting } from './token-meter-test-service.ts'
 function provider(name = 'spawn'): SubagentProvider {
   return {
     name,
-    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
     inheritsParentContext: false,
     start: () => Promise.resolve({
       id: SessionId(`${name}-child`),

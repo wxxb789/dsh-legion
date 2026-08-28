@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import {
-  CallId,
+  ToolCallId,
   LlmAdapter,
   LlmError,
   LlmRuntime,
@@ -18,7 +18,7 @@ import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { emitAgentEvent, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime, { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
   SubagentDescendantListEntry,
@@ -28,6 +28,7 @@ import type {
 } from '@deepseek-ai/dsh-subagent'
 import * as legion from '../src/index.ts'
 import {
+  mountTestSessionQuery,
   mountTestTokenAccounting,
   TestSessionProjections,
   TestTokenMeter,
@@ -97,6 +98,7 @@ function provider(
   const result: SubagentProvider = {
     name,
     capabilities: options.capabilities ?? {
+      agentOptions: true,
       outputSchema: true,
       depthLimit: true,
       toolFilter: true,
@@ -150,6 +152,7 @@ function setTokenSample(
 async function mountAccountingServices(ctx: Context): Promise<void> {
   await ctx.plugin(SessionStore)
   await mountTestTokenAccounting(ctx)
+  mountTestSessionQuery(ctx)
 }
 
 async function setup(
@@ -175,7 +178,7 @@ function execute(
 ) {
   return ctx.tools.execute({
     signal: callSignal,
-    callId: CallId(`legion-${++callSequence}`),
+    callId: ToolCallId(`legion-${++callSequence}`),
     name: 'legion',
     arguments: args,
     ...agent === null ? {} : { agent },
@@ -438,6 +441,7 @@ describe('dsh-legion', () => {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SubagentRuntime)
+      vi.spyOn(ctx.subagents, 'listDescendants').mockResolvedValue([])
       ctx.subagents.registerProvider(capture)
       await ctx.plugin(legion, {
         configVersion: 2,
@@ -560,7 +564,7 @@ describe('dsh-legion', () => {
     }, { totalTokens: 400, surfaceTokens: 400 })
     ctx.subagents.registerProvider({
       name: 'spawn',
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       inheritsParentContext: false,
       async start() {
         const index = starts++
@@ -1291,9 +1295,9 @@ describe('dsh-legion', () => {
     expect(rendered(result)).toContain('started Legion Specialist deep as subagent durable-child')
   })
 
-  it('lets the continuation manager own depth, persona, and tool filtering', async () => {
+  it('passes Agent options, depth, persona, and tool filtering through an advertising continuable provider', async () => {
     const continuable = provider('continuable-only', {
-      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       continuable: true,
     })
     const ctx = await setup({
@@ -1301,6 +1305,7 @@ describe('dsh-legion', () => {
         managed: {
           description: 'Continuable manager-owned composition.',
           subagentProvider: 'continuable-only',
+          agentOptions: { model: 'managed-model' },
           persona: 'Use the child-scoped persona.',
           toolFilter: { deny: ['write'] },
           maxDepth: 2,
@@ -1323,6 +1328,7 @@ describe('dsh-legion', () => {
     expect(start).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'continuable-only',
       request: expect.objectContaining({
+        agentOptions: { model: 'managed-model' },
         persona: 'Use the child-scoped persona.',
         toolFilter: { deny: ['write'] },
         maxDepth: 2,
@@ -1332,7 +1338,7 @@ describe('dsh-legion', () => {
 
   it('fails loud when a foreground profile requests a capability its provider lacks', async () => {
     const external = provider('external', {
-      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      capabilities: NO_START_CAPABILITIES,
       continuable: false,
     })
     await expect(setup({
@@ -1385,7 +1391,7 @@ describe('dsh-legion', () => {
     let disposed = false
     const cancelProvider: SubagentProvider = {
       name: 'cancel-aware',
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       inheritsParentContext: false,
       async start(request) {
         started = true

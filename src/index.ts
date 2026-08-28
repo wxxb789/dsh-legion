@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
-import type {} from '@deepseek-ai/dsh-system-prompt'
+import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
 import {
   Config,
   materializeConfig,
@@ -325,7 +325,9 @@ export const DELEGATION_INJECT = Object.freeze([
   'systemPrompt',
 ] as const)
 
-const PROMPT_ORDER = 116.75
+const PROMPT_ORDER = (
+  FIRST_PARTY_SECTION_ORDER.TOOL_SUBAGENT + FIRST_PARTY_SECTION_ORDER.TOOL_REPORT
+) / 2
 
 interface SpecialistToolArgs {
   readonly kind: 'specialist'
@@ -494,6 +496,11 @@ function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
       )
     }
     return provider
+  }
+  if (plan.agentOptions !== undefined && !provider.capabilities.agentOptions) {
+    throw new Error(
+      `dsh-legion: profile "${plan.specialist}" requires Agent option overrides but provider "${provider.name}" does not support them`,
+    )
   }
   if (plan.maxDepth !== undefined && !provider.capabilities.depthLimit) {
     throw new Error(
@@ -1085,7 +1092,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     return { config: resolved, resources }
   }
 
-  // Legion is a development coordinator, and Code Mode is what makes coordination
+  // Legion is a development coordinator, and PTC mode is what makes coordination
   // efficient: one program starts several delegations together and reduces their
   // results without a model round trip per child. The TypeScript runtime that
   // mode needs is host-plane — a preset can select the presentation but cannot
@@ -1102,7 +1109,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
       'dsh-legion: no ctx.codeRuntime in this deployment, so delegation runs in the native '
       + 'tool presentation. Install @deepseek-ai/dsh-code-runtime-worker-thread and add '
       + "'- id: code-runtime' / \"name: '@deepseek-ai/dsh-code-runtime-worker-thread'\" to the "
-      + 'Host composition to enable Code Mode (PTC mode). The shipped dsh bundles compose it already.',
+      + 'Host composition to enable PTC mode. The shipped dsh bundles compose it already.',
     )
   }
 

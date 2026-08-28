@@ -1,8 +1,8 @@
 {
   "schemaVersion": "dsh-legion-compatibility-policy-v1",
-  "dshPeerRange": ">=0.1.1-rc.1 <0.2.0",
-  "minimumDshVersion": "0.1.1-rc.1",
-  "latestTestedDshVersion": "0.1.1-rc.2",
+  "dshPeerRange": ">=0.1.2-alpha.1 <0.2.0",
+  "minimumDshVersion": "0.1.2-alpha.1",
+  "latestTestedDshVersion": "0.1.2-alpha.1",
   "dshPackageClosure": [
     "dsh-agent",
     "dsh-agent-loop",
@@ -16,24 +16,30 @@
     "dsh-session",
     "dsh-session-persistence",
     "dsh-session-persistence-jsonl",
+    "dsh-session-projection",
+    "dsh-session-query",
+    "dsh-session-query-sqlite",
+    "dsh-session-title",
     "dsh-settings",
     "dsh-subagent",
     "dsh-subagent-in-process-driver",
     "dsh-subagent-spawn-in-process",
     "dsh-system-prompt",
     "dsh-timeout",
+    "dsh-tool-todo",
     "dsh-tools",
     "dsh-typert-protocol",
-    "dsh-user-approval"
+    "dsh-user-approval",
+    "dsh-util-crypto"
   ],
   "packageVersion": "1.2.0",
-  "assessedDshVersions": ["0.1.1-rc.1", "0.1.1-rc.2"],
+  "assessedDshVersions": ["0.1.2-alpha.1"],
   "hostCapabilities": {
     "ephemeralProfileAndStrategy": "supported",
     "journalContractAndPureReplay": "supported",
     "liveSettingsReconfiguration": "capability-detected-optional",
     "durableMutation": "unavailable-fail-closed",
-    "reason": "No DSH release through 0.1.1-rc.2 provides the atomic run coordination Host service durable mutation requires; the Agent Teams packages carry their own durable mailbox and task DAG but stay private and unpublished. 0.1.1-rc.2 changes no type Legion imports and no contract it reaches structurally: the ctx.sessionProjections registration contract 0.1.1-rc.1 retyped is unchanged in rc.2, and Legion satisfies it in both spellings."
+    "reason": "DSH 0.1.2-alpha.1 still provides no atomic run coordination Host service for durable mutation, and its persisted-event vocabulary has no registration seam for out-of-repository legion/* events. Journal activation therefore remains fail-closed. Ephemeral Profiles and Strategies remain supported; Run Receipt events are published only when no persistence backend can later reopen the Session, or when the Host vocabulary explicitly recognizes the event."
   },
   "previousMinorCompatibility": [
     "config-v2-with-durable-fields-omitted",

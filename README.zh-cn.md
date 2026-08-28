@@ -471,19 +471,19 @@ Prompt Fragment 是显式部署资源，不是任意 Workspace 文件读取。Le
 
 Preset、Catalog Layer、Plugin Package、Resource Root 和 Prompt Fragment 都属于受信的部署配置。Tool Filter 与路径约束用于受信部署中的策略和完整性控制，**不是**隔离恶意 Preset 或不可信 Plugin 的安全沙箱。参见 [SECURITY.md](SECURITY.md)。
 
-### Tool Presentation（Code Mode / PTC 模式）
+### Tool Presentation（PTC mode）
 
-**随包发布的 Preset 运行在 Code Mode。** 模型看到的是全部工具 Schema（`native`）、只有 `run_code` 加一份生成的 TypeScript SDK（`code`——Web 客户端将其标注为 **PTC 模式**），还是两者兼有，由官方 `@deepseek-ai/dsh-agent-tool-presentation` 行决定，未声明时回落到部署的 `dsh-tools` 默认值。协调编排正是 Code Mode 最擅长的工作：一段 `run_code` 程序可以同时发起多个委派、把它们当作值来等待、并在不为每个子 Agent 各走一次模型往返的前提下归并结果——Legion 注入的那句 guidance（"start independent delegations together"）在 `native` 下只是建议，在这里就是一个普通的 `Promise.all`。
+**随包发布的 Preset 运行在 PTC mode。** 模型看到的是全部工具 Schema（`native`）、只有 `run_code` 加一份生成的 TypeScript SDK（`ptc`），还是两者兼有，由官方 `@deepseek-ai/dsh-agent-tool-presentation` 行决定，未声明时回落到部署的 `dsh-tools` 默认值。协调编排正是 PTC mode 最擅长的工作：一段 `run_code` 程序可以同时发起多个委派、把它们当作值来等待、并在不为每个子 Agent 各走一次模型往返的前提下归并结果——Legion 注入的那句 guidance（"start independent delegations together"）在 `native` 下只是建议，在这里就是一个普通的 `Promise.all`。
 
-Legion 是通过**组合那一行**来选择它的，而不是重新实现，自身源码不持有该机制的任何部分——因此它始终运行当前的官方 Code Mode，没有任何版本可以 pin 住或落后。这里刻意不提供 Legion 配置项：插件级开关会与官方行争夺同一个决定。
+Legion 是通过**组合那一行**来选择它的，而不是重新实现，自身源码不持有该机制的任何部分——因此它始终运行当前的官方 PTC mode，没有任何版本可以 pin 住或落后。这里刻意不提供 Legion 配置项：插件级开关会与官方行争夺同一个决定。
 
 被委派的子 Agent 继承同一 Presentation。`dsh-agent-presets` 会把子 Agent 的 Scope 重新挂到父 Agent 所在 Preset 的 standing scope 上，注册表沿这条链解析模式——所以 PTC 模式协调者的子 Agent 自身也在 PTC 模式，SDK 段按该子 Agent 自己的可见工具重新生成。
 
-Specialist 的 `toolFilter` 在 Code Mode 下含义不变。SDK binding table 由调用方 Agent 的**可见**集合构建，因此被拒绝的能力不会出现在生成的 SDK 中，从 `run_code` 内部按名调用它仍然解析为 `UNKNOWN_TOOL`：`review` Specialist 对 `write`/`edit` 的拒绝在两种 Presentation 下都成立。有两条边界属于 Host 的设计而非 Legion——`run_code` 本身永远不能被拒绝，且 Filter 只约束子 Agent**继承**到的表面，不约束该子 Agent 自身 Scope 注册的工具（它的 report 与结构化输出工具）。
+Specialist 的 `toolFilter` 在 PTC mode 下含义不变。SDK binding table 由调用方 Agent 的**可见**集合构建，因此被拒绝的能力不会出现在生成的 SDK 中，从 `run_code` 内部按名调用它仍然解析为 `UNKNOWN_TOOL`：`review` Specialist 对 `write`/`edit` 的拒绝在两种 Presentation 下都成立。有两条边界属于 Host 的设计而非 Legion——`run_code` 本身永远不能被拒绝，且 Filter 只约束子 Agent**继承**到的表面，不约束该子 Agent 自身 Scope 注册的工具（它的 report 与结构化输出工具）。
 
-你走哪条安装路径，决定这一行放在哪里。随包 Preset（[`presets/legion`](presets/legion)）拥有完整 composition，因此携带该行。追加式 Fragment（[`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)）不携带，因为一个 composition 只选择一种 Presentation，第二次声明会被拒绝而非合并——把它追加到官方 `code` Preset 就得到 PTC 模式，追加到 `standard` 就是 `native`，Legion 两者都跟随。
+你走哪条安装路径，决定这一行放在哪里。随包 Preset（[`presets/legion`](presets/legion)）拥有完整 composition，因此携带该行。追加式 Fragment（[`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)）不携带，因为一个 composition 只选择一种 Presentation，第二次声明会被拒绝而非合并——把它追加到官方 `ptc` Preset 就得到 PTC 模式，追加到 `standard` 就是 `native`，Legion 两者都跟随。
 
-该行会等待宿主的 `codeRuntime` 而非假定其存在，因此未组装 TypeScript 运行时的部署会在**挂载时**失败并指名该行，而不是等到第一次请求。这应当读作*去装运行时*，而不是*把 Code Mode 关掉*：Legion 是面向开发的协调者，这正是它为之设计的模式。运行时属于 host plane——Preset 只能选择 Presentation，永远无法自带运行时——所以修复位置在你的 **Host** composition（`cordis.yml`）：
+该行会等待宿主的 `codeRuntime` 而非假定其存在，因此未组装 TypeScript 运行时的部署会在**挂载时**失败并指名该行，而不是等到第一次请求。这应当读作*去装运行时*，而不是*把 PTC mode 关掉*：Legion 是面向开发的协调者，这正是它为之设计的模式。运行时属于 host plane——Preset 只能选择 Presentation，永远无法自带运行时——所以修复位置在你的 **Host** composition（`cordis.yml`）：
 
 ~~~yaml
 - id: code-runtime
@@ -553,7 +553,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ### 为什么 Legion 工具会消失？
 
-只有当 Specialist 配置的后端确实能满足该 Specialist 的策略时，它才会被发布：包括它默认使用的执行模式，以及工具过滤、Persona、深度和结构化输出。Subagent Provider 未注册会使其失活；已注册但能力不足的后端同样会——例如该后端无法提供 `findings-v1` Specialist 所需的结构化输出。如果没有任何 Specialist 满足条件，工具会被撤销、提示渲染为空；缺失的能力出现后二者都会恢复。还应确认 Legion 安装在正确的 DSH Host `profile` 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
+只有当 Specialist 配置的后端确实能满足该 Specialist 的策略时，它才会被发布：包括它默认使用的执行模式，以及 Agent option override、工具过滤、Persona、深度和结构化输出。Subagent Provider 未注册会使其失活；已注册但能力不足的后端同样会——例如该后端无法提供 `findings-v1` Specialist 所需的结构化输出。如果没有任何 Specialist 满足条件，工具会被撤销、提示渲染为空；缺失的能力出现后二者都会恢复。还应确认 Legion 安装在正确的 DSH Host `profile` 中，并且新 Session 使用了包含 Legion 配置行的 Preset。
 
 ### 可以直接编辑 DSH 自带的 `standard` Preset 吗？
 
@@ -561,7 +561,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 兼容性、开发与发布
 
-Package 要求 Node.js `^22.19.0 || >=24.0.0`，并要求 DSH Peer 版本位于 `>=0.1.1-rc.1 <0.2.0`。Legion 跟随当前 Host 发布线：[`contracts/compatibility.json`](contracts/compatibility.json) 中的 Peer range、声明的最低版本、最新测试版本与已评估版本列表一起推进，任何一项都不会单独推进。该 range 锚定在 `0.1.1` 的 prerelease comparator 上，因为 semver 只在 comparator 与 prerelease 版本共享同一 `major.minor.patch` 时才接纳该 prerelease；因此未来每条 `0.1.N-rc.x` Host 线都必须在完成评估后才进入 range。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
+Package 要求 Node.js `^22.19.0 || >=24.0.0`，DSH Peer 范围以 [`contracts/compatibility.json`](contracts/compatibility.json) 为准。Legion 只从这份策略跟踪已评估的 Host 版本线：package Peer range、声明的最低版本、最新测试版本、CI channel 与 packed verifier 都会与其核对，而不是复制版本字面量。CI 覆盖 Windows、Ubuntu、打包后的 DSH Consumer、公开契约、协议 Benchmark 和可复现 Package。
 
 ~~~bash
 pnpm install --frozen-lockfile
@@ -587,7 +587,7 @@ pnpm run check
 
 Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式启用后，Strategy caller 通过 `execution: { durability: 'journal' }` 选择 journal mode；省略该字段仍走 ephemeral executor。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 6。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
 
-本 package 不提供 DSH persistence、projection、atomic coordination、global admission 或 child-receipt Host service。目前也没有任何构建绑定 durable Strategy activation adapter，因此 journal mode 在任何 Host 上都无法启动：`execution` 参数不会出现在模型可见的 Schema 中；以编程方式发起的 journal 请求则 fail closed——在 0.1.1-rc.2 这类版本上给出缺失的 Host capability 诊断码，在能力完备的 Host 上给出 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Session flush 与 projection registry 都是 DSH 的常规服务，base 组合已经挂载；真正缺的是原子 run coordination service——已发布的 DSH 版本都没有提供，因此 production durable mutation 仍不可用；此时启用 Durable Run 会在 mutation 前以稳定 capability diagnostic fail closed。Pure contract、validation、replay 与 inspect 仍可使用。参见 [Durable Strategy Runs](docs/durable-runs.md) 与 [Journal Contract v1](docs/journal-contract-v1.md)。
+本 package 不提供 DSH persistence、projection、Session Query、atomic coordination、global admission 或 child-receipt Host service。DSH 0.1.2-alpha.1 仍未提供原子 run coordination service，并且其 persistence reader 没有注册仓库外 `legion/*` event 的 seam，因此 production durable mutation 会在 append 前 fail closed。目前也没有构建绑定 durable Strategy activation adapter，所以 `execution` 不会出现在模型可见 Schema 中；编程方式发起 journal 请求时会返回缺失的 Host capability 诊断码或 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Pure contract、validation、replay 与 inspect 仍可使用。Ephemeral Strategy Run Receipt 通过 `ctx.sessionQuery` 完整发现 child；当 Host 挂载 persistence backend 时，Legion 不会 append Host 无法重新打开的 `legion/run-receipt` event，从而避免写出不可恢复的 Session。参见 [Durable Strategy Runs](docs/durable-runs.md)、[Journal Contract v1](docs/journal-contract-v1.md) 与 [DSH 0.1.2-alpha.1 审计](docs/notes/dsh-0.1.2-alpha.1-upgrade.md)。
 
 ## 相关项目
 

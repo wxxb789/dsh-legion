@@ -14,9 +14,23 @@ const compatibilityPolicy = JSON.parse(await readFile(
   join(projectRoot, 'contracts', 'compatibility.json'),
   'utf8',
 ))
-// The fallback is the declared minimum rather than a second literal, so the
-// packed gate cannot target a line the compatibility policy no longer claims.
-const dshVersionSpec = process.env.DSH_VERSION ?? compatibilityPolicy.minimumDshVersion
+const compatibilityChannels = {
+  minimum: compatibilityPolicy.minimumDshVersion,
+  'latest-tested': compatibilityPolicy.latestTestedDshVersion,
+  'peer-range': compatibilityPolicy.dshPeerRange,
+}
+const requestedChannel = process.env.DSH_VERSION_CHANNEL
+if (process.env.DSH_VERSION !== undefined && requestedChannel !== undefined) {
+  throw new Error('DSH_VERSION and DSH_VERSION_CHANNEL cannot be combined')
+}
+if (requestedChannel !== undefined && !Object.hasOwn(compatibilityChannels, requestedChannel)) {
+  throw new Error(`unknown DSH compatibility channel ${JSON.stringify(requestedChannel)}`)
+}
+// Every named channel comes from the compatibility contract, so CI never carries
+// a second version literal that can drift from the package claim.
+const dshVersionSpec = process.env.DSH_VERSION
+  ?? compatibilityChannels[requestedChannel ?? 'minimum']
+const dshRegistry = (process.env.DSH_REGISTRY ?? 'https://registry.npmjs.org').replace(/\/+$/, '')
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandboxRoot))
@@ -46,7 +60,7 @@ const resolveDshVersion = (specifier) => {
     `@deepseek-ai/dsh-agent@${specifier}`,
     'version',
     '--json',
-    '--registry=https://registry.npmjs.org',
+    `--registry=${dshRegistry}`,
   ], { encoding: 'utf8' })
   if (result.error) throw result.error
   if (result.status !== 0) {
@@ -153,6 +167,8 @@ try {
     '@deepseek-ai/dsh-llm',
     '@deepseek-ai/dsh-session',
     '@deepseek-ai/dsh-session-persistence-jsonl',
+    '@deepseek-ai/dsh-session-query',
+    '@deepseek-ai/dsh-session-query-sqlite',
     '@deepseek-ai/dsh-subagent',
     '@deepseek-ai/dsh-subagent-spawn-in-process',
     '@deepseek-ai/dsh-system-prompt',
@@ -190,7 +206,7 @@ try {
     run('pnpm', [
       'add',
       '--save-exact',
-      '--registry=https://registry.npmjs.org',
+      `--registry=${dshRegistry}`,
       tarball,
       '@deepseek-ai/cordis@4.0.1',
       ...dshPackages,

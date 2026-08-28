@@ -7,26 +7,30 @@ import { spawnSync } from 'node:child_process'
 import { load } from 'js-yaml'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
-const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version as string
-const COMPATIBILITY = JSON.parse(
-  readFileSync(join(ROOT, 'contracts/compatibility.json'), 'utf8'),
-) as { dshPeerRange: string; minimumDshVersion: string; latestTestedDshVersion: string }
+const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
+  version: string
+  dependencies: Record<string, string>
+  devDependencies: Record<string, string>
+}
+const VERSION = MANIFEST.version
 
 describe('reproducible CI and release contracts', () => {
   it('commits a pnpm v9 lockfile for every direct dependency', () => {
     const lock = load(readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')) as {
       lockfileVersion?: string
       importers?: Record<string, {
-        dependencies?: Record<string, unknown>
-        devDependencies?: Record<string, unknown>
+        dependencies?: Record<string, { specifier?: string }>
+        devDependencies?: Record<string, { specifier?: string }>
       }>
     }
     expect(lock.lockfileVersion).toBe('9.0')
     const importer = lock.importers?.['.']
-    expect(importer?.dependencies).toHaveProperty('@deepseek-ai/schemastery')
-    expect(importer?.dependencies).toHaveProperty('js-yaml')
-    expect(importer?.devDependencies).toHaveProperty('@deepseek-ai/dsh-agent')
-    expect(importer?.devDependencies).toHaveProperty('typescript')
+    for (const [name, specifier] of Object.entries(MANIFEST.dependencies)) {
+      expect(importer?.dependencies?.[name]?.specifier, name).toBe(specifier)
+    }
+    for (const [name, specifier] of Object.entries(MANIFEST.devDependencies)) {
+      expect(importer?.devDependencies?.[name]?.specifier, name).toBe(specifier)
+    }
   })
 
   it('pins lower-bound Windows quality and packed DSH compatibility matrices', () => {
@@ -42,11 +46,10 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('pnpm run test:recovery')
     expect(workflow).toContain('channel: minimum')
     expect(workflow).toContain('channel: latest-tested')
-    // The packed matrix pins exact versions, and both must be the versions the
-    // compatibility policy claims were assessed — a policy bump that leaves the
-    // matrix behind would publish an untested claim.
-    expect(workflow).toContain(`version: ${COMPATIBILITY.minimumDshVersion}`)
-    expect(workflow).toContain(`version: ${COMPATIBILITY.latestTestedDshVersion}`)
+    // Version values are resolved from the compatibility contract at runtime;
+    // the workflow carries only stable channel names, never a duplicate literal.
+    expect(workflow).toContain('DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}')
+    expect(workflow).not.toContain('matrix.dsh.version')
     expect(workflow).not.toContain('>=0.1.0-rc.6 <0.2.0')
     expect(workflow).toContain('pnpm run test:packed-delegation')
     expect(workflow).toContain('test:packed-delegation-supplied')
@@ -56,9 +59,10 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('actions/upload-artifact@')
     const canary = readFileSync(join(ROOT, '.github/workflows/compatibility-canary.yml'), 'utf8')
     expect(() => load(canary)).not.toThrow()
-    // The rolling canary resolves the highest DSH the declared peer range
-    // admits, so it must carry that exact range and not a stale copy of it.
-    expect(canary).toContain(`DSH_VERSION: '${COMPATIBILITY.dshPeerRange}'`)
+    // The rolling canary selects the peer-range channel; the packed verifier
+    // reads the exact range from the compatibility contract.
+    expect(canary).toContain('DSH_VERSION_CHANNEL: peer-range')
+    expect(canary).not.toContain('DSH_VERSION:')
     expect(canary).toContain('compatibility-rolling-compatible-24.19.0')
     for (const name of [
       'ci.yml', 'compatibility-canary.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml',
@@ -77,6 +81,8 @@ describe('reproducible CI and release contracts', () => {
     expect(script).toContain('const dshVersion = resolveDshVersion(dshVersionSpec)')
     expect(script).toContain('].map(name => `${name}@${dshVersion}`)')
     expect(script).toContain("'@deepseek-ai/dsh-agent-loop-testkit'")
+    expect(script).toContain("'@deepseek-ai/dsh-session-query'")
+    expect(script).toContain("'@deepseek-ai/dsh-session-query-sqlite'")
     expect(script).toContain("'@deepseek-ai/dsh-subagent-spawn-in-process'")
     const consumer = readFileSync(join(ROOT, 'scripts/packed-delegation-consumer.mjs'), 'utf8')
     expect(consumer).toContain('configVersion: 2')

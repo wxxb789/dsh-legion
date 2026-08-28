@@ -314,8 +314,8 @@
 
 # ── presentation ────────────────────────────────────────────────────────────
 #
-# Code Mode for this preset — the Web client labels it PTC mode. Coordination is
-# exactly the work Code Mode is best at: one run_code program starts several
+# PTC mode for this preset — the Web client labels it PTC mode. Coordination is
+# exactly the work PTC mode is best at: one run_code program starts several
 # delegations together, waits on them as values, and reduces their results
 # without a model round trip per child. The guidance the legion tool injects
 # ("start independent delegations together") is a suggestion under native and an
@@ -340,7 +340,7 @@
 # deployment that composes no TypeScript runtime fails this preset at mount,
 # naming this id, instead of at the first request.
 #
-# Treat that failure as "install the runtime", not as "turn Code Mode off".
+# Treat that failure as "install the runtime", not as "turn PTC mode off".
 # Legion is a development coordinator and this is the mode it is built for; the
 # runtime is host-plane, so a preset can select the presentation but can never
 # supply it. Both shipping bundles compose one already, so this only comes up on
@@ -357,4 +357,4 @@
 - id: tool-presentation
   name: '@deepseek-ai/dsh-agent-tool-presentation'
   config:
-    mode: code
+    mode: ptc

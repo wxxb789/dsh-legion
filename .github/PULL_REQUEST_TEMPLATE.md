@@ -8,7 +8,7 @@
 
 ## Compatibility impact
 
-<!-- Impact for the supported DSH peer range (>=0.1.1-rc.1 <0.2.0) and for existing
+<!-- Impact for the DSH peer range declared in contracts/compatibility.json and for existing
      Legion configuration. Call out any breaking change to public contracts,
      configuration keys, catalog entries, or result contracts. -->
 

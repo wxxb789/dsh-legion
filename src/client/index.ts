@@ -11,10 +11,12 @@
  * runtime instance or require a specifier the Host's frozen module table cannot
  * answer — so nothing here is borrowed from the cards DSH ships.
  */
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { ClientContext, SettingsScope, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 // Module scope: the loader claims plugin styles as soon as this factory
 // returns, so the tag must exist by then.
@@ -24,7 +26,7 @@ import {
   LEGION_RUN_RECEIPT_OVERLAY_ID,
   LEGION_RUN_RECEIPT_OVERLAY_SLOT,
   RunReceiptOverlay,
-  runReceiptOverlayStore,
+  createRunReceiptOverlayStore,
 } from './RunReceiptOverlay.ts'
 import {
   SettingsForm, booleanField, numberField, textField,
@@ -37,7 +39,7 @@ export {
   LEGION_RUN_RECEIPT_OVERLAY_SLOT,
   LEGION_RUN_RECEIPT_PROJECTION_KEY,
   RunReceiptOverlay,
-  runReceiptOverlayStore,
+  createRunReceiptOverlayStore,
 } from './RunReceiptOverlay.ts'
 export type { RunReceiptOverlayProps, RunReceiptOverlayState } from './RunReceiptOverlay.ts'
 export type { FieldSpec, FieldState, FormActions, FormShell } from './settings-form.ts'
@@ -134,7 +136,8 @@ export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope
  * Mount Legion's settings card.
  * @param ctx - the browser plugin context.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
+  const receiptStore = createRunReceiptOverlayStore()
   const controller = new LegionCardController(
     ctx.settingsScope.bind<LegionCardSection>({ namespace: LEGION_NAMESPACE }),
   )
@@ -152,6 +155,6 @@ export function apply(ctx: ClientContext): void {
     id: LEGION_RUN_RECEIPT_OVERLAY_ID,
     order: 100,
     locale: LEGION_LOCALE_NS,
-    store: runReceiptOverlayStore,
+    store: receiptStore,
   }, RunReceiptOverlay))
 }

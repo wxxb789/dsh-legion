@@ -54,6 +54,7 @@ describe('profile-local package distribution', () => {
     await ctx.plugin(AgentPresets, {
       default: 'legion-resolution',
       roots: [{ path: presetRoot, trust: 'user' }],
+      includeShippedRoot: false,
       includeUserRoot: false,
     })
 

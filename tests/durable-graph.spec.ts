@@ -30,7 +30,7 @@ function compile(stages: readonly Record<string, unknown>[], planVersion = PlanV
       },
     },
   })
-  const profiles = compileCatalog(config, { providers: { spawn: { continuable: true, capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true } } } })
+  const profiles = compileCatalog(config, { providers: { spawn: { continuable: true, capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true } } } })
   const orchestration = compileOrchestrationCatalog(profiles)
   const catalogErrors = orchestration.diagnostics.filter(item => item.severity === 'error')
   if (catalogErrors.length > 0) throw new Error(catalogErrors.map(item => item.message).join('; '))

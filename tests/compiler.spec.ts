@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type { Config } from '../src/config.ts'
 import { compileCatalog, compileDelegationPlan, type RuntimeSnapshot } from '../src/compiler.ts'
 import { createResourceSnapshot, promptContentDigest } from '../src/resources.ts'
@@ -29,7 +30,7 @@ const base: Config = {
 const spawn: RuntimeSnapshot = {
   providers: {
     spawn: {
-      capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       continuable: true,
     },
   },
@@ -150,7 +151,7 @@ describe('compileCatalog', () => {
     const catalog = compileCatalog(base, {
       providers: {
         spawn: {
-          capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+          capabilities: NO_START_CAPABILITIES,
           continuable: true,
         },
       },
@@ -165,6 +166,30 @@ describe('compileCatalog', () => {
     ])
   })
 
+  it('rejects profiles whose provider cannot honor Agent option overrides', () => {
+    const unsupported: RuntimeSnapshot = {
+      providers: {
+        spawn: {
+          capabilities: { agentOptions: false, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          continuable: true,
+        },
+      },
+    }
+    for (const override of [
+      { agentOptions: { provider: 'models', model: 'fast' } },
+      { routes: [{ id: 'exact', provider: 'models', model: 'fast' }] },
+    ] as const) {
+      const profile = { ...base.profiles.quick!, ...override, defaultRunInBackground: false }
+      const catalog = compileCatalog({ ...base, profiles: { quick: profile }, defaultProfile: 'quick' }, unsupported)
+      expect(catalog.activeSpecialists.quick).toBeUndefined()
+      expect(catalog.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'PROFILE_AGENT_OPTIONS_UNSUPPORTED',
+        severity: 'error',
+        specialist: 'quick',
+      }))
+    }
+  })
+
   it('rejects an invocation mode not supported by the provider snapshot', () => {
     const catalog = compileCatalog({
       ...base,
@@ -173,7 +198,7 @@ describe('compileCatalog', () => {
     }, {
       providers: {
         spawn: {
-          capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+          capabilities: NO_START_CAPABILITIES,
           continuable: true,
         },
       },
@@ -347,7 +372,7 @@ describe('compileCatalog', () => {
       providers: {
         spawn: {
           continuable: false,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
         },
       },
     }, resources)
@@ -366,7 +391,7 @@ describe('compileCatalog', () => {
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
         },
       },
     }, resources)
@@ -420,7 +445,7 @@ describe('compileCatalog', () => {
       providers: {
         spawn: {
           continuable: false,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: false },
         },
       },
     })
@@ -435,7 +460,7 @@ describe('compileCatalog', () => {
     const second = compileCatalog(base, {
       providers: {
         spawn: {
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
           continuable: false,
         },
       },

@@ -59,10 +59,25 @@ providers:
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: false, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         },
       },
     })
+
+    const explicit = parseProviderSnapshotDocument('providers.yml', `
+version: 1
+kind: legion-provider-snapshot
+providers:
+  spawn:
+    continuable: true
+    capabilities:
+      agentOptions: true
+      outputSchema: true
+      depthLimit: true
+      toolFilter: true
+      persona: true
+`)
+    expect(explicit.providers.spawn?.capabilities.agentOptions).toBe(true)
   })
 
   it('rejects unsupported formats, malformed documents, and invalid schemas with typed codes', () => {

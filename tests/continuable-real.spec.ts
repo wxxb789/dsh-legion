@@ -8,7 +8,7 @@ import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import {
-  CallId,
+  ToolCallId,
   LlmAdapter,
   type GenerateOptions,
   type LlmResolvedModelInfo,
@@ -81,7 +81,7 @@ describe('real DSH continuation manager integration', () => {
 
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: CallId('legion-real-continuable'),
+        callId: ToolCallId('legion-real-continuable'),
         name: 'legion',
         arguments: {
           description: 'real child',

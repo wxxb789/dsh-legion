@@ -43,7 +43,8 @@ describe('published package contract', () => {
       await readFile(resolve(ROOT, 'package.json'), 'utf8'),
     ) as PackageManifest
     expect(manifest.files).toEqual(expect.arrayContaining([
-      'lib', 'cordis.patch.yml', 'examples', 'presets', 'README.md', 'LICENSE',
+      'lib', 'cordis.patch.yml', 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md',
+      'examples', 'presets', 'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
     expect(manifest.exports).toMatchObject({
@@ -53,8 +54,11 @@ describe('published package contract', () => {
     })
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
+    const compatibility = JSON.parse(
+      await readFile(resolve(ROOT, 'contracts/compatibility.json'), 'utf8'),
+    ) as { dshPeerRange: string }
     expect(manifest.peerDependencies?.['@deepseek-ai/dsh-agent'])
-      .toBe('>=0.1.1-rc.1 <0.2.0')
+      .toBe(compatibility.dshPeerRange)
     expect(manifest.scripts?.['test:packed-delegation'])
       .toBe('node scripts/verify-packed-delegation.mjs')
     await Promise.all([
@@ -79,6 +83,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'contracts/v1.json')),
       access(resolve(ROOT, 'contracts/compatibility.json')),
       access(resolve(ROOT, 'contracts/journal-v1.json')),
+      access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md')),
       access(resolve(ROOT, 'examples/durable-stair-step.config.yml')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))

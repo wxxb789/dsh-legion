@@ -6,6 +6,7 @@ providers:
   spawn:
     continuable: true
     capabilities:
+      agentOptions: true
       outputSchema: true
       depthLimit: true
       toolFilter: true
@@ -14,6 +15,7 @@ providers:
   fork:
     continuable: true
     capabilities:
+      agentOptions: true
       outputSchema: true
       depthLimit: true
       toolFilter: true
@@ -22,6 +24,7 @@ providers:
   codex:
     continuable: false
     capabilities:
+      agentOptions: false
       outputSchema: false
       depthLimit: false
       toolFilter: false

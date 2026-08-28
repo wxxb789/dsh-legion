@@ -5,7 +5,7 @@ that checkout unless it names a Legion path.
 
 ## The question
 
-"Make sure the plugin always inherits the latest official Code Mode (shown as PTC mode)."
+"Make sure the plugin always inherits the latest official PTC mode."
 
 Two things have to be true for that to hold: Legion must own no copy of the mechanism, and its
 delegated children must land in the same presentation as their coordinator. Both are true today.
@@ -26,12 +26,12 @@ a separate mechanism: `packages/client/ui-agent-preset/src/client/locales.ts:40`
   deployment default (`:900-911`).
 - The official row that carries it into a preset is
   `@deepseek-ai/dsh-agent-tool-presentation` (`packages/core/agent-tool-presentation/src/index.ts`).
-  A `native` row applies immediately (`:63-66`); a code row waits for `ctx.codeRuntime` (`:69-71`),
-  so a preset selecting Code Mode on a deployment that composes no TypeScript runtime fails **at
+  A `native` row applies immediately (`:63-66`); a `ptc` row waits for `ctx.codeRuntime` (`:69-71`),
+  so a preset selecting PTC mode on a deployment that composes no TypeScript runtime fails **at
   mount**, named, rather than at the first request.
 - The deployment default is `native` (`packages/core/tools/src/index.ts:791`, `:830`, `:910`).
-  Shipped Code Mode comes from a preset, not from the bundle:
-  `apps/cli/config/agent-presets/code/agent.cordis.yml:260-263`. The runtime itself is host-plane
+  Shipped PTC mode comes from a preset, not from the bundle:
+  `packages/preset/agent-presets/presets/ptc/agent.cordis.yml:266-268`. The runtime itself is host-plane
   (`packages/bundle/web-app/cordis.patch.yml:48`, `packages/bundle/headless/cordis.patch.yml:24`).
 
 ## Children inherit, and why
@@ -58,15 +58,15 @@ still callable through the SDK". It is not that.
 
 - Visibility is computed once: a name survives only if **every** layer admits it
   (`packages/core/tools/src/index.ts:1174`, with `admits` at `:738-744`).
-- The Code Mode binding table is built from that same filtered view —
-  `registry.schemas(exec.agent)` at `packages/core/tools/src/code-mode.ts:614`, and `schemas()` is
+- The PTC mode binding table is built from that same filtered view —
+  `registry.schemas(exec.agent)` at `packages/core/tools/src/ptc.ts:615`, and `schemas()` is
   `[...this.view(scope).visible.values()]` (`index.ts:1234-1236`). A restricted name is never bound
-  (`code-mode.ts:616`).
+  (`ptc.ts:616`).
 - The generated SDK text is projected from the same set (`index.ts:1239-1241`).
 - Defence in depth: a program that fabricates the name still dispatches through
   `resolveExecution` (`index.ts:1221-1226`), whose `get(name, scope)` reads the filtered visible map
   (`:1204-1206`) and returns `undefined` → `UNKNOWN_TOOL`. The `parent` token a sub-dispatch carries
-  lifts only the **code collapse** (`:1224`), never the capability filter.
+  lifts only the **PTC collapse** (`:1224`), never the capability filter.
 
 Two limits are the Host's design and are now stated in the README rather than left to be
 discovered:
@@ -87,15 +87,15 @@ Almost nothing is copyable, which is why inheritance is nearly free:
   (`ts-types.ts:250`, `py-types.ts:734`) and is not exported.
 - The prompt section is regenerated per live scope on every assembly (`index.ts:875-891`).
 
-The single copyable literal is `RUN_CODE_NAME = 'run_code'` (`code-mode.ts:20`), which **is**
+The single copyable literal is `RUN_CODE_NAME = 'run_code'` (`ptc.ts:21`), which **is**
 exported and should be imported if Legion ever needs it. Legion currently names it nowhere.
 
 ## What this change adds
 
 Two separable things, and keeping them separate is the whole design.
 
-**The bundled preset selects Code Mode**, by composing the official row with `mode: code`. This is
-where the capability argument lands: coordination is what Code Mode is best at, because one program
+**The bundled preset selects PTC mode**, by composing the official row with `mode: ptc`. This is
+where the capability argument lands: coordination is what PTC mode is best at, because one program
 starts several delegations together, waits on them as values, and reduces their results without a
 model round trip per child. The coordinator guidance Legion already injects — *"start independent
 delegations together"* — is a suggestion under `native` and an ordinary `Promise.all` here. Every
@@ -112,7 +112,7 @@ one presentation and `presentAs` throws on a second declaration for the same sco
 there would break exactly the base preset a PTC-mode user starts from.
 
 **A missing runtime is an install instruction, not a downgrade.** Legion is a development
-coordinator and Code Mode is the mode it is built for, so the useful answer when `ctx.codeRuntime`
+coordinator and PTC mode is the mode it is built for, so the useful answer when `ctx.codeRuntime`
 is absent is which package to add. The runtime is host-plane — the official package's own README
 says a preset "cannot supply the TypeScript runtime it needs" — so the fix belongs in the Host
 composition, not in a preset. Legion now says so at activation: a read-only `ctx.get?.('codeRuntime')`
@@ -129,10 +129,10 @@ Note where this notice can and cannot fire. If the bundled preset is used on a r
 deployment, the official row fails the preset at mount and Legion never activates — the Host's
 message is the one you see. The notice covers the other path: the append-to-your-preset fragment on
 a native base preset, where nothing is broken and nothing would otherwise mention that a runtime
-would unlock Code Mode.
+would unlock PTC mode.
 
 `tests/tool-presentation.spec.ts` pins all of it: the complete preset must carry the official row at
-`mode: code`, the fragment must carry no presentation row at all, and Legion's source must declare
+`mode: ptc`, the fragment must carry no presentation row at all, and Legion's source must declare
 no presentation, hardcode no `run_code`, grow no presentation key, and never take `codeRuntime` as
 a dependency — exactly one read-only probe of it is allowed, and the count is asserted. The notice
 itself is exercised both ways: mounted without a runtime it must name the package, mounted with one

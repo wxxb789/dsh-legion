@@ -32,6 +32,8 @@ export interface ProviderSnapshotFixtureV1 {
 }
 
 const CapabilitiesSchema = z.object({
+  // Missing capability data must not grant route-override authority to V1 fixtures.
+  agentOptions: z.boolean().default(false),
   outputSchema: z.boolean().required(),
   depthLimit: z.boolean().required(),
   toolFilter: z.boolean().required(),
@@ -73,7 +75,7 @@ function assertKnownSnapshotKeys(input: unknown): void {
     assertKnownKeys(provider, ['continuable', 'capabilities'], `providers.${name}`)
     assertKnownKeys(
       record(provider)?.capabilities,
-      ['outputSchema', 'depthLimit', 'toolFilter', 'persona'],
+      ['agentOptions', 'outputSchema', 'depthLimit', 'toolFilter', 'persona'],
       `providers.${name}.capabilities`,
     )
   }

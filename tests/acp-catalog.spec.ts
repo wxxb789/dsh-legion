@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import SubagentRuntime, { NO_START_CAPABILITIES, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as legion from '../src/index.ts'
 import { mountTestTokenAccounting } from './token-meter-test-service.ts'
@@ -14,12 +14,12 @@ import { mountTestTokenAccounting } from './token-meter-test-service.ts'
  * capabilities, no continuable activation, fresh out-of-process child.
  */
 function acpProvider(name: string): SubagentProvider {
-  return provider(name, { outputSchema: false, depthLimit: false, toolFilter: false, persona: false })
+  return provider(name, NO_START_CAPABILITIES)
 }
 
 /** A local in-process backend that can honor every start-time capability. */
 function localProvider(name: string): SubagentProvider {
-  const result = provider(name, { outputSchema: true, depthLimit: true, toolFilter: true, persona: true })
+  const result = provider(name, { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true })
   result.prepareContinuable = () => Promise.resolve({})
   return result
 }
@@ -230,11 +230,11 @@ describe('curated ACP agent catalog', () => {
       {
         providers: Object.fromEntries([
           ['spawn', {
-            capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+            capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
             continuable: true,
           }],
           ...ids.map(id => [id, {
-            capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+            capabilities: NO_START_CAPABILITIES,
             continuable: false,
           }] as const),
         ]),
@@ -309,11 +309,11 @@ describe('ACP catalog against the real compiler', () => {
       {
         providers: {
           spawn: {
-            capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+            capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
             continuable: true,
           },
           'sample-agent': {
-            capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+            capabilities: NO_START_CAPABILITIES,
             continuable: false,
           },
         },

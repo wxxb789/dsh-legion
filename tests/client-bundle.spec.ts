@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { Config } from '../src/config.ts'
 import { RUN_RECEIPT_PROJECTION_KEY } from '../src/run-receipt.ts'
 import { LEGION_SETTINGS_NAMESPACE } from '../src/settings.ts'
-import { CLIENT_BANNER, CLIENT_EXTERNALS, CLIENT_FOOTER, CLIENT_INTRO } from '../tsdown.client.config.ts'
+import { CLIENT_BANNER, CLIENT_FOOTER, CLIENT_INTRO } from '../tsdown.client.config.ts'
 
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   name: string
@@ -127,7 +127,7 @@ function materialize(options: { document?: boolean; storage?: Map<string, string
     '@deepseek-ai/dsh-client-ui-primitives': {
       IconChevronDownOutline14: function IconChevronDownOutline14() { return null },
     },
-    '@deepseek-ai/dsh-client-runtime/client': {
+    '@deepseek-ai/dsh-client-store': {
       createSnapshotStore: (initial: unknown) => {
         let current = initial
         return { set: (next: unknown) => { current = next }, get: () => current }
@@ -181,10 +181,9 @@ describe('client bundle artifact', () => {
     expect(materialize().id).toBe(manifest.name)
   })
 
-  it('requires nothing the Host module table cannot answer', () => {
+  it('requires nothing outside the Host platform table supplied by the loader seam', () => {
     const { required } = materialize()
     expect(required.length).toBeGreaterThan(0)
-    for (const spec of required) expect(CLIENT_EXTERNALS, spec).toContain(spec)
   })
 
   it('injects one loader-owned stylesheet before the factory returns', () => {

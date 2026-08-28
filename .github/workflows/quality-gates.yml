@@ -74,9 +74,7 @@ jobs:
         node: [22.19.0, 24.19.0]
         dsh:
           - channel: minimum
-            version: 0.1.1-rc.1
           - channel: latest-tested
-            version: 0.1.1-rc.2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - if: inputs.tarball-artifact != ''
@@ -99,12 +97,12 @@ jobs:
       - if: inputs.tarball-artifact == ''
         run: pnpm run test:packed-delegation
         env:
-          DSH_VERSION: ${{ matrix.dsh.version }}
+          DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}
           DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
       - if: inputs.tarball-artifact != ''
         run: pnpm run test:packed-delegation-supplied -- package-tarball
         env:
-          DSH_VERSION: ${{ matrix.dsh.version }}
+          DSH_VERSION_CHANNEL: ${{ matrix.dsh.channel }}
           DSH_COMPATIBILITY_RECEIPT: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

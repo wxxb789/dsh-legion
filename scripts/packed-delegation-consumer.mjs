@@ -3,11 +3,12 @@ import { createRequire } from 'node:module'
 import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as SpawnProvider from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as legion from 'dsh-legion'
@@ -185,6 +186,7 @@ try {
     },
   })
   await ctx.plugin(JsonlSessionPersistence, { root: sessionRoot })
+  await ctx.plugin(SqliteSessionQuery, { path: ':memory:', openAt: 'never' })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(SpawnProvider, { providerName: 'spawn' })
@@ -271,7 +273,7 @@ try {
   })
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId('packed-legion-call'),
+    callId: ToolCallId('packed-legion-call'),
     name: 'legion',
     arguments: {
       kind: 'strategy',

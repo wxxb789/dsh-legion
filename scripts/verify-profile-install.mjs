@@ -13,6 +13,7 @@ import { trustedTempRoot } from './trusted-temp-root.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
+const dshRegistry = (process.env.DSH_REGISTRY ?? 'https://registry.npmjs.org').replace(/\/+$/, '')
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-profile-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandboxRoot))
@@ -59,7 +60,7 @@ try {
   run('pnpm', [
     'add',
     '--config.ignore-scripts=true',
-    '--registry=https://registry.npmjs.org',
+    `--registry=${dshRegistry}`,
     tarball,
   ], profileDir)
   runNode([join(profileDir, 'node_modules', 'dsh-legion', 'lib', 'bin.js'), '--help'], profileDir)
@@ -105,12 +106,13 @@ try {
   await ctx.plugin(AgentPresets, {
     default: 'legion-packed',
     roots: [{ path: presetRoot, trust: 'user' }],
+    includeShippedRoot: false,
     includeUserRoot: false,
   })
   const standingKey = await ctx.agentPresets.standingKeyFor('legion-packed')
   ctx.subagents.registerProvider({
     name: 'spawn',
-    capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
     inheritsParentContext: false,
     async start() { throw new Error('packed profile smoke does not execute a child') },
     async prepareContinuable() { return {} },

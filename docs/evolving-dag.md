@@ -8,7 +8,7 @@ Pure proposal materialization, validation, and graph evolution need no Host serv
 
 ## Failure behavior
 
-Malformed, stale-base, cyclic, authority-widening, history-rewriting, identity-colliding, and limit-widening proposals are rejected atomically. No partial graph is published. A started or completed task is never changed in place. On current DSH, through 0.1.1-rc.2, missing coordination makes plan mutation unavailable and fails closed before append.
+Malformed, stale-base, cyclic, authority-widening, history-rewriting, identity-colliding, and limit-widening proposals are rejected atomically. No partial graph is published. A started or completed task is never changed in place. On the assessed DSH 0.1.2-alpha.1 line, missing coordination and the absence of a persistence registration seam for `legion/*` events make plan mutation unavailable; it fails closed before append.
 
 ## Limits
 

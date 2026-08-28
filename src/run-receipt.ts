@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentStatus } from '@deepseek-ai/dsh-agent'
-import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
-import type { SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
+import { KNOWN_SESSION_EVENT_TYPES, SessionId, type Session, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
+import { SubagentError, type SubagentDescendantListEntry } from '@deepseek-ai/dsh-subagent'
 import { CohortName, CohortRunId, StrategyName, StrategyPlanDigest } from './identity.ts'
 import type { CompiledStrategyPlan } from './orchestration.ts'
 import { deepFreeze } from './internal/value.ts'
@@ -361,7 +361,7 @@ interface RunReceiptProjectionDefinition {
   readonly key: typeof RUN_RECEIPT_PROJECTION_KEY
   readonly stateSchema: ProjectionSchema<RunReceiptProjection>
   readonly stateVersion: number
-  init(): RunReceiptProjection
+  init(header: SessionHeader): RunReceiptProjection
   apply(state: RunReceiptProjection, event: SessionEvent): RunReceiptProjection
   readonly wire: {
     readonly viewSchema: ProjectionSchema<RunReceiptProjection>
@@ -645,6 +645,13 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     try {
       entries = await this.ctx.subagents.listDescendants(this.parentId)
     } catch (error: unknown) {
+      if (error instanceof SubagentError && error.code === 'SUBAGENT_CONTROL_QUERY_UNAVAILABLE') {
+        this.ctx.logger.warn(
+          'dsh-legion: cold Run Receipt child discovery is unavailable; load @deepseek-ai/dsh-session-query',
+        )
+        this.emit()
+        return
+      }
       this.ctx.logger.warn('dsh-legion: failed to read cold Run Receipt child tree: ' + String(error))
       throw new Error('dsh-legion: incomplete Run Receipt child tree', { cause: error })
     }
@@ -843,6 +850,11 @@ export function finishRunReceipt(
   now = Date.now(),
 ): RunReceipt {
   return deepFreeze({ ...receipt, elapsedMs: elapsed(receipt, now), outcome })
+}
+
+export function canPublishRunReceipt(ctx: Pick<Context, 'get'>): boolean {
+  return ctx.get('sessionPersistence') === undefined
+    || KNOWN_SESSION_EVENT_TYPES.has(RUN_RECEIPT_EVENT_TYPE)
 }
 
 export function publishRunReceipt(session: Session, receipt: RunReceipt): RunReceipt {

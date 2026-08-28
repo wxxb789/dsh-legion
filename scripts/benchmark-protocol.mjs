@@ -61,7 +61,7 @@ function textResult(text) {
 
 const provider = {
   name: 'spawn',
-  capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+  capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
   inheritsParentContext: false,
   async start(request) {
     const prompt = request.prompt.filter(block => block.type === 'text').map(block => block.text).join('')

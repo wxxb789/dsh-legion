@@ -32,6 +32,7 @@ export type WarningDiagnosticCode = (typeof WARNING_DIAGNOSTIC_CODES)[number]
 
 export const ERROR_DIAGNOSTIC_CODES = Object.freeze([
   'PROFILE_CONTINUABLE_UNSUPPORTED',
+  'PROFILE_AGENT_OPTIONS_UNSUPPORTED',
   'PROFILE_DEPTH_UNSUPPORTED',
   'PROFILE_PERSONA_UNSUPPORTED',
   'PROFILE_TOOL_FILTER_UNSUPPORTED',
@@ -304,6 +305,8 @@ export function compileSpecialistCatalog(
         message: `profile "${name}" requires unavailable subagent provider "${profile.subagentProvider}"`,
       })
     } else {
+      const agentOptionsSupported = (profile.agentOptions === undefined && profile.routes === undefined)
+        || provider.capabilities.agentOptions
       const depthSupported = typeof profile.maxDepth !== 'number' || provider.capabilities.depthLimit
       const needsPersonaComposition = profile.persona !== undefined
         || promptFragments.length > 0
@@ -311,8 +314,10 @@ export function compileSpecialistCatalog(
       const personaSupported = !needsPersonaComposition || provider.capabilities.persona
       const toolFilterSupported = profile.toolFilter === undefined || provider.capabilities.toolFilter
       const outputSupported = result === 'text' || provider.capabilities.outputSchema
-      foregroundSupported = depthSupported && personaSupported && toolFilterSupported && outputSupported
-      continuableSupported = config.enableRunInBackground && provider.continuable && result === 'text'
+      foregroundSupported = agentOptionsSupported && depthSupported && personaSupported && toolFilterSupported && outputSupported
+      continuableSupported = config.enableRunInBackground
+        && provider.continuable
+        && result === 'text'
 
       if (defaultMode === 'continuable') {
         if (!provider.continuable) {
@@ -332,6 +337,14 @@ export function compileSpecialistCatalog(
           )
         }
       } else {
+        if (!agentOptionsSupported) {
+          providerError(
+            diagnostics,
+            identity,
+            'PROFILE_AGENT_OPTIONS_UNSUPPORTED',
+            `provider "${profile.subagentProvider}" does not support Agent option overrides`,
+          )
+        }
         if (!depthSupported) {
           providerError(
             diagnostics,

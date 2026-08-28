@@ -20,7 +20,7 @@
  * types still check this component at build time without adding a JSX transform.
  */
 import { createElement as h, type ReactNode } from 'react'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { FieldState, FormActions, FormShell } from './settings-form.ts'

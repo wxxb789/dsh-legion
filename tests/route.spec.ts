@@ -83,7 +83,7 @@ function catalog() {
     providers: {
       spawn: {
         continuable: true,
-        capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
       },
     },
   })
@@ -249,7 +249,7 @@ describe('exact route planning', () => {
       providers: {
         spawn: {
           continuable: true,
-          capabilities: { outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+          capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         },
       },
     })

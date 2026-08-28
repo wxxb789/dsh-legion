@@ -3,7 +3,7 @@ import {
   createElement as h, useEffect, useState,
   type PointerEvent as ReactPointerEvent, type ReactNode,
 } from 'react'
-import { defineStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RunReceipt, RunReceiptProjection } from '../run-receipt.ts'
@@ -22,23 +22,25 @@ export interface RunReceiptOverlayState {
   dismissedRunId: string | null
 }
 
-/** Root-scoped presentation state. Run facts remain in the Session projection. */
-export const runReceiptOverlayStore = defineStore({
-  init: (): RunReceiptOverlayState => ({ docked: true, x: 24, y: 24, dismissedRunId: null }),
-  persist: 'dsh-legion.run-receipt-overlay.v1',
-  actions: {
-    move(state, x: number, y: number) {
-      state.docked = false
-      state.x = x
-      state.y = y
+/** Create root-scoped presentation state for one plugin lifecycle. Run facts remain in the Session projection. */
+export function createRunReceiptOverlayStore() {
+  return defineStore({
+    init: (): RunReceiptOverlayState => ({ docked: true, x: 24, y: 24, dismissedRunId: null }),
+    persist: 'dsh-legion.run-receipt-overlay.v1',
+    actions: {
+      move(state, x: number, y: number) {
+        state.docked = false
+        state.x = x
+        state.y = y
+      },
+      dock(state) { state.docked = true },
+      dismiss(state, runId: string) { state.dismissedRunId = runId },
     },
-    dock(state) { state.docked = true },
-    dismiss(state, runId: string) { state.dismissedRunId = runId },
-  },
-})
+  })
+}
 
 export type RunReceiptOverlayProps = ComposedProps<
-  'shell.overlay', never, never, typeof runReceiptOverlayStore, object, never, 'settings.legion'
+  'shell.overlay', never, never, ReturnType<typeof createRunReceiptOverlayStore>, object, never, 'settings.legion'
 >
 
 type OverlayActions = Pick<RunReceiptOverlayProps['actions'], 'move' | 'dock' | 'dismiss'>
