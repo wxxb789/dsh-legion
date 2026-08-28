@@ -553,6 +553,15 @@ Accordingly:
 
 This preserves the same measurement boundary recorded in the earlier DSH upgrade notes.
 
+## Local release-artifact verification
+
+The DSH 0.1.2-alpha.1 release tree contains its packed npm artifacts under `dist/npm`. The SHA-512
+integrities of all 22 DSH packages Legion names directly in `devDependencies` match their exact
+`pnpm-lock.yaml` package records. The project-pinned pnpm 11.21.0 also accepts the frozen lockfile
+when the machine-local proxy's unavailable release-age metadata is excluded from that local-only
+policy check. This verifies the dependency graph and lockfile against official release artifacts; it
+does not substitute for the unrestricted public-registry CI matrix.
+
 ## Ordered migration checklist
 
 1. **Choose the data cutover and enforce the go/no-go.** Inventory persisted continuable children
