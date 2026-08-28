@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Install the assessed DSH source tarball closure without resolving DSH on npm.
- * Temporary manifest/workspace rewrites are restored before this process exits;
+ * Temporary manifest, workspace, and registry rewrites are restored before exit;
  * the committed lockfile remains the separate distribution-install contract.
  */
 import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -86,9 +86,11 @@ if (tarballs.size === 0) throw new Error(`${tarballRoot} contains no npm tarball
 const packagePath = join(projectRoot, 'package.json')
 const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
 const lockPath = join(projectRoot, 'pnpm-lock.yaml')
+const npmrcPath = join(projectRoot, '.npmrc')
 const packageSource = readFileSync(packagePath, 'utf8')
 const workspaceSource = readFileSync(workspacePath, 'utf8')
 const lockSource = readFileSync(lockPath, 'utf8')
+const npmrcSource = readFileSync(npmrcPath, 'utf8')
 const manifest = JSON.parse(packageSource)
 const compatibility = JSON.parse(readFileSync(join(projectRoot, 'contracts', 'compatibility.json'), 'utf8'))
 const direct = Object.entries(manifest.devDependencies ?? {}).filter(([name]) => isDshPackage(name))
@@ -150,6 +152,7 @@ try {
   writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}
 `)
   writeFileSync(workspacePath, workspaceWithOverrides)
+  writeFileSync(npmrcPath, `registry=${registry}/\n`)
   rmSync(lockPath)
   run('pnpm', ['install', '--no-frozen-lockfile', '--lockfile=false', `--registry=${registry}`])
 } catch (error) {
@@ -160,6 +163,7 @@ const originals = [
   [packagePath, packageSource],
   [workspacePath, workspaceSource],
   [lockPath, lockSource],
+  [npmrcPath, npmrcSource],
 ]
 restoreProjectFiles(originals, installError)
 console.log(`installed ${String(closure.size)} DSH source package(s) without registry resolution`)
