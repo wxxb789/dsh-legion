@@ -21,7 +21,7 @@ describe('npm registry configuration', () => {
       '',
     ].join('\n'))
 
-    expect(resolveNpmRegistry(root, undefined)).toBe('https://mirror.example.test/npm')
+    expect(resolveNpmRegistry(root, null)).toBe('https://mirror.example.test/npm')
   })
 
   it('uses an explicit registry without reading project config', () => {

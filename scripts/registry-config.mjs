@@ -32,10 +32,12 @@ function projectRegistry(projectRoot) {
 
 /** Resolve one install registry without duplicating the project .npmrc value. */
 export function resolveNpmRegistry(projectRoot, explicit = process.env.DSH_REGISTRY) {
-  const candidate = explicit
-    ?? process.env.NPM_CONFIG_REGISTRY
-    ?? process.env.npm_config_registry
-    ?? projectRegistry(projectRoot)
+  const candidate = explicit === null
+    ? projectRegistry(projectRoot)
+    : explicit
+      ?? process.env.NPM_CONFIG_REGISTRY
+      ?? process.env.npm_config_registry
+      ?? projectRegistry(projectRoot)
   if (candidate === undefined || candidate.trim().length === 0) {
     throw new Error('npm registry is not configured; set DSH_REGISTRY or add registry= to .npmrc')
   }

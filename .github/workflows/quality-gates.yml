@@ -47,11 +47,11 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ inputs.dsh-source-artifact }}
-          path: dsh-npm
+          path: ${{ runner.temp }}/dsh-npm
       - if: inputs.dsh-source-artifact == ''
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
-        run: node scripts/install-dsh-tarballs.mjs --from dsh-npm --registry "${{ env.DSH_REGISTRY }}"
+        run: node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run verify:contract
@@ -99,7 +99,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ inputs.dsh-source-artifact }}
-          path: dsh-npm
+          path: ${{ runner.temp }}/dsh-npm
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 11.21.0
@@ -110,7 +110,7 @@ jobs:
       - if: inputs.dsh-source-artifact == ''
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
-        run: node scripts/install-dsh-tarballs.mjs --from dsh-npm --registry "${{ env.DSH_REGISTRY }}"
+        run: node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract
