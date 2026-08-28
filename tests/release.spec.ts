@@ -52,7 +52,7 @@ describe('reproducible CI and release contracts', () => {
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('minimum')
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('latest-tested')
     expect(readFileSync(join(ROOT, '.npmrc'), 'utf8'))
-      .toBe('registry=https://mirrors.cloud.tencent.com/npm/\n')
+      .toBe('registry=https://mirrors.cloud.tencent.com/npm/\nverify-deps-before-run=false\n')
     const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')
     expect(() => load(ci)).not.toThrow()
     expect(ci).toContain('uses: ./.github/workflows/quality-gates.yml')
