@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22.19.0
-      - run: pnpm install --lockfile-only --registry=$DSH_REGISTRY
+      - run: pnpm install --lockfile-only --registry=${{ env.DSH_REGISTRY }}
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: pnpm-lock

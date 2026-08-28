@@ -44,7 +44,7 @@ describe('reproducible CI and release contracts', () => {
     }
     const sourceInstall = {
       if: "inputs.dsh-source-artifact != ''",
-      run: 'node scripts/install-dsh-tarballs.mjs --from dsh-npm',
+      run: 'node scripts/install-dsh-tarballs.mjs --from dsh-npm --registry "${{ env.DSH_REGISTRY }}"',
     }
     for (const job of Object.values(parsedWorkflow.jobs)) {
       expect(job.steps.filter(step => step.run?.includes('install-dsh-tarballs'))).toEqual([sourceInstall])

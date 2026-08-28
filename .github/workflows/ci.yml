@@ -35,7 +35,7 @@ jobs:
           node-version: 24.19.0
           cache: pnpm
           cache-dependency-path: deepseek-harness/pnpm-lock.yaml
-      - run: pnpm --dir deepseek-harness install --frozen-lockfile --registry=$DSH_REGISTRY
+      - run: pnpm --dir deepseek-harness install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - run: pnpm --dir deepseek-harness run build:official
       - run: pnpm --dir deepseek-harness run release:pack --family dsh --out dist/npm --concurrency 8
       - run: cp deepseek-harness/pnpm-workspace.yaml deepseek-harness/dist/npm/dsh-pnpm-workspace.yaml

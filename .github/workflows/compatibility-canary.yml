@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --registry=$DSH_REGISTRY
+      - run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - run: pnpm run build
       - run: pnpm run verify:dependency-preflight
       - run: pnpm run test:packed-delegation
