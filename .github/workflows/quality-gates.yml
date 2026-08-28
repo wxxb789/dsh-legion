@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run verify:contract
@@ -89,7 +89,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract

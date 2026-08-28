@@ -14,7 +14,7 @@
 //   node scripts/verify-dependency-preflight.mjs [options]
 //     --policy <path>     compatibility policy contract (default contracts/compatibility.json)
 //     --snapshot <path>   evaluate a recorded registry snapshot instead of the network
-//     --registry <url>    registry to query live (default https://registry.npmjs.org)
+//     --registry <url>    registry to query live (default project .npmrc)
 //     --record <path>     write the queried snapshot for later offline replay
 //     --json              print the report as JSON instead of text
 //
@@ -26,6 +26,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveNpmRegistry } from './registry-config.mjs'
 import {
   DSH_SCOPE,
   REGISTRY_SNAPSHOT_SCHEMA_VERSION,
@@ -45,7 +46,7 @@ const option = (name, fallback) => {
 const policyPath = resolve(option('policy', resolve(root, 'contracts/compatibility.json')))
 const snapshotPath = option('snapshot', undefined)
 const recordPath = option('record', undefined)
-const registryUrl = option('registry', 'https://registry.npmjs.org').replace(/\/+$/, '')
+const registryUrl = resolveNpmRegistry(root, option('registry', undefined))
 const asJson = argv.includes('--json')
 
 const scopedDependencies = (value) => Object.fromEntries(

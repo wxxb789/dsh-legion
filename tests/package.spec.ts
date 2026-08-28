@@ -44,7 +44,7 @@ describe('published package contract', () => {
     ) as PackageManifest
     expect(manifest.files).toEqual(expect.arrayContaining([
       'lib', 'cordis.patch.yml', 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md',
-      'examples', 'presets', 'README.md', 'LICENSE',
+      'examples', 'presets', 'scripts/registry-config.mjs', 'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
     expect(manifest.exports).toMatchObject({
@@ -78,6 +78,8 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/verify-compatibility-receipts.mjs')),
       access(resolve(ROOT, 'scripts/verify-reproducible-pack.mjs')),
       access(resolve(ROOT, 'scripts/verify-supplied-packed-delegation.mjs')),
+      access(resolve(ROOT, 'scripts/registry-config.mjs')),
+      access(resolve(ROOT, 'scripts/registry-config.d.mts')),
       access(resolve(ROOT, 'scripts/trusted-temp-root.mjs')),
       access(resolve(ROOT, 'scripts/trusted-temp-root.d.mts')),
       access(resolve(ROOT, 'contracts/v1.json')),

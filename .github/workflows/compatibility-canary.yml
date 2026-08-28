@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm run verify:dependency-preflight
       - run: pnpm run test:packed-delegation

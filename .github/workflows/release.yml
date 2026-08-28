@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --registry=https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
       - run: node scripts/verify-release.mjs "$GITHUB_REF_NAME"
       - run: pnpm run verify:reproducible-pack -- --source=git dist
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

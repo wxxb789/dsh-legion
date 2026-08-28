@@ -553,6 +553,12 @@ Accordingly:
 
 This preserves the same measurement boundary recorded in the earlier DSH upgrade notes.
 
+For the completed Legion migration, repository `.npmrc` selects the Tencent npm mirror as the
+single install-registry source of truth. CI install commands no longer override that setting, and
+preflight/packed scripts derive it through `scripts/registry-config.mjs`; `DSH_REGISTRY` remains an
+explicit deployment override. Package publication stays directed to public npm through
+`publishConfig.registry`, independently of the install mirror.
+
 ## Local release-artifact verification
 
 The DSH 0.1.2-alpha.1 release tree contains its packed npm artifacts under `dist/npm`. The SHA-512

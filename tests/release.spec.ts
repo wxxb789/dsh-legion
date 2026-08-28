@@ -11,6 +11,7 @@ const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
   version: string
   dependencies: Record<string, string>
   devDependencies: Record<string, string>
+  publishConfig: { access: string; registry: string }
 }
 const VERSION = MANIFEST.version
 
@@ -36,6 +37,8 @@ describe('reproducible CI and release contracts', () => {
   it('pins lower-bound Windows quality and packed DSH compatibility matrices', () => {
     const workflow = readFileSync(join(ROOT, '.github/workflows/quality-gates.yml'), 'utf8')
     expect(() => load(workflow)).not.toThrow()
+    expect(readFileSync(join(ROOT, '.npmrc'), 'utf8'))
+      .toBe('registry=https://mirrors.cloud.tencent.com/npm/\n')
     expect(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8'))
       .toContain('uses: ./.github/workflows/quality-gates.yml')
     expect(workflow).toContain('windows-latest')
@@ -68,6 +71,7 @@ describe('reproducible CI and release contracts', () => {
       'ci.yml', 'compatibility-canary.yml', 'lockfile.yml', 'quality-gates.yml', 'release.yml',
     ]) {
       const source = readFileSync(join(ROOT, '.github/workflows', name), 'utf8')
+      expect(source).not.toMatch(/pnpm install[^\n]*--registry=/)
       const refs = [...source.matchAll(/uses:\s+([^\s#]+)/g)]
         .map(match => match[1])
         .filter(reference => !reference?.startsWith('./'))
@@ -79,6 +83,8 @@ describe('reproducible CI and release contracts', () => {
   it('resolves one exact DSH generation before installing every packed consumer dependency', () => {
     const script = readFileSync(join(ROOT, 'scripts/verify-packed-delegation.mjs'), 'utf8')
     expect(script).toContain('const dshVersion = resolveDshVersion(dshVersionSpec)')
+    expect(script).toContain('resolveNpmRegistry(projectRoot)')
+    expect(script).not.toContain('registry.npmjs.org')
     expect(script).toContain('].map(name => `${name}@${dshVersion}`)')
     expect(script).toContain("'@deepseek-ai/dsh-agent-loop-testkit'")
     expect(script).toContain("'@deepseek-ai/dsh-session-query'")
@@ -86,6 +92,8 @@ describe('reproducible CI and release contracts', () => {
     expect(script).toContain("'@deepseek-ai/dsh-subagent-spawn-in-process'")
     const consumer = readFileSync(join(ROOT, 'scripts/packed-delegation-consumer.mjs'), 'utf8')
     expect(consumer).toContain('configVersion: 2')
+    const profileInstaller = readFileSync(join(ROOT, 'scripts/verify-profile-install.mjs'), 'utf8')
+    expect(profileInstaller).toContain('resolveNpmRegistry(projectRoot)')
     expect(consumer).toContain('enableStrategies: true')
     expect(consumer).toContain("kind: 'strategy'")
     expect(consumer).toContain("strategy: 'packed-strategy'")
@@ -104,6 +112,10 @@ describe('reproducible CI and release contracts', () => {
       }
     }
     expect(parsed.permissions).toEqual({ contents: 'read' })
+    expect(MANIFEST.publishConfig).toEqual({
+      access: 'public',
+      registry: 'https://registry.npmjs.org',
+    })
     expect(parsed.jobs.release.permissions).toMatchObject({
       contents: 'write', 'id-token': 'write', attestations: 'write',
     })

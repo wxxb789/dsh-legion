@@ -5,6 +5,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -30,7 +31,7 @@ if (requestedChannel !== undefined && !Object.hasOwn(compatibilityChannels, requ
 // a second version literal that can drift from the package claim.
 const dshVersionSpec = process.env.DSH_VERSION
   ?? compatibilityChannels[requestedChannel ?? 'minimum']
-const dshRegistry = (process.env.DSH_REGISTRY ?? 'https://registry.npmjs.org').replace(/\/+$/, '')
+const dshRegistry = resolveNpmRegistry(projectRoot)
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandboxRoot))
