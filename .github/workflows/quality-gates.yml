@@ -19,6 +19,7 @@ permissions:
 
 env:
   DSH_REGISTRY: https://registry.npmjs.org
+  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
 
 jobs:
   quality:

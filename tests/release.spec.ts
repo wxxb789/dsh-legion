@@ -62,6 +62,7 @@ describe('reproducible CI and release contracts', () => {
     expect(ci).toContain('package_json_file: deepseek-harness/package.json')
     expect(workflow).toContain('node scripts/install-dsh-tarballs.mjs')
     expect(workflow).toContain('DSH_REGISTRY: https://registry.npmjs.org')
+    expect(workflow).toContain("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'")
     expect(workflow).toContain('windows-latest')
     expect(workflow).toContain('22.19.0')
     expect(workflow).toContain('24.19.0')
