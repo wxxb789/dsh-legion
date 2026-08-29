@@ -53,6 +53,16 @@ export function resolveNativeInvocation(program, args, internals = {}) {
         return { command: environment.npm_node_execpath ?? execPath, args: [entry, ...args] }
       }
     }
+    const pnpmHome = environment.PNPM_HOME
+    if (pnpmHome !== undefined) {
+      const standalone = win32.join(pnpmHome, 'pnpm.exe')
+      const isFile = internals.isFile ?? (candidate => statSync(candidate).isFile())
+      try {
+        if (isFile(standalone)) return { command: standalone, args: [...args] }
+      } catch {
+        // Continue to PATH resolution and the fail-closed diagnostic below.
+      }
+    }
     const executable = (internals.findExecutable ?? findWindowsExecutable)('pnpm')
     if (executable !== undefined) return { command: executable, args: [...args] }
     throw new Error(
