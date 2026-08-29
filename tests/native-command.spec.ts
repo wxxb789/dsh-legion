@@ -54,10 +54,24 @@ describe('native command execution', () => {
       command: 'C:\\node\\node.exe',
       args: ['C:\\node\\node_modules\\npm\\bin\\npm-cli.js', 'pack', hostile],
     })
+    expect(resolveNativeInvocation('pnpm', ['install', hostile], {
+      platform: 'win32',
+      env: {
+        npm_execpath: 'C:\\setup\\bin\\pnpm.cmd',
+        npm_node_execpath: 'C:\\node\\node.exe',
+      },
+      execPath: 'C:\\fallback\\node.exe',
+      readTextFile: () => '@"%~dp0..\\pnpm\\bin\\pnpm.cjs" %*',
+      isFile: path => path === 'C:\\setup\\pnpm\\bin\\pnpm.cjs',
+    })).toEqual({
+      command: 'C:\\node\\node.exe',
+      args: ['C:\\setup\\pnpm\\bin\\pnpm.cjs', 'install', hostile],
+    })
     expect(resolveNativeInvocation('pnpm', ['install'], {
       platform: 'win32',
       env: { npm_execpath: 'C:\\pnpm\\pnpm.cmd' },
       execPath: 'C:\\node\\node.exe',
+      readTextFile: () => '',
       findExecutable: () => 'C:\\pnpm\\pnpm.exe',
     })).toEqual({ command: 'C:\\pnpm\\pnpm.exe', args: ['install'] })
     expect(() => resolveNativeInvocation('pnpm', ['install'], {

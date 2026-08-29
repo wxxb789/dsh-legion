@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { win32 } from 'node:path'
 
@@ -7,6 +8,21 @@ function findWindowsExecutable(program) {
   })
   if (result.status !== 0) return undefined
   return result.stdout.split(/\r?\n/u).find(path => /\.exe$/iu.test(path.trim()))?.trim()
+}
+
+function resolvePnpmCmdEntry(path, internals) {
+  const read = internals.readTextFile ?? (candidate => readFileSync(candidate, 'utf8'))
+  const isFile = internals.isFile ?? (candidate => statSync(candidate).isFile())
+  try {
+    const source = read(path)
+    const match = /%(?:~dp0|dp0%)([^"\r\n]*?pnpm\.[cm]?js)/iu.exec(source)
+    if (match?.[1] === undefined) return undefined
+    const relative = match[1].replace(/^[\\/]+/u, '')
+    const entry = win32.resolve(win32.dirname(path), relative)
+    return isFile(entry) ? entry : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Resolve package-manager shims to argv-safe Node entrypoints on Windows. */
@@ -23,6 +39,12 @@ export function resolveNativeInvocation(program, args, internals = {}) {
     }
     if (pnpmExecPath !== undefined && /\.exe$/i.test(pnpmExecPath)) {
       return { command: pnpmExecPath, args: [...args] }
+    }
+    if (pnpmExecPath !== undefined && /\.cmd$/i.test(pnpmExecPath)) {
+      const entry = resolvePnpmCmdEntry(pnpmExecPath, internals)
+      if (entry !== undefined) {
+        return { command: environment.npm_node_execpath ?? execPath, args: [entry, ...args] }
+      }
     }
     const executable = (internals.findExecutable ?? findWindowsExecutable)('pnpm')
     if (executable !== undefined) return { command: executable, args: [...args] }
