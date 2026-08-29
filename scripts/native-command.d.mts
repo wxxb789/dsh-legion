@@ -22,8 +22,9 @@ export interface NativeCommandInternals {
   readonly env?: NodeJS.ProcessEnv
   readonly execPath?: string
   readonly findExecutable?: (program: string) => string | undefined
-  readonly readTextFile?: (path: string) => string
   readonly isFile?: (path: string) => boolean
+  readonly pwshPath?: string
+  readonly wrapperPath?: string
 }
 
 export interface NativeInvocation {

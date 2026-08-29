@@ -53,6 +53,7 @@
     "scripts/registry-config.d.mts",
     "scripts/native-command.mjs",
     "scripts/native-command.d.mts",
+    "scripts/run-native-command.ps1",
     "scripts/trusted-temp-root.mjs",
     "scripts/trusted-temp-root.d.mts",
     "README.md",

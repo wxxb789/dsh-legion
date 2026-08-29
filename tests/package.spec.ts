@@ -82,6 +82,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'scripts/registry-config.d.mts')),
       access(resolve(ROOT, 'scripts/native-command.mjs')),
       access(resolve(ROOT, 'scripts/native-command.d.mts')),
+      access(resolve(ROOT, 'scripts/run-native-command.ps1')),
       access(resolve(ROOT, 'scripts/trusted-temp-root.mjs')),
       access(resolve(ROOT, 'scripts/trusted-temp-root.d.mts')),
       access(resolve(ROOT, 'contracts/v1.json')),
