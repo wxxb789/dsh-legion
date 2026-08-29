@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { win32 } from 'node:path'
@@ -16,11 +17,12 @@ function findWindowsLauncher(program) {
 function powershellShimInvocation(path, args, internals) {
   const wrapper = internals.wrapperPath
     ?? fileURLToPath(new URL('./run-native-command.ps1', import.meta.url))
+  const payload = Buffer.from(JSON.stringify({ command: path, args }), 'utf8').toString('base64')
   return {
     command: internals.pwshPath ?? 'pwsh.exe',
     args: [
       '-NoLogo', '-NoProfile', '-NonInteractive', '-File', wrapper,
-      path, ...args,
+      '-Payload', payload,
     ],
   }
 }

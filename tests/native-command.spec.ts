@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -11,6 +12,12 @@ function successfulSpawn(calls: Array<{ command: string; args: readonly string[]
     calls.push({ command, args, options })
     return { status: 0 }
   }
+}
+
+function decodedPayload(invocation: { readonly args: readonly string[] }) {
+  const payload = invocation.args.at(-1)
+  if (payload === undefined) throw new Error('expected PowerShell payload')
+  return JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as unknown
 }
 
 describe('native command execution', () => {
@@ -54,34 +61,32 @@ describe('native command execution', () => {
       command: 'C:\\node\\node.exe',
       args: ['C:\\node\\node_modules\\npm\\bin\\npm-cli.js', 'pack', hostile],
     })
-    expect(resolveNativeInvocation('pnpm', ['install', hostile], {
+    const explicitShim = resolveNativeInvocation('pnpm', ['install', hostile], {
       platform: 'win32',
       env: { npm_execpath: 'C:\\setup\\bin\\pnpm.cmd' },
       execPath: 'C:\\node\\node.exe',
       pwshPath: 'C:\\pwsh\\pwsh.exe',
       wrapperPath: 'C:\\repo\\scripts\\run-native-command.ps1',
-    })).toEqual({
-      command: 'C:\\pwsh\\pwsh.exe',
-      args: [
-        '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
-        'C:\\repo\\scripts\\run-native-command.ps1',
-        'C:\\setup\\bin\\pnpm.cmd', 'install', hostile,
-      ],
     })
-    expect(resolveNativeInvocation('pnpm', ['install', hostile], {
+    expect(explicitShim.command).toBe('C:\\pwsh\\pwsh.exe')
+    expect(explicitShim.args.slice(0, -1)).toEqual([
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+      'C:\\repo\\scripts\\run-native-command.ps1', '-Payload',
+    ])
+    expect(decodedPayload(explicitShim)).toEqual({
+      command: 'C:\\setup\\bin\\pnpm.cmd', args: ['install', hostile],
+    })
+    const discoveredShim = resolveNativeInvocation('pnpm', ['install', hostile], {
       platform: 'win32',
       env: {},
       execPath: 'C:\\node\\node.exe',
       findExecutable: () => 'C:\\setup\\bin\\pnpm.CMD',
       pwshPath: 'C:\\pwsh\\pwsh.exe',
       wrapperPath: 'C:\\repo\\scripts\\run-native-command.ps1',
-    })).toEqual({
-      command: 'C:\\pwsh\\pwsh.exe',
-      args: [
-        '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
-        'C:\\repo\\scripts\\run-native-command.ps1',
-        'C:\\setup\\bin\\pnpm.CMD', 'install', hostile,
-      ],
+    })
+    expect(discoveredShim.command).toBe('C:\\pwsh\\pwsh.exe')
+    expect(decodedPayload(discoveredShim)).toEqual({
+      command: 'C:\\setup\\bin\\pnpm.CMD', args: ['install', hostile],
     })
     expect(resolveNativeInvocation('pnpm', ['install'], {
       platform: 'win32',

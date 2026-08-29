@@ -1,10 +1,9 @@
 param(
-  [Parameter(Mandatory = $true, Position = 0)]
-  [string] $CommandPath,
-
-  [Parameter(ValueFromRemainingArguments = $true)]
-  [string[]] $CommandArguments
+  [Parameter(Mandatory = $true)]
+  [string] $Payload
 )
 
-& $CommandPath @CommandArguments
+$bytes = [Convert]::FromBase64String($Payload)
+$spec = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+& ([string] $spec.command) @([string[]] $spec.args)
 exit $LASTEXITCODE
