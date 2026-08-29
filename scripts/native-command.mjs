@@ -15,11 +15,18 @@ function resolvePnpmCmdEntry(path, internals) {
   const isFile = internals.isFile ?? (candidate => statSync(candidate).isFile())
   try {
     const source = read(path)
+    const directory = win32.dirname(path)
     const match = /%(?:~dp0|dp0%)([^"\r\n]*?pnpm\.[cm]?js)/iu.exec(source)
-    if (match?.[1] === undefined) return undefined
-    const relative = match[1].replace(/^[\\/]+/u, '')
-    const entry = win32.resolve(win32.dirname(path), relative)
-    return isFile(entry) ? entry : undefined
+    const candidates = match?.[1] === undefined
+      ? []
+      : [win32.resolve(directory, match[1].replace(/^[\\/]+/u, ''))]
+    candidates.push(
+      win32.resolve(directory, '..', 'pnpm', 'bin', 'pnpm.cjs'),
+      win32.resolve(directory, '..', '..', 'pnpm', 'bin', 'pnpm.cjs'),
+      win32.resolve(directory, '..', 'node_modules', 'pnpm', 'bin', 'pnpm.cjs'),
+      win32.resolve(directory, '..', '..', 'node_modules', 'pnpm', 'bin', 'pnpm.cjs'),
+    )
+    return candidates.find(isFile)
   } catch {
     return undefined
   }

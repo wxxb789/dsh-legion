@@ -69,6 +69,19 @@ describe('native command execution', () => {
     })
     expect(resolveNativeInvocation('pnpm', ['install'], {
       platform: 'win32',
+      env: {
+        npm_execpath: 'C:\\Users\\runneradmin\\setup-pnpm\\node_modules\\.bin\\bin\\pnpm.CMD',
+        npm_node_execpath: 'C:\\node\\node.exe',
+      },
+      execPath: 'C:\\fallback\\node.exe',
+      readTextFile: () => '@echo off',
+      isFile: path => path === 'C:\\Users\\runneradmin\\setup-pnpm\\node_modules\\pnpm\\bin\\pnpm.cjs',
+    })).toEqual({
+      command: 'C:\\node\\node.exe',
+      args: ['C:\\Users\\runneradmin\\setup-pnpm\\node_modules\\pnpm\\bin\\pnpm.cjs', 'install'],
+    })
+    expect(resolveNativeInvocation('pnpm', ['install'], {
+      platform: 'win32',
       env: { npm_execpath: 'C:\\pnpm\\pnpm.cmd' },
       execPath: 'C:\\node\\node.exe',
       readTextFile: () => '',
