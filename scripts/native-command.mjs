@@ -3,12 +3,26 @@ import { spawnSync } from 'node:child_process'
 import { win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-function findWindowsExecutable(program) {
+function findWindowsLauncher(program) {
   const result = spawnSync('where.exe', [program], {
     encoding: 'utf8', shell: false, windowsHide: true,
   })
   if (result.status !== 0) return undefined
-  return result.stdout.split(/\r?\n/u).find(path => /\.exe$/iu.test(path.trim()))?.trim()
+  const paths = result.stdout.split(/\r?\n/u).map(path => path.trim()).filter(Boolean)
+  return paths.find(path => /\.exe$/iu.test(path))
+    ?? paths.find(path => /\.cmd$/iu.test(path))
+}
+
+function powershellShimInvocation(path, args, internals) {
+  const wrapper = internals.wrapperPath
+    ?? fileURLToPath(new URL('./run-native-command.ps1', import.meta.url))
+  return {
+    command: internals.pwshPath ?? 'pwsh.exe',
+    args: [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-File', wrapper,
+      path, ...args,
+    ],
+  }
 }
 
 /** Resolve package-manager shims to argv-safe native or interpreter entrypoints. */
@@ -27,15 +41,7 @@ export function resolveNativeInvocation(program, args, internals = {}) {
       return { command: pnpmExecPath, args: [...args] }
     }
     if (pnpmExecPath !== undefined && /\.cmd$/i.test(pnpmExecPath)) {
-      const wrapper = internals.wrapperPath
-        ?? fileURLToPath(new URL('./run-native-command.ps1', import.meta.url))
-      return {
-        command: internals.pwshPath ?? 'pwsh.exe',
-        args: [
-          '-NoLogo', '-NoProfile', '-NonInteractive', '-File', wrapper,
-          pnpmExecPath, ...args,
-        ],
-      }
+      return powershellShimInvocation(pnpmExecPath, args, internals)
     }
     const pnpmHome = environment.PNPM_HOME
     if (pnpmHome !== undefined) {
@@ -47,8 +53,12 @@ export function resolveNativeInvocation(program, args, internals = {}) {
         // Continue to PATH resolution and the fail-closed diagnostic below.
       }
     }
-    const executable = (internals.findExecutable ?? findWindowsExecutable)('pnpm')
-    if (executable !== undefined) return { command: executable, args: [...args] }
+    const launcher = (internals.findExecutable ?? findWindowsLauncher)('pnpm')
+    if (launcher !== undefined) {
+      return /\.cmd$/i.test(launcher)
+        ? powershellShimInvocation(launcher, args, internals)
+        : { command: launcher, args: [...args] }
+    }
     throw new Error(
       'shell-free pnpm execution on Windows requires a pnpm JavaScript, cmd, or exe launcher',
     )

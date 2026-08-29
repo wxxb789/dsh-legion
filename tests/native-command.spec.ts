@@ -68,6 +68,21 @@ describe('native command execution', () => {
         'C:\\setup\\bin\\pnpm.cmd', 'install', hostile,
       ],
     })
+    expect(resolveNativeInvocation('pnpm', ['install', hostile], {
+      platform: 'win32',
+      env: {},
+      execPath: 'C:\\node\\node.exe',
+      findExecutable: () => 'C:\\setup\\bin\\pnpm.CMD',
+      pwshPath: 'C:\\pwsh\\pwsh.exe',
+      wrapperPath: 'C:\\repo\\scripts\\run-native-command.ps1',
+    })).toEqual({
+      command: 'C:\\pwsh\\pwsh.exe',
+      args: [
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+        'C:\\repo\\scripts\\run-native-command.ps1',
+        'C:\\setup\\bin\\pnpm.CMD', 'install', hostile,
+      ],
+    })
     expect(resolveNativeInvocation('pnpm', ['install'], {
       platform: 'win32',
       env: { PNPM_HOME: 'C:\\setup-pnpm\\node_modules\\@pnpm\\exe' },
