@@ -39,7 +39,7 @@ Removing or reinterpreting these contracts after 1.0 requires a new major versio
 ## Additive v1.1 durable contract
 
 - Durable execution is optional in config version 2 and defaults off.
-- The journal vocabulary has eight schemaVersion 1 event families; the primary projection is `legion-run` state version 6. Unknown fields are rejected, unrelated DSH events are projection no-ops, and old checkpoints refold from the full journal.
+- The journal vocabulary has eight schemaVersion 1 event families; the primary projection is `legion-run` state version 7. Unknown fields are rejected, unrelated DSH events are projection no-ops, and old checkpoints refold from the full journal.
 - Run control actions are `inspect | resume | cancel | steer`; mutation actions require Host capabilities and fail closed before mutation when unavailable.
 - Task execution and delivery are at least once, accepted commits require the active fence and generation, external effects are not exactly once, and mailbox acknowledgement follows durable incorporation.
 - The npm package exports structural ports and pure replay/projection logic but no DSH Host persistence, projection, coordination, admission, or child-receipt service.

@@ -15,9 +15,12 @@ import type {
 } from './contract.ts'
 import { deriveReadyFrontier, type FrontierArtifact, type FrontierTaskState } from './graph.ts'
 import { isLegionEvent } from './events.ts'
+import { assertLegionTransition, type LegionInvariantState } from './invariant.ts'
+import { isTerminalRunStatus } from './status.ts'
+import { validateLegionEventData } from './validate.ts'
 
 export const LEGION_RUN_PROJECTION_KEY = 'legion-run'
-export const LEGION_RUN_PROJECTION_STATE_VERSION = 6
+export const LEGION_RUN_PROJECTION_STATE_VERSION = 7
 
 export interface ProjectedRun {
   readonly run?: RunRecord
@@ -61,7 +64,27 @@ export function applyLegionProjection(
   if (!isLegionEvent(event)) return state
 
   const runId = event.data.runId
-  const previous = state.runs[runId] ?? emptyProjectedRun()
+  const current = Object.hasOwn(state.runs, runId) ? state.runs[runId] : undefined
+  // Append-time validation rejects new terminal rewrites. Projection keeps the
+  // first committed terminal fact so version-6 journals remain replayable.
+  if (current?.run !== undefined && isTerminalRunStatus(current.run.status)) return state
+  const invariant: LegionInvariantState = current?.run === undefined
+    ? { runs: {} }
+    : {
+        runs: {
+          [runId]: {
+            run: current.run,
+            plans: current.plans,
+            tasks: current.tasks,
+            attempts: current.attempts,
+            mail: current.mail,
+            continuations: current.continuations,
+            milestones: current.milestones,
+          },
+        },
+      }
+  assertLegionTransition(invariant, event.type, event.data)
+  const previous = current ?? emptyProjectedRun()
   let next: ProjectedRun
 
   switch (event.type) {
@@ -237,7 +260,7 @@ export function viewLegionRun(
   state: LegionProjectionState,
   runId: RunId,
 ): LegionRunProjectionView {
-  const projected = state.runs[runId]
+  const projected = Object.hasOwn(state.runs, runId) ? state.runs[runId] : undefined
   if (projected === undefined) {
     return deepFreeze({
       runId,
@@ -339,30 +362,182 @@ function plainRecord(value: unknown, at: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function projectionSequence(value: unknown, at: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`dsh-legion: invalid projection ${at}`)
+  }
+  return value as number
+}
+
 function parseProjectionState(value: unknown): LegionProjectionState {
   const state = plainRecord(value, 'state')
   if (Object.keys(state).some(key => key !== 'runs')) {
     throw new Error('dsh-legion: projection state contains unknown fields')
   }
   const runs = plainRecord(state.runs, 'runs')
-  const containerFields = ['plans', 'tasks', 'attempts', 'mail', 'continuations'] as const
-  const listFields = [
+  const parsedRuns = Object.create(null) as Record<string, ProjectedRun>
+  const fields = [
+    'run', 'plans', 'tasks', 'attempts', 'mail', 'continuations',
     'milestones', 'milestoneEventSeqs', 'decisions', 'decisionEventSeqs',
-  ] as const
+  ]
   for (const [runId, candidate] of Object.entries(runs)) {
-    const run = plainRecord(candidate, `run ${JSON.stringify(runId)}`)
-    const allowed = new Set(['run', ...containerFields, ...listFields])
-    if (Object.keys(run).some(key => !allowed.has(key))) {
-      throw new Error(`dsh-legion: projection run ${JSON.stringify(runId)} contains unknown fields`)
+    const projected = plainRecord(candidate, `run ${JSON.stringify(runId)}`)
+    if (Object.keys(projected).some(key => !fields.includes(key))
+      || fields.some(key => !Object.hasOwn(projected, key))) {
+      throw new Error(`dsh-legion: projection run ${JSON.stringify(runId)} has invalid fields`)
     }
-    for (const field of containerFields) plainRecord(run[field], `${runId}.${field}`)
-    for (const field of listFields) {
-      if (!Array.isArray(run[field])) {
-        throw new Error(`dsh-legion: invalid projection ${runId}.${field}`)
+    const rawRun = plainRecord(projected.run, `${runId}.run`)
+    const run = validateLegionEventData('legion/run-state', {
+      schemaVersion: 1,
+      runId,
+      planVersion: rawRun.currentPlanVersion,
+      correlationId: 'projection-checkpoint',
+      record: projected.run,
+    }).record
+    if (run.runId !== runId || run.goalVersion !== run.goal.version) {
+      throw new Error('dsh-legion: projection run identity does not match record')
+    }
+
+    const plans = Object.create(null) as Record<string, PlanRecord>
+    for (const [key, record] of Object.entries(plainRecord(projected.plans, `${runId}.plans`))) {
+      const raw = plainRecord(record, `${runId}.plans.${key}`)
+      const parsed = validateLegionEventData('legion/plan-state', {
+        schemaVersion: 1, runId, planVersion: raw.version,
+        correlationId: 'projection-checkpoint', record,
+      }).record
+      if (String(parsed.version) !== key) throw new Error('dsh-legion: projection plan key does not match record')
+      plans[key] = parsed
+    }
+
+    const tasks = Object.create(null) as Record<string, TaskRecord>
+    for (const [key, record] of Object.entries(plainRecord(projected.tasks, `${runId}.tasks`))) {
+      const raw = plainRecord(record, `${runId}.tasks.${key}`)
+      const parsed = validateLegionEventData('legion/task-state', {
+        schemaVersion: 1, runId, planVersion: raw.planVersion,
+        correlationId: 'projection-checkpoint', taskId: key,
+        generation: raw.generation, record,
+      }).record
+      if (parsed.taskId !== key) throw new Error('dsh-legion: projection task key does not match record')
+      tasks[key] = parsed
+    }
+
+    const attempts = Object.create(null) as Record<string, AttemptRecord>
+    for (const [key, record] of Object.entries(plainRecord(projected.attempts, `${runId}.attempts`))) {
+      const raw = plainRecord(record, `${runId}.attempts.${key}`)
+      const parsed = validateLegionEventData('legion/attempt-state', {
+        schemaVersion: 1, runId, planVersion: raw.planVersion,
+        correlationId: 'projection-checkpoint', taskId: raw.taskId,
+        attemptId: key, generation: raw.generation, fence: raw.fence, record,
+      }).record
+      if (parsed.attemptId !== key) throw new Error('dsh-legion: projection attempt key does not match record')
+      attempts[key] = parsed
+    }
+
+    for (const attempt of Object.values(attempts)) {
+      const task = Object.hasOwn(tasks, attempt.taskId) ? tasks[attempt.taskId] : undefined
+      if (task === undefined
+        || task.planVersion !== attempt.planVersion
+        || task.generation !== attempt.generation) {
+        throw new Error('dsh-legion: projection attempt does not match its task')
+      }
+      const binding = attempt.binding
+      if (binding !== undefined
+        && (binding.runId !== run.runId
+          || binding.planVersion !== attempt.planVersion
+          || binding.taskId !== attempt.taskId
+          || binding.attemptId !== attempt.attemptId
+          || binding.generation !== attempt.generation
+          || binding.fence !== attempt.fence
+          || binding.profile !== attempt.profile
+          || binding.routePlanDigest !== attempt.routePlanDigest
+          || binding.environmentDigest !== attempt.environmentDigest
+          || binding.contextManifestDigest !== attempt.contextDigest)) {
+        throw new Error('dsh-legion: projection attempt binding identity mismatch')
+      }
+      const result = attempt.result
+      if (result !== undefined
+        && (result.runId !== run.runId
+          || result.taskId !== attempt.taskId
+          || result.attemptId !== attempt.attemptId
+          || result.planVersion !== attempt.planVersion
+          || result.generation !== attempt.generation
+          || result.fence !== attempt.fence
+          || result.routePlanDigest !== attempt.routePlanDigest
+          || result.environmentDigest !== attempt.environmentDigest
+          || result.contextDigest !== attempt.contextDigest)) {
+        throw new Error('dsh-legion: projection attempt result identity mismatch')
       }
     }
+
+    const mail = Object.create(null) as Record<string, MailRecord>
+    for (const [key, record] of Object.entries(plainRecord(projected.mail, `${runId}.mail`))) {
+      const raw = plainRecord(record, `${runId}.mail.${key}`)
+      const message = plainRecord(raw.message, `${runId}.mail.${key}.message`)
+      const reservation = raw.reservation === undefined
+        ? undefined
+        : plainRecord(raw.reservation, `${runId}.mail.${key}.reservation`)
+      const parsed = validateLegionEventData('legion/mail-state', {
+        schemaVersion: 1, runId, planVersion: run.currentPlanVersion,
+        correlationId: 'projection-checkpoint', taskId: message.recipientTaskId,
+        mailId: key, recipientGeneration: raw.recipientGeneration,
+        ...(reservation?.fence === undefined && run.fence === undefined
+          ? {}
+          : { fence: reservation?.fence ?? run.fence }),
+        record,
+      }).record
+      if (parsed.message.mailId !== key) throw new Error('dsh-legion: projection mail key does not match record')
+      mail[key] = parsed
+    }
+
+    for (const record of Object.values(mail)) {
+      const taskId = record.message.recipientTaskId
+      const task = Object.hasOwn(tasks, taskId) ? tasks[taskId] : undefined
+      if (task === undefined || task.generation !== record.recipientGeneration) {
+        throw new Error('dsh-legion: projection mail does not match its recipient task')
+      }
+    }
+
+    const continuations = Object.create(null) as Record<string, ContinuationRecord>
+    for (const [key, record] of Object.entries(plainRecord(projected.continuations, `${runId}.continuations`))) {
+      const raw = plainRecord(record, `${runId}.continuations.${key}`)
+      const token = plainRecord(raw.token, `${runId}.continuations.${key}.token`)
+      const parsed = validateLegionEventData('legion/continuation-state', {
+        schemaVersion: 1, runId, planVersion: token.planVersion,
+        correlationId: 'projection-checkpoint', continuationId: key, record,
+      }).record
+      if (parsed.continuationId !== key) {
+        throw new Error('dsh-legion: projection continuation key does not match record')
+      }
+      continuations[key] = parsed
+    }
+
+    const rawMilestones = projected.milestones
+    const rawDecisions = projected.decisions
+    const rawMilestoneSeqs = projected.milestoneEventSeqs
+    const rawDecisionSeqs = projected.decisionEventSeqs
+    if (!Array.isArray(rawMilestones) || !Array.isArray(rawDecisions)
+      || !Array.isArray(rawMilestoneSeqs) || !Array.isArray(rawDecisionSeqs)
+      || rawMilestones.length !== rawMilestoneSeqs.length
+      || rawDecisions.length !== rawDecisionSeqs.length) {
+      throw new Error(`dsh-legion: invalid projection ${runId} list fields`)
+    }
+    const milestones = rawMilestones.map(record => validateLegionEventData('legion/milestone', {
+      schemaVersion: 1, runId, planVersion: run.currentPlanVersion,
+      correlationId: 'projection-checkpoint', record,
+    }).record)
+    const decisions = rawDecisions.map(record => validateLegionEventData('legion/decision', {
+      schemaVersion: 1, runId, planVersion: run.currentPlanVersion,
+      correlationId: 'projection-checkpoint', record,
+    }).record)
+    parsedRuns[runId] = {
+      run, plans, tasks, attempts, mail, continuations, milestones, decisions,
+      milestoneEventSeqs: rawMilestoneSeqs.map((seq, index) =>
+        projectionSequence(seq, `${runId}.milestoneEventSeqs[${String(index)}]`)),
+      decisionEventSeqs: rawDecisionSeqs.map((seq, index) =>
+        projectionSequence(seq, `${runId}.decisionEventSeqs[${String(index)}]`)),
+    }
   }
-  return deepFreeze(deepCopy(value as LegionProjectionState))
+  return deepFreeze({ runs: parsedRuns })
 }
 
 const legionProjectionSchema: ProjectionSchema<LegionProjectionState> = { parse: parseProjectionState }

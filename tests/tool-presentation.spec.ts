@@ -98,18 +98,17 @@ async function sources(dir: string, found: string[] = []): Promise<string[]> {
  * `@deepseek-ai/dsh-agent-tool-presentation` row on a preset's standing scope,
  * resolved along the scope chain, defaulted by the deployment's `dsh-tools` row.
  *
- * Legion's complete preset SELECTS PTC mode, because coordination is what PTC
- * mode is best at and because that preset owns its whole composition. It selects
- * it by composing the official row, which is the difference that matters: the
- * mechanism stays upstream, so the preset tracks whatever PTC mode currently is
- * and the agents it delegates to inherit the same mode through scope
- * re-parenting. Legion's own source owns no part of it.
+ * Legion's complete preset selects native mode because its Review Specialist's
+ * allowlist must be a real read-only boundary. It still composes the official
+ * row, so the mechanism stays upstream and delegated children inherit the same
+ * choice through scope re-parenting. Trusted deployments can select PTC only
+ * when every child may receive bash-equivalent code-runtime authority.
  *
  * That distinction is invisible to the compiler — Legion reaches none of these
  * symbols, so nothing else in the build would notice a copy appearing. This
  * suite is what makes it loud.
  */
-describe('PTC mode is composed from the official row, never owned', () => {
+describe('tool presentation is composed from the official row, never owned', () => {
   it('injects no code runtime', () => {
     // The wait for `codeRuntime` belongs to the official row, which fails a
     // preset at mount when the deployment composes none. Legion injecting it
@@ -151,14 +150,14 @@ describe('PTC mode is composed from the official row, never owned', () => {
     expect(offences).toEqual([])
   })
 
-  it('ships a complete preset that selects PTC mode through the official row', async () => {
+  it('ships a complete preset that selects native mode through the official row', async () => {
     const rows = load(await readFile(PRESET, 'utf8'), { schema: entryListSchema })
     if (!Array.isArray(rows)) throw new Error('expected preset rows')
     const named = rows as Array<{ id?: string; name?: string; config?: { mode?: unknown } }>
 
     const row = named.find(entry => entry.name === PRESENTATION_ROW)
     expect(row).toBeDefined()
-    expect(row?.config?.mode).toBe('ptc')
+    expect(row?.config?.mode).toBe('native')
 
     // One composition selects one presentation: a second declaration is refused
     // rather than merged, so nothing else here may answer the same question.

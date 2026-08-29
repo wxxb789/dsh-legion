@@ -1,6 +1,6 @@
 import type { Session } from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
-import { Fence } from '../src/durable-run/contract.ts'
+import { Fence, type RunRecord } from '../src/durable-run/contract.ts'
 import { appendLegionEvent } from '../src/durable-run/events.ts'
 import { foldLegionProjection } from '../src/durable-run/projection.ts'
 import {
@@ -91,7 +91,8 @@ describe('durable event append', () => {
         },
       },
     }
-    const terminal = pendingRun({ ...runRecord, status: 'completed' })
+    const terminalRecord: RunRecord = { ...runRecord, status: 'completed' }
+    const terminal = pendingRun(terminalRecord)
     appendLegionEvent(session, invariant, terminal)
     const terminalInvariant = {
       runs: {
@@ -104,6 +105,11 @@ describe('durable event append', () => {
       },
     }
     expect(() => appendLegionEvent(session, terminalInvariant, pendingRun())).toThrow(/terminal/)
+    expect(() => appendLegionEvent(session, terminalInvariant, pendingRun({
+      ...terminalRecord,
+      terminalSummary: 'rewritten terminal facts',
+      updatedAt: terminalRecord.updatedAt + 1,
+    }))).toThrow(/terminal/)
     expect(projected.runs[runRecord.runId]?.run).toEqual(runRecord)
   })
 })

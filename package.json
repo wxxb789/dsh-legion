@@ -51,6 +51,8 @@
     "scripts/verify-supplied-packed-delegation.mjs",
     "scripts/registry-config.mjs",
     "scripts/registry-config.d.mts",
+    "scripts/native-command.mjs",
+    "scripts/native-command.d.mts",
     "scripts/trusted-temp-root.mjs",
     "scripts/trusted-temp-root.d.mts",
     "README.md",

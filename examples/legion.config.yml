@@ -59,7 +59,7 @@ specialists:
           minContextTokens: 65536
           minEffectiveOutputTokens: 8192
     toolFilter:
-      deny: [write, edit]
+      allow: [read, glob, grep]
     maxDepth: 2
     defaultRunInBackground: false
     result: review-v1

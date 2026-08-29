@@ -1,4 +1,6 @@
+import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import type { StrategyLimits } from '../orchestration-contract.ts'
+import { ArtifactName } from '../identity.ts'
 import { canonicalValue, deepCopy, deepFreeze, sha256Digest } from '../internal/value.ts'
 import {
   AuthorityDigest,
@@ -12,7 +14,16 @@ import {
   type TaskId as TaskIdType,
   type TaskRecord,
 } from './contract.ts'
-import { evolvePlanGraph, type PlanEdge, type PlanGraph, type TaskSpec } from './graph.ts'
+import {
+  evolvePlanGraph,
+  materializeDshPrimitive,
+  materializeInvokeTaskSpecBody,
+  materializeStrategyLimits,
+  PlanGraphCycleError,
+  type PlanEdge,
+  type PlanGraph,
+  type TaskSpec,
+} from './graph.ts'
 
 export interface PlanDeltaEvidence { readonly source: string; readonly detail: string }
 export type PlanDeltaOperation =
@@ -38,6 +49,8 @@ export type PlanDeltaDecision =
   | { readonly kind: 'rejected'; readonly proposalDigest?: string; readonly reason: PlanDeltaRejectionReason; readonly message: string }
 
 const LOCAL_ID = /^[a-z][a-z0-9-]*$/
+const PLAN_DELTA_MAX_BYTES = 256 * 1024
+const PLAN_DELTA_MAX_EVIDENCE = 64
 const EFFECTS: readonly EffectClass[] = ['read', 'idempotent-write', 'non-idempotent-write']
 function record(value: unknown, at: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('dsh-legion: ' + at + ' must be a plain object')
@@ -89,29 +102,25 @@ function subset(values: readonly string[], ceiling: readonly string[]): boolean 
 export function isAuthoritySubset(candidate: AuthorityEnvelope, ceiling: AuthorityEnvelope): boolean {
   if (candidate.maxDepth > ceiling.maxDepth || candidate.allowGoalRevision && !ceiling.allowGoalRevision) return false
   return Object.entries(candidate.profiles).every(([name, item]) => {
-    const allowed = ceiling.profiles[name]
+    const allowed = Object.hasOwn(ceiling.profiles, name) ? ceiling.profiles[name] : undefined
     return allowed !== undefined && subset(item.members, allowed.members) && subset(item.tools, allowed.tools)
       && subset(item.providers, allowed.providers) && subset(item.models, allowed.models)
       && subset(item.routes, allowed.routes) && subset(item.effectClasses, allowed.effectClasses)
   })
 }
-function limits(value: unknown): StrategyLimits {
-  const source = record(value, 'limits'); const fields = ['maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes']
-  exactKeys(source, fields, fields, 'limits')
-  const output = { maxAgents: positive(source.maxAgents, 'maxAgents'), maxConcurrent: positive(source.maxConcurrent, 'maxConcurrent'), deadlineMs: positive(source.deadlineMs, 'deadlineMs'), maxOutputBytes: positive(source.maxOutputBytes, 'maxOutputBytes') }
-  if (output.maxConcurrent > output.maxAgents) throw new Error('dsh-legion: maxConcurrent exceeds maxAgents')
-  return output
-}
 function dynamicTask(value: unknown, at: string): Omit<TaskSpec, 'taskId'> {
-  const source = record(value, at)
-  const fields = ['kind', 'label', 'primitive', 'member', 'profile', 'agentCount', 'inputs', 'output', 'effectClass', 'retryPolicy', 'memberFailure']
-  exactKeys(source, fields, fields, at)
-  if (source.kind !== 'invoke' || typeof source.effectClass !== 'string' || !EFFECTS.includes(source.effectClass as EffectClass)
-    || source.memberFailure !== 'fail' && source.memberFailure !== 'allow-partial' || !Array.isArray(source.inputs)) throw new Error('dsh-legion: invalid dynamic task')
-  const retry = record(source.retryPolicy, at + '.retryPolicy'); exactKeys(retry, ['kind'], ['kind'], at + '.retryPolicy')
-  if (retry.kind !== 'none') throw new Error('dsh-legion: model-authored retries are forbidden')
-  record(source.primitive, at + '.primitive'); record(source.output, at + '.output')
-  return deepCopy({ kind: 'invoke' as const, label: text(source.label, at + '.label'), primitive: source.primitive as TaskSpec['primitive'], member: text(source.member, at + '.member'), profile: text(source.profile, at + '.profile'), agentCount: positive(source.agentCount, at + '.agentCount'), inputs: source.inputs as TaskSpec['inputs'], output: source.output as TaskSpec['output'], effectClass: source.effectClass as EffectClass, retryPolicy: { kind: 'none' as const }, memberFailure: source.memberFailure })
+  const task = materializeInvokeTaskSpecBody(value, at)
+  if (task.primitive.kind === 'dsh-subagent-fanout') {
+    throw new Error('dsh-legion: model-authored fanout requires unavailable Member Slot capacity evidence')
+  }
+  return deepFreeze({
+    ...deepCopy(task),
+    primitive: {
+      ...deepCopy(task.primitive),
+      specialist: task.primitive.specialist,
+      profile: task.primitive.specialist,
+    },
+  })
 }
 function operation(value: unknown, index: number): PlanDeltaOperation {
   const source = record(value, 'operations[' + index + ']')
@@ -119,16 +128,25 @@ function operation(value: unknown, index: number): PlanDeltaOperation {
   if (source.kind === 'add-edge') {
     exactKeys(source, ['kind', 'from', 'to', 'reason', 'artifact'], ['kind', 'from', 'to', 'reason'], 'add-edge')
     if (source.reason !== 'after' && source.reason !== 'artifact' || source.reason === 'artifact' && source.artifact === undefined || source.reason === 'after' && source.artifact !== undefined) throw new Error('dsh-legion: invalid edge')
-    return { kind: 'add-edge', from: text(source.from, 'from'), to: text(source.to, 'to'), reason: source.reason, ...(source.artifact === undefined ? {} : { artifact: text(source.artifact, 'artifact') }) }
+    return { kind: 'add-edge', from: text(source.from, 'from'), to: text(source.to, 'to'), reason: source.reason, ...(source.artifact === undefined ? {} : { artifact: ArtifactName(text(source.artifact, 'artifact', Number.MAX_SAFE_INTEGER)) }) }
   }
   if (source.kind === 'supersede-pending') { exactKeys(source, ['kind', 'taskId', 'replacement'], ['kind', 'taskId'], 'supersede'); return { kind: 'supersede-pending', taskId: text(source.taskId, 'taskId'), ...(source.replacement === undefined ? {} : { replacement: localIdentity(source.replacement, 'replacement') }) } }
-  if (source.kind === 'narrow-limits') { exactKeys(source, ['kind', 'limits'], ['kind', 'limits'], 'narrow-limits'); return { kind: 'narrow-limits', limits: limits(source.limits) } }
+  if (source.kind === 'narrow-limits') { exactKeys(source, ['kind', 'limits'], ['kind', 'limits'], 'narrow-limits'); return { kind: 'narrow-limits', limits: materializeStrategyLimits(source.limits) } }
   throw new Error('dsh-legion: invalid PlanDelta operation kind')
 }
 export function materializePlanDeltaProposal(value: unknown): PlanDeltaProposal {
-  const source = record(value, 'PlanDeltaProposal'); const fields = ['schemaVersion', 'deltaId', 'basePlanVersion', 'reason', 'evidence', 'operations']
+  const snapshot = snapshotJsonValue(value)
+  if (snapshot === undefined
+    || new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > PLAN_DELTA_MAX_BYTES) {
+    throw new Error('dsh-legion: PlanDeltaProposal exceeds its JSON byte limit')
+  }
+  const source = record(snapshot, 'PlanDeltaProposal'); const fields = ['schemaVersion', 'deltaId', 'basePlanVersion', 'reason', 'evidence', 'operations']
   exactKeys(source, fields, fields, 'PlanDeltaProposal')
-  if (source.schemaVersion !== 1 || !Array.isArray(source.evidence) || !Array.isArray(source.operations) || source.operations.length > 64) throw new Error('dsh-legion: invalid PlanDeltaProposal')
+  if (source.schemaVersion !== 1 || !Array.isArray(source.evidence)
+    || source.evidence.length > PLAN_DELTA_MAX_EVIDENCE
+    || !Array.isArray(source.operations) || source.operations.length > 64) {
+    throw new Error('dsh-legion: invalid PlanDeltaProposal')
+  }
   const evidence = source.evidence.map((value, index) => { const item = record(value, 'evidence[' + index + ']'); exactKeys(item, ['source', 'detail'], ['source', 'detail'], 'evidence'); return { source: text(item.source, 'evidence.source'), detail: text(item.detail, 'evidence.detail') } })
   return deepFreeze({ schemaVersion: 1, deltaId: DeltaId(source.deltaId), basePlanVersion: PlanVersion(source.basePlanVersion), reason: text(source.reason, 'reason', 4096), evidence, operations: source.operations.map(operation) })
 }
@@ -158,17 +176,17 @@ function bindDynamicTask(
   return deepFreeze({
     ...deepCopy(node),
     taskId,
-    primitive: {
+    primitive: materializeDshPrimitive({
       ...deepCopy(primitive),
       stage: taskId,
       output: { ...deepCopy(primitive.output), producer: taskId },
-    },
+    }, 'bound dynamic task primitive'),
   })
 }
 
 function resolve(reference: string, locals: ReadonlyMap<string, TaskIdType>, nodes: Readonly<Record<string, TaskSpec>>): TaskIdType | undefined {
   const generated = locals.get(reference); if (generated !== undefined) return generated
-  try { const id = TaskId(reference); return nodes[id] === undefined ? undefined : id } catch { return undefined }
+  try { const id = TaskId(reference); return Object.hasOwn(nodes, id) ? id : undefined } catch { return undefined }
 }
 function limitsNarrower(next: StrategyLimits, base: StrategyLimits): boolean { return next.maxAgents <= base.maxAgents && next.maxConcurrent <= base.maxConcurrent && next.deadlineMs <= base.deadlineMs && next.maxOutputBytes <= base.maxOutputBytes }
 function edgeKey(edge: PlanEdge): string { return [edge.from, edge.to, edge.reason, edge.artifact ?? ''].join('\0') }
@@ -195,8 +213,10 @@ export function applyPlanDelta(input: { readonly base: PlanGraph; readonly propo
   for (const item of adds) { if (locals.has(item.localId)) return reject('identity-collision', 'duplicate local identity'); locals.set(item.localId, TaskId('@legion/delta/' + proposal.deltaId + '/' + item.localId)) }
   const nodes: Record<string, TaskSpec> = { ...input.base.nodes }
   for (const item of adds) {
-    const id = locals.get(item.localId)!; if (nodes[id] !== undefined) return reject('identity-collision', 'generated identity collides')
-    const allowed = input.authority.profiles[item.node.profile]
+    const id = locals.get(item.localId)!; if (Object.hasOwn(nodes, id)) return reject('identity-collision', 'generated identity collides')
+    const allowed = Object.hasOwn(input.authority.profiles, item.node.profile)
+      ? input.authority.profiles[item.node.profile]
+      : undefined
     if (allowed === undefined || !allowed.members.includes(item.node.member) || !allowed.effectClasses.includes(item.node.effectClass)) return reject('authority-widening', 'task exceeds authority')
     try {
       nodes[id] = bindDynamicTask(item.node, id)
@@ -211,9 +231,20 @@ export function applyPlanDelta(input: { readonly base: PlanGraph; readonly propo
   const superseded: TaskIdType[] = []
   for (const item of proposal.operations) if (item.kind === 'supersede-pending') {
     const id = resolve(item.taskId, locals, nodes); if (id === undefined) return reject('unknown-task', 'unknown superseded task')
-    const status = input.tasks[id]?.status; if (status !== 'pending' && status !== 'ready') return reject('history-rewrite', 'only pending tasks may be superseded')
+    const status = Object.hasOwn(input.tasks, id) ? input.tasks[id]?.status : undefined; if (status !== 'pending' && status !== 'ready') return reject('history-rewrite', 'only pending tasks may be superseded')
     if (item.replacement !== undefined && !locals.has(item.replacement)) return reject('unknown-task', 'unknown replacement')
     superseded.push(id)
+  }
+  const supersededSet = new Set(superseded)
+  for (const taskId of superseded) {
+    const task = Object.hasOwn(nodes, taskId) ? nodes[taskId] : undefined
+    if (task === undefined) return reject('unknown-task', 'unknown superseded task')
+    const artifact = task.output.artifact
+    if (input.base.completion.artifact === artifact
+      || Object.values(nodes).some(node => !supersededSet.has(node.taskId)
+        && node.inputs.some(input => input.artifact === artifact))) {
+      return reject('history-rewrite', 'cannot supersede a task whose artifact remains required')
+    }
   }
   const narrow = proposal.operations.filter((item): item is Extract<PlanDeltaOperation, { kind: 'narrow-limits' }> => item.kind === 'narrow-limits')
   if (narrow.length > 1) return reject('malformed', 'multiple limit operations')
@@ -223,9 +254,12 @@ export function applyPlanDelta(input: { readonly base: PlanGraph; readonly propo
   for (const item of proposal.operations) if (item.kind === 'add-edge') {
     const from = resolve(item.from, locals, nodes); const to = resolve(item.to, locals, nodes)
     if (from === undefined || to === undefined) return reject('unknown-task', 'edge references unknown task')
-    const status = input.tasks[to]?.status
-    if (input.base.nodes[to] !== undefined && status !== undefined && status !== 'pending' && status !== 'ready') return reject('history-rewrite', 'cannot change started history')
-    edges.push({ from, to, reason: item.reason, ...(item.artifact === undefined ? {} : { artifact: item.artifact }) })
+    const status = Object.hasOwn(input.tasks, to) ? input.tasks[to]?.status : undefined
+    if (Object.hasOwn(input.base.nodes, to) && status !== undefined && status !== 'pending' && status !== 'ready') return reject('history-rewrite', 'cannot change started history')
+    if (item.reason === 'after') edges.push({ from, to, reason: 'after' })
+    else if (item.artifact !== undefined) {
+      edges.push({ from, to, reason: 'artifact', artifact: item.artifact })
+    } else return reject('malformed', 'artifact edge requires an artifact')
   }
   const canonicalEdges = [...new Map(edges.map(edge => [edgeKey(edge), edge])).values()]
   try {
@@ -234,6 +268,6 @@ export function applyPlanDelta(input: { readonly base: PlanGraph; readonly propo
     return deepFreeze({ kind: 'accepted', proposalDigest, graph, superseded: [...new Set(superseded)].sort(compare) })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'invalid graph'
-    return reject(message.includes('cycle') ? 'cycle' : 'invalid-graph', message)
+    return reject(error instanceof PlanGraphCycleError ? 'cycle' : 'invalid-graph', message)
   }
 }

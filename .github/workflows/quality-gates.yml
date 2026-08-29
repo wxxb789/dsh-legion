@@ -51,7 +51,7 @@ jobs:
       - if: inputs.dsh-source-artifact == ''
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
-        run: node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
+        run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run verify:contract
@@ -110,7 +110,7 @@ jobs:
       - if: inputs.dsh-source-artifact == ''
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
-        run: node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
+        run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract

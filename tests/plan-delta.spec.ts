@@ -6,7 +6,7 @@ import {
   TaskId,
   type TaskRecord,
 } from '../src/durable-run/contract.ts'
-import type { PlanGraph, TaskSpec } from '../src/durable-run/graph.ts'
+import { materializePlanGraph, type PlanGraph, type TaskSpec } from '../src/durable-run/graph.ts'
 import { applyPlanDelta, createAuthorityEnvelope, materializePlanDeltaProposal } from '../src/durable-run/plan-delta.ts'
 
 function node(id: string, profile = 'default', effectClass: TaskSpec['effectClass'] = 'read'): TaskSpec {
@@ -47,6 +47,25 @@ function dynamic(id = 'new-task', profile = 'default', effectClass: TaskSpec['ef
   const { taskId: _taskId, ...value } = node(id, profile, effectClass)
   return value
 }
+function fanoutDynamic(id: string, count: number): Omit<TaskSpec, 'taskId'> {
+  const value = dynamic(id)
+  if (value.primitive.kind !== 'dsh-delegate') throw new Error('expected delegate fixture')
+  const { mode: _mode, ...primitive } = value.primitive
+  return {
+    ...value,
+    agentCount: count,
+    output: { ...value.output, collection: true },
+    primitive: {
+      ...primitive,
+      kind: 'dsh-subagent-fanout',
+      output: { ...primitive.output, collection: true },
+      count,
+      minSuccess: count,
+      allowDegraded: false,
+    },
+  }
+}
+
 function proposal(operations: readonly unknown[] = [
   { kind: 'add-node', localId: 'new-task', node: dynamic() },
   { kind: 'add-edge', from: 'root', to: 'new-task', reason: 'after' },
@@ -74,12 +93,134 @@ describe('PlanDelta compiler', () => {
     expect(() => materializePlanDeltaProposal({ ...proposal(), operations: [
       { kind: 'add-node', localId: '@legion', node: dynamic() },
     ] })).toThrow(/localId/)
-    const decision = applyPlanDelta(request(proposal()))
+    expect(() => materializePlanDeltaProposal({
+      ...proposal(),
+      evidence: Array.from({ length: 65 }, (_, index) => ({
+        source: `artifact:${String(index)}`,
+        detail: 'bounded',
+      })),
+    })).toThrow(/PlanDeltaProposal/)
+    const materialized = materializePlanDeltaProposal(proposal())
+    expect(materializePlanDeltaProposal(materialized)).toEqual(materialized)
+    const decision = applyPlanDelta(request(materialized))
     expect(decision.kind).toBe('accepted')
     if (decision.kind === 'accepted') {
+      const added = decision.graph.nodes['@legion/delta/delta-one/new-task']
+      expect(added?.primitive.profile).toBe('default')
       expect(Object.keys(decision.graph.nodes)).toContain('@legion/delta/delta-one/new-task')
       expect(decision.graph.planVersion).toBe(2)
+      expect(materializePlanGraph(JSON.parse(JSON.stringify(decision.graph)) as unknown))
+        .toEqual(decision.graph)
     }
+  })
+
+  it('rejects malformed nested dynamic task contracts before graph compilation', () => {
+    const valid = dynamic()
+    if (valid.primitive.kind !== 'dsh-delegate') throw new Error('expected delegate fixture')
+    const { mode: _mode, ...fanoutBase } = valid.primitive
+    const malformed = [
+      { ...valid, primitive: { ...valid.primitive, kind: 'unknown-primitive' } },
+      { ...valid, primitive: { ...valid.primitive, typo: true } },
+      { ...valid, inputs: [{ artifact: 'objective', contract: 'objective-v1', collection: false }] },
+      { ...valid, output: { ...valid.output, contract: 'unknown-contract' } },
+      {
+        ...valid,
+        primitive: {
+          ...valid.primitive,
+          output: { ...valid.primitive.output, name: 'objective' },
+        },
+        output: { ...valid.output, artifact: 'objective' },
+      },
+      { ...valid, primitive: { ...valid.primitive, mode: 'continuable' } },
+      {
+        ...valid,
+        primitive: {
+          ...valid.primitive,
+          output: { ...valid.primitive.output, availability: 'optional' },
+        },
+      },
+      {
+        ...valid,
+        output: { ...valid.output, collection: true },
+        primitive: {
+          ...valid.primitive,
+          output: { ...valid.primitive.output, collection: true },
+        },
+      },
+      {
+        ...valid,
+        agentCount: 2,
+        primitive: {
+          ...fanoutBase,
+          kind: 'dsh-subagent-fanout',
+          count: 2,
+          minSuccess: 2,
+          allowDegraded: false,
+        },
+      },
+      {
+        ...valid,
+        agentCount: 17,
+        primitive: {
+          ...fanoutBase,
+          kind: 'dsh-subagent-fanout',
+          count: 17,
+          minSuccess: 17,
+          allowDegraded: false,
+        },
+      },
+      {
+        ...valid,
+        primitive: { ...valid.primitive, inputs: ['objective'] },
+        inputs: [{ artifact: 'objective', contract: 'text', collection: false, required: true }],
+      },
+    ]
+    for (const [index, candidate] of malformed.entries()) {
+      expect(() => materializePlanDeltaProposal(proposal([
+        { kind: 'add-node', localId: `invalid-${String(index)}`, node: candidate },
+      ])), String(index)).toThrow(/primitive|inputs|output/)
+    }
+  })
+
+  it('materializes long valid artifact identities in edge proposals', () => {
+    expect(() => materializePlanDeltaProposal(proposal([
+      {
+        kind: 'add-edge',
+        from: 'root',
+        to: 'root',
+        reason: 'artifact',
+        artifact: 'a'.repeat(513),
+      },
+    ]))).not.toThrow()
+  })
+
+  it('rejects a delta whose tasks exceed the compiled run agent budget', () => {
+    const additions = ['one', 'two', 'three', 'four'].map(id => ({
+      kind: 'add-node',
+      localId: id,
+      node: dynamic(id),
+    }))
+    expect(applyPlanDelta(request(proposal(additions)))).toMatchObject({
+      kind: 'rejected',
+      reason: 'invalid-graph',
+      message: expect.stringMatching(/maxAgents/),
+    })
+  })
+
+  it('rejects model-authored fanout without Member Slot capacity evidence', () => {
+    expect(applyPlanDelta(request(proposal([
+      { kind: 'add-node', localId: 'fanout', node: fanoutDynamic('fanout', 3) },
+    ])))).toMatchObject({
+      kind: 'rejected',
+      reason: 'malformed',
+      message: expect.stringMatching(/Member Slot capacity/),
+    })
+  })
+
+  it('treats prototype-chain names as ordinary missing identifiers', () => {
+    expect(applyPlanDelta(request(proposal([
+      { kind: 'add-edge', from: 'constructor', to: 'root', reason: 'after' },
+    ])))).toMatchObject({ kind: 'rejected', reason: 'unknown-task' })
   })
 
   it('rejects stale bases, cycles, and rewrites of started history', () => {
@@ -115,13 +256,27 @@ describe('PlanDelta compiler', () => {
     })).toMatchObject({ kind: 'rejected', reason: 'authority-widening' })
   })
 
-  it('permits pending supersession and narrowing only', () => {
-    const decision = applyPlanDelta(request(proposal([
+  it('supersedes only pending tasks whose artifacts are no longer required', () => {
+    expect(applyPlanDelta(request(proposal([
       { kind: 'supersede-pending', taskId: 'root' },
-      { kind: 'narrow-limits', limits: { ...base.limits, maxConcurrent: 1 } },
-    ]), { root: { status: 'ready' as const } }))
+    ]), { root: { status: 'ready' as const } }))).toMatchObject({
+      kind: 'rejected', reason: 'history-rewrite',
+    })
+
+    const sideBase: PlanGraph = {
+      ...base,
+      nodes: { ...base.nodes, side: node('side') },
+    }
+    const decision = applyPlanDelta({
+      ...request(proposal([
+        { kind: 'supersede-pending', taskId: 'side' },
+        { kind: 'narrow-limits', limits: { ...base.limits, maxConcurrent: 1 } },
+      ])),
+      base: sideBase,
+      tasks: { root: { status: 'pending' }, side: { status: 'ready' } },
+    })
     expect(decision).toMatchObject({
-      kind: 'accepted', superseded: ['root'], graph: { limits: { maxConcurrent: 1 } },
+      kind: 'accepted', superseded: ['side'], graph: { limits: { maxConcurrent: 1 } },
     })
   })
 

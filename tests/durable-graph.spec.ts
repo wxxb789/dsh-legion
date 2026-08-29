@@ -8,8 +8,11 @@ import {
   compileStaticPlanGraph,
   deriveReadyFrontier,
   deriveTaskReadiness,
+  evolvePlanGraph,
   materializePlanGraph,
   type FrontierTaskState,
+  type PlanEdge,
+  type PlanGraph,
 } from '../src/durable-run/graph.ts'
 
 function compile(stages: readonly Record<string, unknown>[], planVersion = PlanVersion(1)) {
@@ -57,6 +60,8 @@ describe('static durable PlanGraph', () => {
     ])
     expect(graph.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
     expect(graph.nodes.alpha?.inputs[0]).toMatchObject({ artifact: 'objective', contract: 'objective-v1', required: true })
+    expect(graph.nodes.alpha?.primitive.profile).toBe('worker')
+    expect(Object.prototype.propertyIsEnumerable.call(graph.nodes.alpha?.primitive, 'profile')).toBe(false)
   })
 
   it('keeps the digest independent of authored after ordering and plan version', () => {
@@ -107,6 +112,102 @@ describe('static durable PlanGraph', () => {
     const graph = compile(stages)
     const detached = JSON.parse(JSON.stringify(graph)) as unknown
     expect(materializePlanGraph(detached)).toEqual(graph)
+    const legacyNodes = structuredClone(graph.nodes) as unknown as Record<string, {
+      primitive: Record<string, unknown>
+    }>
+    for (const node of Object.values(legacyNodes)) {
+      node.primitive.profile = node.primitive.specialist
+      delete node.primitive.specialist
+    }
+    const legacy = evolvePlanGraph(graph, {
+      planVersion: PlanVersion(2),
+      nodes: legacyNodes as unknown as PlanGraph['nodes'],
+      edges: graph.edges,
+    })
+    expect(materializePlanGraph(JSON.parse(JSON.stringify(legacy)) as unknown)).toEqual(legacy)
+    const longPrompt = compile(stages.map(stage => stage.id === 'alpha'
+      ? { ...stage, prompt: 'x'.repeat(1_024) }
+      : stage))
+    expect(materializePlanGraph(JSON.parse(JSON.stringify(longPrompt)) as unknown)).toEqual(longPrompt)
+    const duplicateInput = compile(stages.map(stage => stage.id === 'alpha'
+      ? { ...stage, inputs: [...stage.inputs, ...stage.inputs] }
+      : stage))
+    expect(materializePlanGraph(JSON.parse(JSON.stringify(duplicateInput)) as unknown))
+      .toEqual(duplicateInput)
+    const longArtifact = 'a'.repeat(513)
+    const longIdentity = compile(stages.map(stage => stage.id === 'alpha'
+      ? { ...stage, output: { ...stage.output, artifact: longArtifact } }
+      : stage.id === 'join'
+        ? {
+            ...stage,
+            inputs: stage.inputs.map(input => input.artifact === 'alpha-result'
+              ? { ...input, artifact: longArtifact }
+              : input),
+          }
+        : stage))
+    expect(materializePlanGraph(JSON.parse(JSON.stringify(longIdentity)) as unknown))
+      .toEqual(longIdentity)
+    const malformed = structuredClone(detached) as {
+      nodes: Record<string, { primitive: Record<string, unknown> }>
+    }
+    const alpha = malformed.nodes.alpha
+    if (alpha === undefined) throw new Error('expected alpha fixture')
+    alpha.primitive.kind = 'unknown-primitive'
+    expect(() => materializePlanGraph(malformed)).toThrow(/primitive/)
+
+    const excessive = structuredClone(detached) as { limits: { maxAgents: number } }
+    excessive.limits.maxAgents = 33
+    expect(() => materializePlanGraph(excessive)).toThrow(/maxAgents/)
+
+    const invalidCompletion = structuredClone(detached) as {
+      completion: Record<string, unknown>
+    }
+    invalidCompletion.completion.extra = true
+    expect(() => materializePlanGraph(invalidCompletion)).toThrow(/completion/)
+
+    const invalidEdge = structuredClone(detached) as {
+      edges: Array<Record<string, unknown>>
+    }
+    const artifactEdge = invalidEdge.edges.find(edge => edge.reason === 'artifact')
+    if (artifactEdge === undefined) throw new Error('expected artifact edge fixture')
+    delete artifactEdge.artifact
+    expect(() => materializePlanGraph(invalidEdge)).toThrow(/artifact edge/)
+    expect(() => evolvePlanGraph(graph, {
+      planVersion: PlanVersion(2),
+      nodes: graph.nodes,
+      edges: [{
+        from: TaskId('alpha'), to: TaskId('beta'), reason: 'after', artifact: 'alpha-result',
+      } as unknown as PlanEdge],
+    })).toThrow(/fields|after edge/)
+    expect(() => evolvePlanGraph(graph, {
+      planVersion: PlanVersion(2),
+      nodes: graph.nodes,
+      edges: [{
+        from: TaskId('alpha'), to: TaskId('beta'), reason: 'after', extra: true,
+      } as unknown as PlanEdge],
+    })).toThrow(/fields/)
+
+    const invalidWiring = structuredClone(detached) as {
+      nodes: Record<string, { inputs: Array<{ artifact: string; required: boolean }> }>
+    }
+    const join = invalidWiring.nodes.join
+    const alphaInput = join?.inputs.find(input => input.artifact === 'alpha-result')
+    if (alphaInput === undefined) throw new Error('expected alpha input fixture')
+    alphaInput.required = false
+    expect(() => materializePlanGraph(invalidWiring)).toThrow(/compatible producer/)
+
+    const collectionCompletion = structuredClone(detached) as {
+      nodes: Record<string, {
+        output: { collection: boolean }
+        primitive: { output: { collection: boolean } }
+      }>
+    }
+    const completionNode = collectionCompletion.nodes.join
+    if (completionNode === undefined) throw new Error('expected completion fixture')
+    completionNode.output.collection = true
+    completionNode.primitive.output.collection = true
+    expect(() => materializePlanGraph(collectionCompletion)).toThrow(/collection|completion/)
+
     expect(() => materializePlanGraph({
       ...(detached as Record<string, unknown>),
       strategy: 'tampered',

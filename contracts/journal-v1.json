@@ -108,7 +108,7 @@
   ],
   "projection": {
     "key": "legion-run",
-    "stateVersion": 6,
+    "stateVersion": 7,
     "unknownSessionEvents": "identity",
     "checkpointMismatch": "refold-full-history"
   },

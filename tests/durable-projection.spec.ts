@@ -8,7 +8,7 @@ import {
   registerLegionRunProjection,
 } from '../src/durable-run/projection.ts'
 import { restoreLegionProjection } from '../src/durable-run/replay.ts'
-import { exportedEvent, pendingRun } from './durable-fixture.ts'
+import { attemptRecord, exportedEvent, pendingRun, runRecord } from './durable-fixture.ts'
 
 const runEvent = exportedEvent(pendingRun(), 0) as unknown as SessionEvent
 const unrelated = {
@@ -35,10 +35,41 @@ describe('legion-run projection', () => {
     )).toEqual(full)
   })
 
-  it('refolds the full history when stateVersion mismatches', () => {
-    const full = foldLegionProjection([runEvent])
+  it('rejects conflicting terminal run facts in full and checkpoint-tail replay', () => {
+    const created = exportedEvent(pendingRun(), 0) as unknown as SessionEvent
+    const terminal = exportedEvent(pendingRun({ ...runRecord, status: 'completed' }), 1) as unknown as SessionEvent
+    const conflicting = exportedEvent(pendingRun({
+      ...runRecord,
+      status: 'completed',
+      terminalSummary: 'rewritten',
+      updatedAt: runRecord.updatedAt + 1,
+    }), 2) as unknown as SessionEvent
+
+    const folded = foldLegionProjection([created, terminal, conflicting])
+    expect(folded.runs[runRecord.runId]?.run?.status).toBe('completed')
+    expect(folded.runs[runRecord.runId]?.run?.terminalSummary).toBeUndefined()
+    const checkpoint = foldLegionProjection([created, terminal])
     expect(restoreLegionProjection(
-      { stateVersion: 999, state: EMPTY_LEGION_PROJECTION_STATE },
+      { stateVersion: legionRunProjection.stateVersion, state: checkpoint },
+      [conflicting],
+      [created, terminal, conflicting],
+    )).toEqual(checkpoint)
+  })
+
+  it('refolds the full history instead of trusting a version-6 checkpoint', () => {
+    const full = foldLegionProjection([runEvent])
+    const projected = full.runs[runRecord.runId]
+    if (projected?.run === undefined) throw new Error('expected run fixture')
+    const legacy = {
+      runs: {
+        [runRecord.runId]: {
+          ...projected,
+          run: { ...projected.run, terminalSummary: 'legacy last-wins value' },
+        },
+      },
+    }
+    expect(restoreLegionProjection(
+      { stateVersion: 6, state: legacy },
       [],
       [runEvent],
     )).toEqual(full)
@@ -53,6 +84,26 @@ describe('legion-run projection', () => {
       [],
       [runEvent],
     )).toThrow(/projection/)
+
+    const valid = foldLegionProjection([runEvent])
+    const projected = valid.runs[runRecord.runId]
+    if (projected?.run === undefined) throw new Error('expected projection fixture')
+    expect(() => legionRunProjection.stateSchema.parse({
+      runs: {
+        [runRecord.runId]: {
+          ...projected,
+          run: { ...projected.run, goalVersion: 2 },
+        },
+      },
+    })).toThrow(/run identity/)
+    expect(() => legionRunProjection.stateSchema.parse({
+      runs: {
+        [runRecord.runId]: {
+          ...projected,
+          attempts: { [attemptRecord.attemptId]: attemptRecord },
+        },
+      },
+    })).toThrow(/attempt does not match its task/)
   })
 
   it('registers the actual definition and disposes through Cordis effect', () => {
@@ -75,7 +126,7 @@ describe('legion-run projection', () => {
     expect(registered).toBe(legionRunProjection)
     expect(legionRunProjection).toMatchObject({
       key: 'legion-run',
-      stateVersion: 6,
+      stateVersion: 7,
     })
     expect(typeof legionRunProjection.schema.parse).toBe('function')
     expect(disposed).toBe(true)

@@ -19,7 +19,7 @@ import {
 } from '../src/durable-run/mailbox.ts'
 import { foldLegionProjection, viewLegionRun } from '../src/durable-run/projection.ts'
 import { validateLegionEventData } from '../src/durable-run/validate.ts'
-import { exportedEvent, pendingRun, planVersion } from './durable-fixture.ts'
+import { exportedEvent, pendingRun, planVersion, taskRecord } from './durable-fixture.ts'
 
 function digest(character: string) {
   return ArtifactDigest(`sha256:${character.repeat(64)}`)
@@ -197,10 +197,24 @@ describe('durable mailbox', () => {
     ]
     const events: SessionEvent[] = [
       exportedEvent(pendingRun(), 0) as unknown as SessionEvent,
+      {
+        type: 'legion/task-state',
+        seq: 1,
+        time: 2,
+        data: validateLegionEventData('legion/task-state', {
+          schemaVersion: 1,
+          runId: RunId('run-one'),
+          planVersion,
+          correlationId: 'mail-task',
+          taskId: taskRecord.taskId,
+          generation: taskRecord.generation,
+          record: taskRecord,
+        }),
+      } as SessionEvent,
       ...records.map((record, index) => ({
         type: 'legion/mail-state',
-        seq: index + 1,
-        time: index + 2,
+        seq: index + 2,
+        time: index + 3,
         data: validateLegionEventData('legion/mail-state', {
           schemaVersion: 1,
           runId: RunId('run-one'),

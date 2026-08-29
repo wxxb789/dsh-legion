@@ -5,10 +5,10 @@
 # append it to already decides that, and one composition selects one
 # presentation: a second declaration is refused rather than merged, so shipping
 # one here would break every base preset that already has its own. Append this
-# to the official "ptc" preset (PTC mode) and Legion runs in PTC mode with
-# you; append it to "standard" and it runs native. Either way Legion's delegated
-# children inherit the same mode as their coordinator. The complete preset under
-# presets/legion/ selects PTC mode, because there it owns the whole composition.
+# to the official "ptc" preset only when every delegated child is trusted with
+# bash-equivalent code-runtime authority; append it to "standard" for native.
+# Either way children inherit the coordinator's mode. The complete preset under
+# presets/legion/ selects native so its Review Specialist is genuinely read-only.
 - id: tool-legion
   name: dsh-legion
   config:
@@ -73,7 +73,7 @@
           Act as an adversarial reviewer. Report concrete findings with severity, evidence,
           and a practical fix. Do not praise or restate the task.
         toolFilter:
-          deny: [write, edit]
+          allow: [read, glob, grep]
         maxDepth: 2
         defaultRunInBackground: false
         result: review-v1

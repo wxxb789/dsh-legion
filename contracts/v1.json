@@ -618,7 +618,7 @@
     "path": "contracts/journal-v1.json",
     "eventFamilies": 8,
     "projectionKey": "legion-run",
-    "projectionStateVersion": 6
+    "projectionStateVersion": 7
   },
   "journalEventKinds": [
     "legion/run-state",
@@ -940,7 +940,7 @@
   "schemaVersion": "dsh-legion-public-contract-v1",
   "sessionProjection": {
     "key": "legion-run",
-    "stateVersion": 6
+    "stateVersion": 7
   },
   "settingsDiagnostics": [
     "LEGION_SETTINGS_SERVICE_UNAVAILABLE",

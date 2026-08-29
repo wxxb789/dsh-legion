@@ -41,6 +41,7 @@ describe('shipped Legion preset template', () => {
           subagentProvider: 'spawn',
           defaultRunInBackground: false,
           result: 'review-v1',
+          toolFilter: { allow: ['read', 'glob', 'grep'] },
           routes: [
             { id: 'primary', provider: 'deepseek-official', model: 'deepseek-v4-pro' },
             { id: 'fast-static', provider: 'deepseek-official', model: 'deepseek-v4-flash' },

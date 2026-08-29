@@ -1,4 +1,9 @@
 import type { AttemptRecord, Fence, ResultEnvelope, RunRecord, TaskRecord } from './contract.ts'
+import {
+  isTerminalAttemptStatus,
+  isTerminalRunStatus,
+  isTerminalTaskStatus,
+} from './status.ts'
 
 export type ResultRejectionCode =
   | 'run-mismatch'
@@ -14,8 +19,6 @@ export type ResultRejectionCode =
 export type ResultAcceptanceDecision =
   | { readonly kind: 'accept' }
   | { readonly kind: 'reject'; readonly code: ResultRejectionCode }
-
-const terminal = new Set(['succeeded', 'failed', 'cancelled', 'superseded'])
 
 export function decideResultAcceptance(input: {
   readonly run: RunRecord
@@ -46,7 +49,9 @@ export function decideResultAcceptance(input: {
   if (result.fence !== input.activeFence || attempt.fence !== input.activeFence) {
     return { kind: 'reject', code: 'fence-stale' }
   }
-  if (terminal.has(task.status) || attempt.status === 'settled') {
+  if (isTerminalRunStatus(run.status)
+    || isTerminalTaskStatus(task.status)
+    || isTerminalAttemptStatus(attempt.status)) {
     return { kind: 'reject', code: 'task-terminal' }
   }
   if (result.routePlanDigest !== attempt.routePlanDigest

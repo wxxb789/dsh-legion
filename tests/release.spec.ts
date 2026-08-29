@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { load } from 'js-yaml'
+import { publishRelease } from '../scripts/publish-release.mjs'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
@@ -14,6 +15,40 @@ const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
   publishConfig: { access: string; registry: string }
 }
 const VERSION = MANIFEST.version
+const RELEASE_REGISTRY = 'https://registry.npmjs.org'
+const RELEASE_TARBALL_CONTENT = 'release tarball bytes'
+const RELEASE_TARBALL_INTEGRITY = 'sha512-Xysim926SpeAdpnaAVBWlHKB4B0DT7o7E18RwCU0R+Uhn0jjNAC0d6g6GUpU6wMay3TRkaPiyAGFnLUBpdi3hg=='
+
+function runReleasePublisher(view: { output?: string; absent?: boolean; checkOnly?: boolean }) {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-legion-publish-'))
+  const tarball = join(root, 'dsh-legion.tgz')
+  const calls: string[][] = []
+  writeFileSync(tarball, RELEASE_TARBALL_CONTENT)
+  const execute = (args: string[]) => {
+    calls.push(args)
+    if (args[0] === 'view') {
+      return view.absent === true
+        ? { status: 1, stdout: '', stderr: 'npm error code E404\nnpm error 404 Not Found\n' }
+        : { status: 0, stdout: view.output ?? '', stderr: '' }
+    }
+    if (args[0] === 'publish') return { status: 0, stdout: 'published\n', stderr: '' }
+    return { status: 2, stdout: '', stderr: 'unexpected npm command\n' }
+  }
+  try {
+    const result = publishRelease({
+      tarball,
+      packageSpec: `dsh-legion@${VERSION}`,
+      registry: RELEASE_REGISTRY,
+      execute,
+      ...view.checkOnly === undefined ? {} : { checkOnly: view.checkOnly },
+    })
+    return { result, error: undefined, calls }
+  } catch (error: unknown) {
+    return { result: undefined, error, calls }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
 
 describe('reproducible CI and release contracts', () => {
   it('commits a pnpm v9 lockfile for every direct dependency', () => {
@@ -44,7 +79,7 @@ describe('reproducible CI and release contracts', () => {
     }
     const sourceInstall = {
       if: "inputs.dsh-source-artifact != ''",
-      run: 'node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"',
+      run: 'pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"',
     }
     for (const job of Object.values(parsedWorkflow.jobs)) {
       expect(job.steps.filter(step => step.run?.includes('install-dsh-tarballs'))).toEqual([sourceInstall])
@@ -60,7 +95,7 @@ describe('reproducible CI and release contracts', () => {
     expect(ci).toContain('dsh-source-artifact: dsh-npm-source')
     expect(ci).toContain('dsh-pnpm-workspace.yaml')
     expect(ci).toContain('package_json_file: deepseek-harness/package.json')
-    expect(workflow).toContain('node scripts/install-dsh-tarballs.mjs')
+    expect(workflow).toContain('pnpm exec node scripts/install-dsh-tarballs.mjs')
     expect(workflow).toContain('DSH_REGISTRY: https://registry.npmjs.org')
     expect(workflow).toContain("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'")
     expect(workflow).toContain('windows-latest')
@@ -181,17 +216,70 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('node scripts/hash-artifacts.mjs')
     expect(workflow).toMatch(/actions\/attest-build-provenance@[a-f0-9]{40}/)
     expect(workflow).toContain('subject-path: dist/*')
-    expect(workflow).toContain('npm publish "$RELEASE_TARBALL" --access public --provenance')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"')
+    expect(workflow.indexOf('Verify npm recovery identity before publishing release evidence'))
+      .toBeLessThan(workflow.indexOf('actions/attest-build-provenance'))
     expect(workflow).not.toContain('NPM_TOKEN')
     expect(workflow).toContain('gh release create')
     expect(workflow).toContain('gh release upload "$GITHUB_REF_NAME" dist/* --clobber')
     expect(workflow).toContain('--draft --verify-tag')
-    expect(workflow).toContain('npm view "dsh-legion@$VERSION" version')
+    expect(workflow).not.toContain('npm view "dsh-legion@$VERSION" version')
     expect(workflow).toContain('gh release edit "$GITHUB_REF_NAME" --draft=false')
     expect(workflow.indexOf('Stage recoverable GitHub draft release'))
       .toBeLessThan(workflow.indexOf('Publish with npm Trusted Publishing and provenance'))
     expect(workflow.indexOf('Publish with npm Trusted Publishing and provenance'))
       .toBeLessThan(workflow.indexOf('Publish GitHub release after npm succeeds'))
+  })
+
+  it('skips an already-published byte-identical npm artifact without publishing again', () => {
+    const outcome = runReleasePublisher({ output: JSON.stringify(RELEASE_TARBALL_INTEGRITY) })
+    expect(outcome.error).toBeUndefined()
+    expect(outcome.result).toEqual({
+      kind: 'identical',
+      message: `dsh-legion@${VERSION} is already published with identical content; skipping`,
+    })
+    expect(outcome.calls.map(call => call[0])).toEqual(['view'])
+    expect(outcome.calls[0]).toContain('dist.integrity')
+  })
+
+  it('fails recovery when the published npm artifact differs from the release tarball', () => {
+    const outcome = runReleasePublisher({ output: JSON.stringify('sha512-different') })
+    expect(outcome.error).toBeInstanceOf(Error)
+    expect((outcome.error as Error).message)
+      .toContain(`dsh-legion@${VERSION} is already published with different content`)
+    expect((outcome.error as Error).message).toContain('registry: sha512-different')
+    expect((outcome.error as Error).message).toContain(`packed:   ${RELEASE_TARBALL_INTEGRITY}`)
+    expect(outcome.calls.map(call => call[0])).toEqual(['view'])
+  })
+
+  it('fails recovery when npm omits published integrity evidence', () => {
+    const outcome = runReleasePublisher({ output: 'null' })
+    expect(outcome.error).toBeInstanceOf(Error)
+    expect((outcome.error as Error).message)
+      .toContain(`registry reported no dist.integrity for dsh-legion@${VERSION}`)
+    expect(outcome.calls.map(call => call[0])).toEqual(['view'])
+  })
+
+  it('preflights an absent npm version without publishing or mutating release evidence', () => {
+    const outcome = runReleasePublisher({ absent: true, checkOnly: true })
+    expect(outcome.error).toBeUndefined()
+    expect(outcome.result).toEqual({
+      kind: 'absent',
+      message: `dsh-legion@${VERSION} is not published; preflight passed`,
+    })
+    expect(outcome.calls.map(call => call[0])).toEqual(['view'])
+  })
+
+  it('publishes with provenance only when the npm version is absent', () => {
+    const outcome = runReleasePublisher({ absent: true })
+    expect(outcome.error).toBeUndefined()
+    expect(outcome.result).toMatchObject({ kind: 'published', message: `dsh-legion@${VERSION} published` })
+    expect(outcome.calls.map(call => call[0])).toEqual(['view', 'publish'])
+    expect(outcome.calls[1]).toEqual([
+      'publish', expect.stringMatching(/dsh-legion\.tgz$/), '--access', 'public', '--provenance',
+      `--registry=${RELEASE_REGISTRY}`,
+    ])
   })
 
   it('verifies release tag/version/changelog identity and rejects a mismatch', () => {

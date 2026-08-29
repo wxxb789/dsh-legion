@@ -16,7 +16,7 @@ specialists:
   verifier:
     description: Independently verify one bounded increment.
     subagentProvider: spawn
-    toolFilter: { deny: [write, edit] }
+    toolFilter: { allow: [read, glob, grep] }
     maxDepth: 1
     defaultRunInBackground: false
     result: review-v1

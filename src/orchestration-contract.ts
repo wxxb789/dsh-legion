@@ -12,6 +12,13 @@ export const STRATEGY_STAGE_KINDS = Object.freeze(['delegate', 'fanout', 'synthe
 export const STRATEGY_LIMIT_FIELDS = Object.freeze([
   'maxAgents', 'maxConcurrent', 'deadlineMs', 'maxOutputBytes',
 ] as const)
+export const STRATEGY_FANOUT_MAX = 16
+export const STRATEGY_LIMIT_MAXIMUMS = Object.freeze({
+  maxAgents: 32,
+  maxConcurrent: 16,
+  deadlineMs: 24 * 60 * 60 * 1000,
+  maxOutputBytes: 16 * 1024 * 1024,
+})
 export type ArtifactContract = (typeof ARTIFACT_CONTRACTS)[number]
 
 export interface MemberSlotSpec {
@@ -177,8 +184,8 @@ const DelegateStageSchema = z.object({
 const FanoutStageSchema = z.object({
   kind: z.const('fanout' as const).required(),
   ...StageBaseSchema,
-  count: z.number().step(1).min(1).max(16).required(),
-  minSuccess: z.number().step(1).min(1).max(16).required(),
+  count: z.number().step(1).min(1).max(STRATEGY_FANOUT_MAX).required(),
+  minSuccess: z.number().step(1).min(1).max(STRATEGY_FANOUT_MAX).required(),
   allowDegraded: z.boolean().required(),
 }) as unknown as z<FanoutStageSpec>
 
@@ -194,10 +201,10 @@ export const StrategyStageSchema: z<StrategyStageSpec> = z.union([
 ])
 
 const StrategyLimitsSchema: z<StrategyLimits> = z.object({
-  maxAgents: z.number().step(1).min(1).max(32).required(),
-  maxConcurrent: z.number().step(1).min(1).max(16).required(),
-  deadlineMs: z.number().step(1).min(1).max(24 * 60 * 60 * 1000).required(),
-  maxOutputBytes: z.number().step(1).min(1).max(16 * 1024 * 1024).required(),
+  maxAgents: z.number().step(1).min(1).max(STRATEGY_LIMIT_MAXIMUMS.maxAgents).required(),
+  maxConcurrent: z.number().step(1).min(1).max(STRATEGY_LIMIT_MAXIMUMS.maxConcurrent).required(),
+  deadlineMs: z.number().step(1).min(1).max(STRATEGY_LIMIT_MAXIMUMS.deadlineMs).required(),
+  maxOutputBytes: z.number().step(1).min(1).max(STRATEGY_LIMIT_MAXIMUMS.maxOutputBytes).required(),
 })
 
 export const StairStepPolicySpecSchema = z.object({

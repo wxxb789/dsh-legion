@@ -69,6 +69,10 @@ jobs:
           mapfile -t tarballs < <(find dist -maxdepth 1 -name '*.tgz' -type f)
           test "${#tarballs[@]}" -eq 1
           echo "RELEASE_TARBALL=${tarballs[0]}" >> "$GITHUB_ENV"
+      - name: Verify npm recovery identity before publishing release evidence
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only
       - run: node scripts/verify-compatibility-receipts.mjs dist
       - run: mkdir -p dist/sbom-root && tar -xzf "$RELEASE_TARBALL" -C dist/sbom-root
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
@@ -98,11 +102,7 @@ jobs:
       - name: Publish with npm Trusted Publishing and provenance
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          if npm view "dsh-legion@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "dsh-legion@$VERSION is already published; continuing recovery"
-          else
-            npm publish "$RELEASE_TARBALL" --access public --provenance
-          fi
+          node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"
       - name: Publish GitHub release after npm succeeds
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --title "$GITHUB_REF_NAME"
         env:

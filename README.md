@@ -344,7 +344,7 @@ A minimal agent-preset row:
           provider: your-llm-provider
           model: your-review-model
         toolFilter:
-          deny: [write, edit]
+          allow: [read, glob, grep]
         maxDepth: 2
         defaultRunInBackground: false
         result: review-v1
@@ -469,26 +469,22 @@ Structured foreground contracts are deliberately narrow:
 
 Presets, Catalog Layers, plugin packages, resource roots, and Prompt Fragments are trusted deployment configuration. Tool filters and path confinement enforce policy and integrity for that trusted deployment; they are **not** a sandbox for hostile presets or untrusted plugins. See [SECURITY.md](SECURITY.md).
 
-### Tool presentation (PTC mode)
+### Tool presentation and read-only review
 
-**The bundled preset runs in PTC mode.** Whether a model sees every tool schema (`native`), only `run_code` plus a generated TypeScript SDK (`ptc`), or both is decided by the official `@deepseek-ai/dsh-agent-tool-presentation` row, falling back to the deployment's `dsh-tools` default. Coordination is the work PTC mode is best at: one `run_code` program starts several delegations together, waits on them as values, and reduces their results without a model round trip per child — the guidance Legion injects ("start independent delegations together") is a suggestion under `native` and an ordinary `Promise.all` here.
+**The bundled preset runs in `native` mode.** Its `review` Specialist uses an explicit `read`/`glob`/`grep` allowlist, so the child cannot inherit the preset's shell, filesystem mutation, job-control, or delegation tools. `read_image` is intentionally absent because DSH registers it only when an attachment service is present; a portable allowlist cannot name a conditional tool. The official `@deepseek-ai/dsh-agent-tool-presentation` row owns this choice, and Legion does not reimplement presentation in its source.
 
-Legion selects it by *composing that row*, never by reimplementing it, and owns no part of the mechanism in its own source — so it always runs the current official PTC mode, with no version to pin or lag behind. There is deliberately no Legion setting for this: a plugin key would compete with the official row for one decision.
+PTC remains available for trusted coordination deployments. A `ptc` row presents only `run_code` plus a generated SDK whose bindings respect the calling Agent's filtered visible tools. However, DSH's worker-thread code runtime explicitly provides containment rather than a security boundary: model-written code has bash-equivalent access to Node APIs, and `run_code` itself cannot be removed by `toolFilter`. A PTC child must therefore not be described as read-only merely because write-shaped SDK bindings are absent.
 
-Delegated children inherit the same presentation. `dsh-agent-presets` re-parents a child agent's scope onto the parent's preset standing scope, and the registry resolves the mode along that chain — so a child of a PTC-mode Legion coordinator is itself in PTC mode, with the SDK section regenerated for that child's own visible tools.
+Delegated children inherit their coordinator's presentation through the preset standing scope. Switch the bundled row to `mode: ptc` only when every delegated Specialist is trusted with that code-runtime authority. The append-to-your-preset fragment ([`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)) declares no presentation, because a second declaration in an existing composition is refused rather than merged; it follows whichever preset receives it.
 
-Specialist `toolFilter` keeps its meaning under PTC mode. The SDK binding table is built from the calling agent's *visible* set, so a denied capability never appears in the generated SDK, and a call naming it from inside `run_code` still resolves to `UNKNOWN_TOOL`: the `review` Specialist's deny of `write`/`edit` holds in both presentations. Two boundaries belong to the Host's design rather than Legion's — `run_code` itself can never be denied, and a filter constrains only the surface a child *inherits*, never the tools that child's own scope registers (its report and structured-output tools).
-
-Which path you took decides where the row lives. The bundled preset ([`presets/legion`](presets/legion)) owns its whole composition and carries it. The append-to-your-preset fragment ([`examples/legion.agent.cordis.fragment.yml`](examples/legion.agent.cordis.fragment.yml)) carries none, because one composition selects one presentation and a second declaration is refused rather than merged — appending it to the official `ptc` preset gives you PTC mode, appending it to `standard` gives you `native`, and Legion follows either.
-
-The row waits for the host's `codeRuntime` rather than assuming it, so a deployment that composes no TypeScript runtime fails the preset **at mount**, naming the row, instead of at the first request. Read that as *install the runtime*, not *turn PTC mode off*: Legion is a development coordinator and this is the mode it is built for. The runtime is host-plane — a preset can select the presentation but can never supply it — so the fix belongs in your **Host** composition (`cordis.yml`):
+A PTC deployment also needs the Host-plane runtime below. Both shipping bundles already compose one; hand-assembled Hosts must add it before selecting `ptc`:
 
 ~~~yaml
 - id: code-runtime
   name: '@deepseek-ai/dsh-code-runtime-worker-thread'
 ~~~
 
-Both shipping bundles compose one already, so this only comes up on a hand-assembled deployment. Legion says the same thing at runtime: mounted where nothing composes a `codeRuntime`, it logs that package name and keeps working in the native presentation rather than failing. `mode: native` is for deliberately wanting native tools, not for working around a missing runtime.
+When no `codeRuntime` is composed, Legion logs that PTC acceleration is unavailable and continues to work through native tools.
 
 ## Doctor and explain
 
@@ -583,7 +579,7 @@ Issues and contributions are welcome through the [GitHub issue tracker](https://
 
 ## Durable Strategy Runs (v1.1, opt-in)
 
-Durable runs are disabled by default and preserve v1.0 ephemeral behavior. When enabled by deployment, a Strategy caller explicitly selects journal mode with `execution: { durability: 'journal' }`; omission remains ephemeral. They use eight typed events in the invoking DSH Session journal and projection key `legion-run` at state version 6. Run control supports bounded read-only `inspect`, one-activation `resume`, flushed `cancel`, and validated proposal-only `steer`. Task delivery is at least once; matching fence and generation permit exactly one accepted commit, not exactly-once external effects. Mail is reserved, incorporated, durably flushed when required, then acknowledged; expired reservations are reclaimable.
+Durable runs are disabled by default and preserve v1.0 ephemeral behavior. When enabled by deployment, a Strategy caller explicitly selects journal mode with `execution: { durability: 'journal' }`; omission remains ephemeral. They use eight typed events in the invoking DSH Session journal and projection key `legion-run` at state version 7. Run control supports bounded read-only `inspect`, one-activation `resume`, flushed `cancel`, and validated proposal-only `steer`. Task delivery is at least once; matching fence and generation permit exactly one accepted commit, not exactly-once external effects. Mail is reserved, incorporated, durably flushed when required, then acknowledged; expired reservations are reclaimable.
 
 This package does not ship DSH persistence, projection, Session Query, atomic coordination, global admission, or child-receipt Host services. DSH 0.1.2-alpha.1 still provides no atomic run coordination service, and its persistence reader has no registration seam for out-of-repository `legion/*` events. Production durable mutation therefore remains unavailable and fails closed before append. No build binds a durable Strategy activation adapter either, so `execution` stays out of the model-facing schema; a programmatic journal request returns the missing Host capability codes or `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`. Pure contracts, validation, replay, and inspection remain usable. Ephemeral Strategy Run Receipts use `ctx.sessionQuery` for complete child discovery; when a persistence backend is mounted, Legion does not append the unsupported `legion/run-receipt` event, preventing a Session that the Host could write but not reopen. See [Durable Strategy Runs](docs/durable-runs.md), [Journal Contract v1](docs/journal-contract-v1.md), and the [DSH 0.1.2-alpha.1 audit](docs/notes/dsh-0.1.2-alpha.1-upgrade.md).
 

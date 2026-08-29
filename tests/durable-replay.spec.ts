@@ -14,6 +14,7 @@ import {
   planRecord,
   planVersion,
   runId,
+  runRecord,
   taskRecord,
 } from './durable-fixture.ts'
 
@@ -40,6 +41,23 @@ describe('durable replay', () => {
       JSON.stringify(legion),
       JSON.stringify({ type: 'turn/start', seq: 2, time: 2, data: { turn: 1 } }),
     ].join('\n'))).toThrow(/not contiguous/)
+  })
+
+  it('rejects exported replay that rewrites terminal run facts', () => {
+    const source = [
+      exportedEvent(pendingRun(), 0),
+      exportedEvent(pendingRun({ ...runRecord, status: 'completed' }), 1),
+      exportedEvent(pendingRun({
+        ...runRecord,
+        status: 'completed',
+        terminalSummary: 'rewritten',
+        updatedAt: runRecord.updatedAt + 1,
+      }), 2),
+    ].map(value => JSON.stringify(value)).join('\n')
+
+    const replayed = replayExportedSessionEvents(source, runId).run
+    expect(replayed?.status).toBe('completed')
+    expect(replayed?.terminalSummary).toBeUndefined()
   })
 
   it('produces bounded detached explain views without transcripts', () => {

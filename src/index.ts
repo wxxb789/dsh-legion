@@ -48,6 +48,7 @@ import {
 import type { StrategyLimits } from './orchestration-contract.ts'
 import { RoutePlanError, applyRoutePlan, compileRoutePlan, observeModelRoutes } from './route.ts'
 import { EMPTY_RESOURCE_SNAPSHOT, loadSpecialistResources, type ResourceSnapshot } from './resources.ts'
+import { createSerializedRepublication } from './internal/republication.ts'
 import {
   LEGION_SETTINGS_NAMESPACE,
   detectSettingsCapabilities,
@@ -296,7 +297,27 @@ export * from './durable-run/events.ts'
 export * from './durable-run/invariant.ts'
 export * from './durable-run/projection.ts'
 export * from './durable-run/replay.ts'
-export * from './durable-run/graph.ts'
+export {
+  compileStaticPlanGraph,
+  deriveReadyFrontier,
+  deriveTaskReadiness,
+  evolvePlanGraph,
+  materializePlanGraph,
+} from './durable-run/graph.ts'
+export type {
+  FrontierArtifact,
+  FrontierTaskState,
+  InvokeTaskSpec,
+  PlanEdge,
+  PlanEdgeReason,
+  PlanGraph,
+  TaskArtifactInput,
+  TaskArtifactOutput,
+  TaskBlockedReason,
+  TaskReadiness,
+  TaskSpec,
+  TaskWaitingReason,
+} from './durable-run/graph.ts'
 export * from './durable-run/controller.ts'
 export * from './durable-run/host.ts'
 export * from './durable-run/capabilities.ts'
@@ -1071,8 +1092,8 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
   let warnedDurableGap = false
   // These guards are read by `republish`, which the settings attach can call
   // before the publication state below exists, so they are bound first.
-  let republishing = false
-  let republishPending = false
+  let requestRepublication: (() => Promise<void>) | undefined
+  let prepublishPending = false
   // Republication is armed only once the first generation is published: the
   // initial materialization already reads through the attached settings scope,
   // so an attach-time notification has nothing left to re-derive.
@@ -1161,6 +1182,9 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     )
     if (settingsCapabilities.liveReconfiguration) await attached
   }
+  // The attach notification is already reflected by the source read below;
+  // only later commits during asynchronous initial materialization need replay.
+  prepublishPending = false
 
   let generation = await materializeGeneration(configSource())
   ctx.fiber.assertActive()
@@ -1233,39 +1257,37 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
     }
   }
 
+  const republication = createSerializedRepublication({
+    active: () => published && !stopped,
+    publishLatest: async () => {
+      const next = await materializeGeneration(configSource())
+      if (stopped) return
+      generation = next
+      announceDurableGap(next.config)
+      refresh()
+    },
+    onError: (error) => {
+      // The last published generation is still a working catalog, so a bad
+      // reload degrades to staleness rather than to no delegation surface.
+      ctx.logger.warn('dsh-legion: configuration republication failed; keeping the published generation')
+      ctx.logger.warn(error)
+    },
+  })
+  requestRepublication = () => republication.request()
+
   /**
-   * Serialize configuration-sourced republication. Loading prompt fragments is
-   * asynchronous, so two commits landing close together would otherwise race to
-   * install their generation; the loser would win by finishing last. Coalescing
-   * to one in-flight pass and one pending follow-up keeps the last committed
-   * configuration the one that gets published.
+   * Request configuration-sourced republication. Loading prompt fragments is
+   * asynchronous, so the serializer keeps one in-flight pass and one latest
+   * pending follow-up; a failed pass reports independently and cannot consume
+   * a newer committed generation.
    */
   function republish(): void {
-    if (!published || stopped) return
-    if (republishing) {
-      republishPending = true
+    if (stopped) return
+    if (!published) {
+      prepublishPending = true
       return
     }
-    republishing = true
-    void (async () => {
-      try {
-        do {
-          republishPending = false
-          const next = await materializeGeneration(configSource())
-          if (stopped) return
-          generation = next
-          announceDurableGap(next.config)
-          refresh()
-        } while (republishPending)
-      } catch (error: unknown) {
-        // The last published generation is still a working catalog, so a bad
-        // reload degrades to staleness rather than to no delegation surface.
-        ctx.logger.warn('dsh-legion: configuration republication failed; keeping the published generation')
-        ctx.logger.warn(error)
-      } finally {
-        republishing = false
-      }
-    })()
+    void requestRepublication?.()
   }
 
   ctx.on('subagent/provider-added', (provider) => {
@@ -1309,4 +1331,8 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
   })
   refresh()
   published = true
+  if (prepublishPending) {
+    prepublishPending = false
+    republish()
+  }
 }

@@ -12,7 +12,7 @@ Read effects may retry in a new generation. Idempotent writes may retry only wit
 
 ## Limits
 
-Recovery examines bounded projected state and produces a finite task-ordered action list. One resume performs one activation; it does not scan Sessions or loop autonomously. Checkpoint state other than projection version 6 is ignored and the complete available journal is refolded.
+Recovery examines bounded projected state and produces a finite task-ordered action list. One resume performs one activation; it does not scan Sessions or loop autonomously. Checkpoint state other than projection version 7 is ignored and the complete available journal is refolded.
 
 ## Non-goals
 

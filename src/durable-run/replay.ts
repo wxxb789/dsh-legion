@@ -62,7 +62,7 @@ export function explainLegionRun(
   filter: InspectFilter = {},
 ): LegionRunExplainView {
   const summary = viewLegionRun(state, runId)
-  const projected = state.runs[runId]
+  const projected = Object.hasOwn(state.runs, runId) ? state.runs[runId] : undefined
   const limit = Math.min(100, Math.max(1, filter.limit ?? 20))
   const allTasks = Object.values(projected?.tasks ?? {})
     .filter(task => filter.taskId === undefined || task.taskId === filter.taskId)

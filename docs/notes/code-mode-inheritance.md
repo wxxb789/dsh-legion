@@ -50,11 +50,14 @@ than on a preset standing mount would not reach children, because `composeFrom` 
 scope. Nothing in the harness does this. On a rosterless deployment both parent and child fall
 through to the same `defaultMode`, so they still agree.
 
-## `toolFilter` still means what Legion says it means
+## `toolFilter` filters PTC bindings, not ambient Node authority
 
-This mattered enough to check in source rather than assume, because Legion's `review` profile
-promises a deny of `write`/`edit` and a plausible failure mode is "hidden from the schema list but
-still callable through the SDK". It is not that.
+The source check below proves only that a Review Specialist cannot call a filtered DSH tool through
+the generated SDK. It does not make the child read-only. The worker-thread code runtime explicitly
+provides containment rather than a security boundary: `run_code` can reach Node APIs with
+bash-equivalent authority and cannot itself be filtered. The bundled Legion preset therefore uses
+native presentation for its read-only Review Specialist; a deployment selecting PTC must trust every
+child with code-runtime authority.
 
 - Visibility is computed once: a name survives only if **every** layer admits it
   (`packages/core/tools/src/index.ts:1174`, with `admits` at `:738-744`).
@@ -72,8 +75,9 @@ Two limits are the Host's design and are now stated in the README rather than le
 discovered:
 
 1. `run_code` itself cannot be denied — `tools.restrict()` refuses to name it (`index.ts:1085-1087`)
-   and the transport is injected outside the filterable layer (`:1184-1191`). It does not widen the
-   callable set, so this is not a hole.
+   and the transport is injected outside the filterable layer (`:1184-1191`). Its DSH binding set is
+   filtered, but the runtime's ambient Node API authority remains; this is why PTC is not a read-only
+   boundary.
 2. A filter constrains the surface a child **inherits**; tools the child's own scope registers (its
    report and structured-output tools) are exempt by construction (`index.ts:1176-1183`).
 
@@ -94,13 +98,11 @@ exported and should be imported if Legion ever needs it. Legion currently names 
 
 Two separable things, and keeping them separate is the whole design.
 
-**The bundled preset selects PTC mode**, by composing the official row with `mode: ptc`. This is
-where the capability argument lands: coordination is what PTC mode is best at, because one program
-starts several delegations together, waits on them as values, and reduces their results without a
-model round trip per child. The coordinator guidance Legion already injects — *"start independent
-delegations together"* — is a suggestion under `native` and an ordinary `Promise.all` here. Every
-shipping bundle composes a runtime (`packages/bundle/headless`, `packages/bundle/web-app`), and the
-failure mode where none does is loud and named at mount rather than silent at first request.
+**The bundled preset selects native mode**, by composing the official row with `mode: native`.
+That choice is required by the bundled read-only Review Specialist: PTC's filtered SDK bindings do
+not remove the worker-thread runtime's ambient, bash-equivalent Node API authority. Trusted
+coordination deployments may select `ptc` explicitly when every child is allowed that authority;
+the presentation mechanism remains entirely Host-owned.
 
 **Legion's own source still owns no part of the mechanism.** Selecting a presentation by composing
 the official row and implementing one are opposite acts: the first tracks upstream, the second pins
@@ -109,15 +111,12 @@ a version. The row is preset data, exactly like the `dsh-tool-*` rows beside it.
 The append-to-your-preset fragment carries **no** presentation row, because one composition selects
 one presentation and `presentAs` throws on a second declaration for the same scope
 (`packages/core/tools/src/index.ts:955-957`) — regardless of whether the two modes agree. A row
-there would break exactly the base preset a PTC-mode user starts from.
+there would break any base preset that already selected native, PTC, or both.
 
-**A missing runtime is an install instruction, not a downgrade.** Legion is a development
-coordinator and PTC mode is the mode it is built for, so the useful answer when `ctx.codeRuntime`
-is absent is which package to add. The runtime is host-plane — the official package's own README
-says a preset "cannot supply the TypeScript runtime it needs" — so the fix belongs in the Host
-composition, not in a preset. Legion now says so at activation: a read-only `ctx.get?.('codeRuntime')`
-probe, and when it comes back empty, one `ctx.logger.warn` naming
-`@deepseek-ai/dsh-code-runtime-worker-thread` and the row to add.
+**A missing runtime is an optional PTC acceleration notice.** Native delegation remains complete.
+The runtime is Host-plane — a preset cannot supply it — so Legion's read-only
+`ctx.get?.('codeRuntime')` probe names `@deepseek-ai/dsh-code-runtime-worker-thread` and the Host row
+a deployment would add before explicitly selecting PTC.
 
 It is a notice, never a refusal, and the distinction is load-bearing. Legion delegates perfectly
 well in the native presentation, and `inject`-ing the runtime would make the Legion row unmountable
@@ -125,20 +124,14 @@ on exactly the deployments the notice exists to help. The probe follows the same
 `detectDurableCapabilities` already uses (`src/durable-run/capabilities.ts:87-98`), and reads at
 activation, after the Host bundle has booted.
 
-Note where this notice can and cannot fire. If the bundled preset is used on a runtime-less
-deployment, the official row fails the preset at mount and Legion never activates — the Host's
-message is the one you see. The notice covers the other path: the append-to-your-preset fragment on
-a native base preset, where nothing is broken and nothing would otherwise mention that a runtime
-would unlock PTC mode.
+The bundled native row does not depend on `codeRuntime`, so it mounts on a runtime-less Host and the
+optional acceleration notice can fire without disabling Legion. A PTC row still waits for the Host
+runtime and fails that row at mount when the dependency is absent.
 
-`tests/tool-presentation.spec.ts` pins all of it: the complete preset must carry the official row at
-`mode: ptc`, the fragment must carry no presentation row at all, and Legion's source must declare
-no presentation, hardcode no `run_code`, grow no presentation key, and never take `codeRuntime` as
-a dependency — exactly one read-only probe of it is allowed, and the count is asserted. The notice
-itself is exercised both ways: mounted without a runtime it must name the package, mounted with one
-it must stay silent, so the notice keeps meaning something on the deployments that need it. A
-negative control against samples quoted from upstream code that legitimately does each forbidden
-thing keeps a scan that could never fire from passing as a gate.
+`tests/tool-presentation.spec.ts` pins the complete preset's official row at `mode: native`, the
+fragment's presentation neutrality, and Legion source's non-ownership of the mechanism. Exactly one
+optional `codeRuntime` probe remains allowed. The notice is exercised with and without a runtime,
+and a negative control keeps the source scan discriminating.
 
 It also caught a live bug on its first run: `examples/legion.agent.cordis.fragment.yml` — shipped in
 the package and named by the README as the recommended install path — had `enableDurableRuns` at

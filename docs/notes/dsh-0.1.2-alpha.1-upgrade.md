@@ -151,9 +151,9 @@ This affects `dsh-tools` configuration, `ToolRuntime.presentAs()`, and the
 - `packages/core/agent-tool-presentation/src/index.ts`
 - commit `3ca9c7d4891760ba366123bf9f5d45ed7133c088`
 
-**Legion impact: affected.** Change `mode: code` to `mode: ptc` in
-`presets/legion/agent.cordis.yml:360` and update the assertion in
-`tests/tool-presentation.spec.ts:162`.
+**Legion impact: affected.** The renamed `ptc` spelling remains the value for trusted deployments
+that opt into PTC. The current bundled preset instead selects `native`, because its read-only Review
+Specialist cannot inherit the worker-thread runtime's bash-equivalent Node API authority.
 
 The public type names `CodeDispatchStartEventData`, `CodeDispatchEventData`, and
 `CodeDispatchLog` were also renamed to their `Ptc*` forms, and the Cordis event changed from
@@ -161,8 +161,9 @@ The public type names `CodeDispatchStartEventData`, `CodeDispatchEventData`, and
 The persisted event discriminators deliberately remain `tool/code-dispatch-start` and
 `tool/code-dispatch`; stored events must not be renamed.
 
-**Migration/rollback:** change only the configuration value and public `Ptc*`/Cordis names for the
-selected DSH line. On rollback to rc.2 restore `mode: code`. Never translate the persisted
+**Migration/rollback:** a trusted deployment that previously selected `code` changes only that
+configuration value to `ptc`; the bundled read-only preset remains `native`. On rollback to rc.2,
+restore `mode: code` only for deployments that had explicitly selected PTC. Never translate the persisted
 `tool/code-dispatch*` discriminators in either direction.
 
 ### 4. `SubagentCapabilities.agentOptions` is now required

@@ -1,6 +1,11 @@
 import type { SessionEventMap } from '@deepseek-ai/dsh-session/types'
 import type { AttemptRecord, ContinuationRecord, MailRecord, MilestoneReceipt, PlanVersion, RunRecord, TaskRecord } from './contract.ts'
 import type { LegionEventType } from './events.ts'
+import {
+  isTerminalAttemptStatus,
+  isTerminalRunStatus,
+  isTerminalTaskStatus,
+} from './status.ts'
 
 export interface LegionInvariantRun {
   readonly run: RunRecord
@@ -16,21 +21,6 @@ export interface LegionInvariantState {
   readonly runs: Readonly<Record<string, LegionInvariantRun>>
 }
 
-const TERMINAL_RUN_STATUSES = new Set([
-  'completed',
-  'degraded',
-  'cancelled',
-  'failed',
-])
-
-
-const TERMINAL_TASK_STATUSES = new Set([
-  'succeeded', 'failed', 'cancelled', 'superseded', 'blocked',
-])
-const TERMINAL_ATTEMPT_STATUSES = new Set([
-  'settled', 'abandoned', 'rejected-stale',
-])
-
 function assertVersionNotLower(current: PlanVersion, next: PlanVersion): void {
   if (next < current) {
     throw new Error('dsh-legion: plan version cannot decrease')
@@ -42,7 +32,9 @@ export function assertLegionTransition<Type extends LegionEventType>(
   type: Type,
   data: SessionEventMap[Type],
 ): void {
-  const current = state.runs[data.runId]
+  const current = Object.hasOwn(state.runs, data.runId)
+    ? state.runs[data.runId]
+    : undefined
 
   if (type === 'legion/run-state') {
     const record = (data as SessionEventMap['legion/run-state']).record
@@ -58,8 +50,7 @@ export function assertLegionTransition<Type extends LegionEventType>(
       && record.fence < current.run.fence) {
       throw new Error('dsh-legion: run fence cannot decrease')
     }
-    if (TERMINAL_RUN_STATUSES.has(current.run.status)
-      && record.status !== current.run.status) {
+    if (isTerminalRunStatus(current.run.status)) {
       throw new Error('dsh-legion: terminal durable run cannot transition')
     }
     return
@@ -67,6 +58,9 @@ export function assertLegionTransition<Type extends LegionEventType>(
 
   if (current === undefined) {
     throw new Error('dsh-legion: durable run must exist before related events')
+  }
+  if (isTerminalRunStatus(current.run.status)) {
+    throw new Error('dsh-legion: terminal durable run cannot accept related events')
   }
   assertVersionNotLower(current.run.currentPlanVersion, data.planVersion)
 
@@ -81,11 +75,13 @@ export function assertLegionTransition<Type extends LegionEventType>(
 
   if (type === 'legion/task-state') {
     const record = (data as SessionEventMap['legion/task-state']).record
-    const existing = current.tasks[record.taskId]
+    const existing = Object.hasOwn(current.tasks, record.taskId)
+      ? current.tasks[record.taskId]
+      : undefined
     if (existing !== undefined && record.generation < existing.generation) {
       throw new Error('dsh-legion: task generation cannot decrease')
     }
-    if (existing !== undefined && TERMINAL_TASK_STATUSES.has(existing.status)) {
+    if (existing !== undefined && isTerminalTaskStatus(existing.status)) {
       throw new Error('dsh-legion: terminal task cannot transition or repeat')
     }
     return
@@ -94,7 +90,9 @@ export function assertLegionTransition<Type extends LegionEventType>(
   if (type === 'legion/mail-state') {
     const record = (data as SessionEventMap['legion/mail-state']).record
     const mailEvent = data as SessionEventMap['legion/mail-state']
-    const task = current.tasks[record.message.recipientTaskId]
+    const task = Object.hasOwn(current.tasks, record.message.recipientTaskId)
+      ? current.tasks[record.message.recipientTaskId]
+      : undefined
     if (task === undefined) throw new Error('dsh-legion: mail task must exist')
     if (task.generation !== record.recipientGeneration
       || mailEvent.recipientGeneration !== record.recipientGeneration) {
@@ -156,7 +154,9 @@ export function assertLegionTransition<Type extends LegionEventType>(
   if (type === 'legion/decision') return
 
   const record = (data as SessionEventMap['legion/attempt-state']).record
-  const task = current.tasks[record.taskId]
+  const task = Object.hasOwn(current.tasks, record.taskId)
+    ? current.tasks[record.taskId]
+    : undefined
   if (task === undefined) {
     throw new Error('dsh-legion: attempt task must exist')
   }
@@ -164,11 +164,13 @@ export function assertLegionTransition<Type extends LegionEventType>(
   if (activeFence !== undefined && record.fence !== activeFence) {
     throw new Error('dsh-legion: attempt fence is not current')
   }
-  if (TERMINAL_TASK_STATUSES.has(task.status)) {
+  if (isTerminalTaskStatus(task.status)) {
     throw new Error('dsh-legion: terminal task cannot admit or settle another attempt')
   }
-  const existing = current.attempts[record.attemptId]
-  if (existing !== undefined && TERMINAL_ATTEMPT_STATUSES.has(existing.status)) {
+  const existing = Object.hasOwn(current.attempts, record.attemptId)
+    ? current.attempts[record.attemptId]
+    : undefined
+  if (existing !== undefined && isTerminalAttemptStatus(existing.status)) {
     throw new Error('dsh-legion: terminal attempt cannot transition or repeat')
   }
   if (existing !== undefined

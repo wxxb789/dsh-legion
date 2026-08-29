@@ -9,6 +9,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import { runNativeCommand } from './native-command.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
 
@@ -23,15 +24,7 @@ if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
 }
 
 const run = (program, args, cwd) => {
-  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : program
-  const commandArgs = process.platform === 'win32'
-    ? ['/d', '/s', '/c', program, ...args]
-    : args
-  const result = spawnSync(command, commandArgs, { cwd, stdio: 'inherit' })
-  if (result.error) throw result.error
-  if (result.status !== 0) {
-    throw new Error(`${program} ${args.join(' ')} failed with exit code ${String(result.status)}`)
-  }
+  runNativeCommand(program, args, cwd)
 }
 
 const runNode = (args, cwd) => {

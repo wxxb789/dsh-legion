@@ -5,6 +5,7 @@ import {
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { runNativeCommand } from './native-command.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
 
@@ -40,15 +41,7 @@ if (relativeSandbox.startsWith('..') || relativeSandbox === '') {
 }
 
 const run = (program, args, cwd) => {
-  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : program
-  const commandArgs = process.platform === 'win32'
-    ? ['/d', '/s', '/c', program, ...args]
-    : args
-  const result = spawnSync(command, commandArgs, { cwd, stdio: 'inherit' })
-  if (result.error) throw result.error
-  if (result.status !== 0) {
-    throw new Error(`${program} ${args.join(' ')} failed with exit code ${String(result.status)}`)
-  }
+  runNativeCommand(program, args, cwd)
 }
 
 const resolveDshVersion = (specifier) => {

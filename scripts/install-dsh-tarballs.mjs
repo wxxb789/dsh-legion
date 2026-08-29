@@ -9,6 +9,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
+import { runNativeCommand } from './native-command.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { restoreProjectFiles } from './source-install-restore.mjs'
 
@@ -44,11 +45,7 @@ function capture(program, args) {
 }
 
 function run(program, args) {
-  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : program
-  const commandArgs = process.platform === 'win32' ? ['/d', '/s', '/c', program, ...args] : args
-  const result = spawnSync(command, commandArgs, { cwd: projectRoot, stdio: 'inherit' })
-  if (result.error) throw result.error
-  if (result.status !== 0) throw new Error(`${program} ${args.join(' ')} failed with exit code ${String(result.status)}`)
+  runNativeCommand(program, args, projectRoot)
 }
 
 const isDshPackage = name => name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-')

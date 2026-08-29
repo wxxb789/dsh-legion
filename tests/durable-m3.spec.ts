@@ -17,6 +17,7 @@ import {
   type ResultEnvelope,
   type RunCoordination,
   type RunLease,
+  type RunRecord,
   type TaskRecord,
 } from '../src/index.ts'
 import {
@@ -281,6 +282,36 @@ describe('result fencing', () => {
       result: envelope,
       contractValid: true,
     })).toEqual({ kind: 'reject', code: 'task-missing' })
+    for (const status of ['succeeded', 'failed', 'cancelled', 'superseded', 'blocked'] satisfies TaskRecord['status'][]) {
+      expect(decideResultAcceptance({
+        run: runRecord,
+        task: { ...runningTask, status },
+        attempt: activeAttempt,
+        activeFence: Fence(4),
+        result: envelope,
+        contractValid: true,
+      }), status).toEqual({ kind: 'reject', code: 'task-terminal' })
+    }
+    for (const status of ['completed', 'degraded', 'cancelled', 'failed'] satisfies RunRecord['status'][]) {
+      expect(decideResultAcceptance({
+        run: { ...runRecord, status },
+        task: runningTask,
+        attempt: activeAttempt,
+        activeFence: Fence(4),
+        result: envelope,
+        contractValid: true,
+      }), status).toEqual({ kind: 'reject', code: 'task-terminal' })
+    }
+    for (const status of ['settled', 'abandoned', 'rejected-stale'] satisfies AttemptRecord['status'][]) {
+      expect(decideResultAcceptance({
+        run: runRecord,
+        task: runningTask,
+        attempt: { ...activeAttempt, status },
+        activeFence: Fence(4),
+        result: envelope,
+        contractValid: true,
+      }), status).toEqual({ kind: 'reject', code: 'task-terminal' })
+    }
   })
 })
 
