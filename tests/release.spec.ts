@@ -102,6 +102,7 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('22.19.0')
     expect(workflow).toContain('24.19.0')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
+    expect(workflow.match(/standalone: true/g)).toHaveLength(2)
     expect(workflow).toContain('pnpm run verify:journal-contract')
     expect(workflow).toContain('pnpm run test:recovery')
     // Version values are resolved from the compatibility contract at runtime;
