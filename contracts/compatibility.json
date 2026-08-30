@@ -39,6 +39,7 @@
     "dsh-client-ui-slots",
     "dsh-compaction",
     "dsh-host-webserver",
+    "dsh-jobs",
     "dsh-loader-smoke",
     "dsh-llm",
     "dsh-llm-replay",

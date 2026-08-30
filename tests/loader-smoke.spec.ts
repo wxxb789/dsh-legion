@@ -13,8 +13,41 @@ const CONFIG = resolve(ROOT, 'package.json')
 const IMPLEMENTATION_BASE = '9457beabc9b13ccd0610b97c25cc7d2867b97c81'
 const DOWNGRADE_SMOKE_TIMEOUT_MS = 180_000
 const WORKSPACE_PACKAGES = readWorkspacePackages(ROOT)
+const COMPATIBILITY = JSON.parse(await readFile(resolve(ROOT, 'contracts/compatibility.json'), 'utf8')) as {
+  latestTestedDshVersion: string
+  registryInstallPackageClosure: string[]
+}
+const LOADER_DEEPSEEK_PACKAGES = [
+  '@deepseek-ai/cordis',
+  '@deepseek-ai/cordis-plugin-loader',
+  '@deepseek-ai/schemastery',
+  ...COMPATIBILITY.registryInstallPackageClosure.map(name => `@deepseek-ai/${name}`),
+]
 function run(program: string, args: string[], cwd: string): void {
   runNativeCommand(program, args, cwd)
+}
+
+async function linkLoaderDependencies(nodeModules: string): Promise<void> {
+  await mkdir(join(nodeModules, '@deepseek-ai'), { recursive: true })
+  await symlink(resolve(ROOT, 'node_modules/.pnpm'), join(nodeModules, '.pnpm'), 'junction')
+  for (const packageName of LOADER_DEEPSEEK_PACKAGES) {
+    const source = resolveWorkspaceInstalledPackage(
+      ROOT,
+      WORKSPACE_PACKAGES,
+      packageName,
+      packageName.startsWith('@deepseek-ai/dsh-') ? COMPATIBILITY.latestTestedDshVersion : undefined,
+    )
+    const target = join(nodeModules, packageName)
+    await mkdir(dirname(target), { recursive: true })
+    await symlink(source, target, 'junction')
+  }
+  for (const dependency of ['zod', 'react', 'js-yaml']) {
+    await symlink(
+      resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, dependency),
+      join(nodeModules, dependency),
+      'junction',
+    )
+  }
 }
 
 describe('packed package pair through official DSH smoke seams', () => {
@@ -32,7 +65,7 @@ describe('packed package pair through official DSH smoke seams', () => {
         const nodeModules = join(cwd, 'node_modules')
         await mkdir(packDir, { recursive: true })
         await mkdir(nodeModules, { recursive: true })
-        await symlink(resolve(ROOT, 'node_modules/.pnpm'), join(nodeModules, '.pnpm'), 'junction')
+        await linkLoaderDependencies(nodeModules)
         for (const directory of [ROOT, resolve(ROOT, 'packages/run-receipt-feed')]) {
           run('pnpm', [
             '--dir', directory,
@@ -40,16 +73,6 @@ describe('packed package pair through official DSH smoke seams', () => {
             'pack',
             '--pack-destination', packDir,
           ], ROOT)
-        }
-        for (const scope of ['@deepseek-ai']) {
-          await symlink(resolve(ROOT, 'node_modules', scope), join(nodeModules, scope), 'junction')
-        }
-        for (const dependency of ['zod', 'react', 'js-yaml']) {
-          await symlink(
-            resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, dependency),
-            join(nodeModules, dependency),
-            'junction',
-          )
         }
         for (const name of ['dsh-legion', 'dsh-legion-receipts']) {
           const manifest = JSON.parse(await readFile(resolve(
@@ -137,15 +160,7 @@ describe('packed package pair through official DSH smoke seams', () => {
           '--pack-destination', priorPackDir,
         ], ROOT)
 
-        await symlink(resolve(ROOT, 'node_modules/.pnpm'), join(nodeModules, '.pnpm'), 'junction')
-        await symlink(resolve(ROOT, 'node_modules/@deepseek-ai'), join(nodeModules, '@deepseek-ai'), 'junction')
-        for (const dependency of ['js-yaml', 'react', 'zod']) {
-          await symlink(
-            resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, dependency),
-            join(nodeModules, dependency),
-            'junction',
-          )
-        }
+        await linkLoaderDependencies(nodeModules)
 
         const rootManifest = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')) as {
           version: string
