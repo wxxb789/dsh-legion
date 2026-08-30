@@ -70,6 +70,7 @@ describe('published package contract', () => {
     expect(root.scripts?.prepare).toBe('pnpm run build:package')
     expect(companion.scripts?.prepare).toBe('pnpm run build:package')
     expect(root.files).toContain('scripts/workspace-packages.mjs')
+    expect(root.files).toContain('scripts/workspace-packages.d.mts')
     expect(root.files).toContain('scripts/run-workspace-script.mjs')
     const config = await readFile(resolve(ROOT, 'vitest.config.ts'), 'utf8')
     expect(config).toContain("include: ['src/**/*.ts', 'packages/*/src/**/*.ts']")

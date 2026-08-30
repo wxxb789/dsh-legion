@@ -54,6 +54,7 @@
     "scripts/packed-delegation-consumer.mjs",
     "scripts/package-set.mjs",
     "scripts/workspace-packages.mjs",
+    "scripts/workspace-packages.d.mts",
     "scripts/run-workspace-script.mjs",
     "tests/fixtures/packed-legacy-consumer.ts",
     "scripts/registry-config.mjs",

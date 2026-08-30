@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { runNativeCommand } from '../scripts/native-command.mjs'
+import { readWorkspacePackages, resolveWorkspaceInstalledPackage } from '../scripts/workspace-packages.mjs'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const DRIVER = resolve(ROOT, 'tests/fixtures/loader-smoke-driver.mjs')
@@ -11,6 +12,7 @@ const DOWNGRADE_DRIVER = resolve(ROOT, 'tests/fixtures/loader-downgrade-driver.m
 const CONFIG = resolve(ROOT, 'package.json')
 const IMPLEMENTATION_BASE = '9457beabc9b13ccd0610b97c25cc7d2867b97c81'
 const DOWNGRADE_SMOKE_TIMEOUT_MS = 180_000
+const WORKSPACE_PACKAGES = readWorkspacePackages(ROOT)
 function run(program: string, args: string[], cwd: string): void {
   runNativeCommand(program, args, cwd)
 }
@@ -43,7 +45,11 @@ describe('packed package pair through official DSH smoke seams', () => {
           await symlink(resolve(ROOT, 'node_modules', scope), join(nodeModules, scope), 'junction')
         }
         for (const dependency of ['zod', 'react', 'js-yaml']) {
-          await symlink(resolve(ROOT, 'node_modules', dependency), join(nodeModules, dependency), 'junction')
+          await symlink(
+            resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, dependency),
+            join(nodeModules, dependency),
+            'junction',
+          )
         }
         for (const name of ['dsh-legion', 'dsh-legion-receipts']) {
           const manifest = JSON.parse(await readFile(resolve(
@@ -134,7 +140,11 @@ describe('packed package pair through official DSH smoke seams', () => {
         await symlink(resolve(ROOT, 'node_modules/.pnpm'), join(nodeModules, '.pnpm'), 'junction')
         await symlink(resolve(ROOT, 'node_modules/@deepseek-ai'), join(nodeModules, '@deepseek-ai'), 'junction')
         for (const dependency of ['js-yaml', 'react', 'zod']) {
-          await symlink(resolve(ROOT, 'node_modules', dependency), join(nodeModules, dependency), 'junction')
+          await symlink(
+            resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, dependency),
+            join(nodeModules, dependency),
+            'junction',
+          )
         }
 
         const rootManifest = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')) as {

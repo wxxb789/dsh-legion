@@ -66,6 +66,7 @@
     "dsh-brand",
     "dsh-code-runtime",
     "dsh-invariants",
+    "dsh-jobs",
     "dsh-llm",
     "dsh-scope",
     "dsh-session",
