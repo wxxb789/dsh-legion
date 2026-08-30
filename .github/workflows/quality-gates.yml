@@ -47,6 +47,8 @@ jobs:
     name: quality (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      DSH_LEGION_RENDERER_TEST_SOURCE: ${{ github.workspace }}/dsh-renderer-source/packages/client/ui-renderer/src
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +68,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+      - id: dsh-test-source
+        run: >-
+          node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'tag=dsh-v' + require('./contracts/compatibility.json').latestTestedDshVersion + '\n')"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: ${{ steps.dsh-test-source.outputs.tag }}
+          path: dsh-renderer-source
+          sparse-checkout: packages/client/ui-renderer/src
+          sparse-checkout-cone-mode: false
       - if: inputs.dsh-source-artifact != ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

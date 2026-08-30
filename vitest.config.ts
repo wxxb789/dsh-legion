@@ -11,6 +11,9 @@ const installed = (path: string): string => {
   const packageRoot = resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, packageName)
   return separator === -1 ? packageRoot : resolve(packageRoot, path.slice(separator + 1))
 }
+const rendererTestSource = process.env.DSH_LEGION_RENDERER_TEST_SOURCE
+  ?? installed('dsh-client-ui-renderer/src')
+const rendererTestFile = (path: string): string => resolve(rendererTestSource, 'client', path)
 
 export default defineConfig({
   resolve: {
@@ -21,8 +24,8 @@ export default defineConfig({
       '@deepseek-ai/dsh-client-ui-chat/client': installed('dsh-client-ui-chat/lib/types/client/contract/snapshot.js'),
       '@deepseek-ai/dsh-client-ui-conversation/client': installed('dsh-client-ui-conversation/lib/types/client/contract/snapshot.js'),
       '@deepseek-ai/dsh-client-ui-renderer/client': installed('dsh-client-ui-renderer/lib/types/client/index.js'),
-      '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': installed('dsh-client-ui-renderer/lib/types/client/bind.js'),
-      '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': installed('dsh-client-ui-renderer/lib/types/client/scoped-slots.js'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': rendererTestFile('bind.ts'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': rendererTestFile('scoped-slots.tsx'),
       '@deepseek-ai/dsh-client-ui-session/client': installed('dsh-client-ui-session/lib/types/client/index.js'),
     },
   },
