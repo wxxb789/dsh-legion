@@ -1,4 +1,4 @@
-import { globSync, readFileSync, realpathSync } from 'node:fs'
+import { globSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 const dependencyGroups = [
@@ -103,6 +103,44 @@ export function readWorkspacePackages(root) {
   }
   for (const item of [...packages].sort((left, right) => left.name.localeCompare(right.name))) visit(item)
   return ordered
+}
+
+function installedPackage(candidate, expectedVersion) {
+  let directory
+  try {
+    directory = realpathSync(candidate)
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return undefined
+    throw error
+  }
+  if (expectedVersion === undefined) return directory
+  const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'))
+  return manifest.version === expectedVersion ? directory : undefined
+}
+
+/** Resolve one installed package from a workspace importer or pnpm's isolated store. */
+export function resolveWorkspaceInstalledPackage(root, workspacePackages, packageName, expectedVersion) {
+  if (!/^(?:@[^/]+\/)?[^/]+$/u.test(packageName) || packageName.split('/').includes('..')) {
+    throw new Error(`invalid installed package name: ${packageName}`)
+  }
+  const workspaceRoot = realpathSync(resolve(root))
+  for (const directory of [workspaceRoot, ...workspacePackages.map(item => item.directory)]) {
+    const installed = installedPackage(join(directory, 'node_modules', packageName), expectedVersion)
+    if (installed !== undefined) return installed
+  }
+  const store = join(workspaceRoot, 'node_modules', '.pnpm')
+  let entries
+  try {
+    entries = readdirSync(store).sort()
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') entries = []
+    else throw error
+  }
+  for (const entry of entries) {
+    const installed = installedPackage(join(store, entry, 'node_modules', packageName), expectedVersion)
+    if (installed !== undefined) return installed
+  }
+  throw new Error(`installed package ${packageName}${expectedVersion === undefined ? '' : `@${expectedVersion}`} was not found in the workspace`)
 }
 
 export function workspaceDependencyGroups() {

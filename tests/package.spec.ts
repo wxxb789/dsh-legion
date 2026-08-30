@@ -18,6 +18,7 @@ interface PackageManifest {
   exports?: Record<string, unknown>
   bin?: Record<string, string>
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   scripts?: Record<string, string>
   dsh?: { bundle?: { patch?: string } }
@@ -155,6 +156,39 @@ describe('published package contract', () => {
     }
   })
 
+  it('resolves isolated pnpm packages that are not linked at the workspace root', async () => {
+    const checkout = await mkdtemp(join(tmpdir(), 'dsh-legion-isolated-package-'))
+    try {
+      const installed = join(
+        checkout,
+        'node_modules',
+        '.pnpm',
+        'deepseek-ai+dsh-api-gateway@0.1.2-alpha.1',
+        'node_modules',
+        '@deepseek-ai',
+        'dsh-api-gateway',
+      )
+      await mkdir(installed, { recursive: true })
+      await writeFile(join(installed, 'package.json'), JSON.stringify({
+        name: '@deepseek-ai/dsh-api-gateway',
+        version: '0.1.2-alpha.1',
+      }))
+      const script = [
+        `import { resolveWorkspaceInstalledPackage } from ${JSON.stringify(pathToFileURL(resolve(ROOT, 'scripts/workspace-packages.mjs')).href)}`,
+        `process.stdout.write(resolveWorkspaceInstalledPackage(process.cwd(), [], '@deepseek-ai/dsh-api-gateway', '0.1.2-alpha.1'))`,
+      ].join(';')
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: checkout,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_PATH: '' },
+      })
+      expect(result.status).toBe(0)
+      expect(result.stdout.replaceAll('\\', '/')).toContain('/node_modules/.pnpm/')
+    } finally {
+      await rm(checkout, { recursive: true, force: true })
+    }
+  })
+
   it('ships every runtime, preset, and example surface named by its manifest and README', async () => {
     const manifest = JSON.parse(
       await readFile(resolve(ROOT, 'package.json'), 'utf8'),
@@ -173,6 +207,7 @@ describe('published package contract', () => {
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
     expect(manifest.dependencies?.['dsh-legion-receipts']).toBe('workspace:1.2.0')
+    expect(manifest.devDependencies?.['@deepseek-ai/dsh-typert-registry']).toBe('0.1.2-alpha.1')
     const compatibility = JSON.parse(
       await readFile(resolve(ROOT, 'contracts/compatibility.json'), 'utf8'),
     ) as { dshPeerRange: string }

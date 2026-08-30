@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import {
-  copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile,
+  copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -8,7 +8,7 @@ import { runNativeCommand } from './native-command.mjs'
 import { readPackedPackageSet } from './package-set.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
-import { readWorkspacePackages } from './workspace-packages.mjs'
+import { readWorkspacePackages, resolveWorkspaceInstalledPackage } from './workspace-packages.mjs'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
@@ -193,7 +193,12 @@ try {
       'zod',
     ]
     for (const packageName of packages) {
-      const source = await realpath(join(projectRoot, 'node_modules', packageName))
+      const source = resolveWorkspaceInstalledPackage(
+        projectRoot,
+        workspacePackages,
+        packageName,
+        packageName.startsWith('@deepseek-ai/dsh-') ? dshVersion : undefined,
+      )
       const target = join(nodeModules, packageName)
       await mkdir(dirname(target), { recursive: true })
       await symlink(source, target, 'junction')

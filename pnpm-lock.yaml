@@ -114,6 +114,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: 0.1.2-alpha.1
         version: 0.1.2-alpha.1(1ef09ac17fafa0f7d6067b19094b7696)
+      '@deepseek-ai/dsh-typert-registry':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
