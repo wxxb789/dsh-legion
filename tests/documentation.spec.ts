@@ -98,6 +98,85 @@ const RENAMED_ADRS = [
   'docs/adr/0021-optional-host-settings-as-a-configuration-source.md',
   'docs/adr/0023-host-plane-settings-row.md',
 ]
+const U10_ACCEPTANCE_EVIDENCE = [
+  {
+    id: 'AE1',
+    command: 'pnpm run test:composition',
+    files: [
+      ['tests/run-receipt-telemetry.spec.ts', 'publishes the complete frozen graph before the first child starts without a Session event'],
+      ['tests/loader-smoke.spec.ts', "from '@deepseek-ai/dsh-loader-smoke'"],
+      ['tests/fixtures/loader-smoke-driver.mjs', "from '@deepseek-ai/dsh-llm-replay'"],
+    ],
+  },
+  {
+    id: 'AE2',
+    command: 'pnpm run test:unit',
+    files: [
+      ['packages/run-receipt-feed/tests/client-overlay.spec.ts', 'recreates the Client plugin generation and recovers the same active Host baseline'],
+      ['tests/run-receipt-telemetry.spec.ts', 'uses Agent status while live and lifecycle end before local Agent disposal'],
+    ],
+  },
+  {
+    id: 'AE3',
+    command: 'pnpm run test:unit',
+    files: [['tests/run-receipt-telemetry.spec.ts', 'binds remote lifecycle start and end that both arrive before the returned run is observed']],
+  },
+  {
+    id: 'AE4',
+    command: 'pnpm run test:unit',
+    files: [['tests/run-receipt-telemetry.spec.ts', 'accounts only post-seed complete retry attempts plus reported compaction usage']],
+  },
+  {
+    id: 'AE5',
+    command: 'pnpm run test:unit',
+    files: [
+      ['packages/run-receipt-feed/tests/host-feed.spec.ts', 'retains all active Receipts plus the latest terminal and direct-clear removes only terminal'],
+      ['packages/run-receipt-feed/tests/client-overlay.spec.ts', 'selects concurrent runs deterministically, retains a valid selection'],
+      ['tests/run-receipt-telemetry.spec.ts', 'keeps interleaved Strategy and direct starts isolated by returned child identity'],
+    ],
+  },
+  {
+    id: 'AE6',
+    command: 'pnpm run test:packed-delegation',
+    files: [
+      ['scripts/packed-delegation-consumer.mjs', "receipt.feed?.status !== 'unavailable'"],
+      ['scripts/verify-packed-delegation.mjs', "join(projectRoot, 'tests', 'fixtures', 'packed-legacy-consumer.ts')"],
+    ],
+  },
+  {
+    id: 'AE7',
+    command: 'pnpm run test:packed-delegation',
+    files: [
+      ['tests/config-version.spec.ts', 'materializes the current v3 top-level and nested dialect without warnings'],
+      ['tests/fixtures/packed-legacy-consumer.ts', 'materializeConfigWithDiagnostics'],
+    ],
+  },
+  {
+    id: 'AE8',
+    command: 'pnpm run test:unit',
+    files: [['tests/dependency-preflight.spec.ts', 'does not report drift when a common generation has incomplete manifest evidence']],
+  },
+  {
+    id: 'AE9',
+    command: 'pnpm run test:unit',
+    files: [['tests/dependency-preflight.spec.ts', 'makes an install-free preflight job dominate every registry-backed workflow job']],
+  },
+  {
+    id: 'AE10',
+    command: 'pnpm run test:profile-install',
+    files: [
+      ['tests/loader-smoke.spec.ts', 'packed package pair through official DSH smoke seams'],
+      ['packages/run-receipt-feed/tests/security.spec.ts', 'rejects sensitive canaries and never exposes their bytes'],
+      ['packages/run-receipt-feed/tests/host-feed.spec.ts', 'rejects every cap explicitly without changing delegation-facing state'],
+      ['tests/contract.spec.ts', 'unchangedCompatibilitySurfaces'],
+    ],
+  },
+  {
+    id: 'AE11',
+    command: 'pnpm run test:unit',
+    files: [['packages/run-receipt-feed/tests/client-overlay.spec.ts', "from '@deepseek-ai/dsh-client-test-runtime'"]],
+  },
+] as const
 
 function nameOf(path: string): string {
   return relative(ROOT, path).replaceAll('\\', '/')
@@ -346,6 +425,25 @@ describe('repository vocabulary', () => {
     expect(canonical).not.toMatch(/\b(?:durable|persistent|persisted|restart-safe)\b[^\n.]{0,80}\b(?:full (?:Run )?Receipt facts?|Run Receipt|Receipt facts?)\b/i)
     expect(canonical).not.toMatch(/\b(?:full (?:Run )?Receipt facts?|Run Receipt|Receipt facts?)\b[^\n.]{0,80}\b(?:durable|persistent|persisted|restart-safe)\b/i)
     expect(canonical).not.toMatch(/\b(?:append(?:s|ed)?|publish(?:es|ed)?|deliver(?:s|ed)?|transport(?:s|ed)?|project(?:s|ed)?)\s+(?!no\b)[^\n.]{0,80}\bcustom Session event\b/i)
+  })
+
+  it('maps every U10 acceptance example to deterministic existing evidence', async () => {
+    const guide = await readFile(resolve(ROOT, 'docs/run-receipts.md'), 'utf8')
+    const rows = guide.split(/\r?\n/).filter(line => /^\| AE(?:[1-9]|1[01]) \|/u.test(line))
+    const ids = rows.map(line => line.split('|')[1]?.trim())
+    expect(ids).toEqual(U10_ACCEPTANCE_EVIDENCE.map(entry => entry.id))
+
+    for (const entry of U10_ACCEPTANCE_EVIDENCE) {
+      const row = rows.find(line => line.startsWith(`| ${entry.id} |`))
+      expect(row, entry.id).toContain(`\`${entry.command}\``)
+      for (const [path, marker] of entry.files) {
+        expect(row, `${entry.id}:${path}`).toContain(`\`${path}\``)
+        expect(await readFile(resolve(ROOT, path), 'utf8'), `${entry.id}:${path}`).toContain(marker)
+      }
+    }
+    expect(guide).toContain('Cross-cutting R5 evidence')
+    expect(await readFile(resolve(ROOT, 'tests/run-receipt-telemetry.spec.ts'), 'utf8'))
+      .toContain('derives stage and outcome from the frozen plan and settlement rather than child narration')
   })
 
   it('ships only the canonical Config v3 dialect in current README and YAML examples', async () => {

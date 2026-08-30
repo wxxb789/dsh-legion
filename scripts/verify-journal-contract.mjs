@@ -5,7 +5,6 @@ import * as legion from '../lib/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const contract = JSON.parse(await readFile(resolve(root, 'contracts/journal-v1.json'), 'utf8'))
-const publicContract = JSON.parse(await readFile(resolve(root, 'contracts/v1.json'), 'utf8'))
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const fail = message => { throw new Error('journal contract: ' + message) }
 const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right)
@@ -46,8 +45,11 @@ if (contract.projection.key !== legion.LEGION_RUN_PROJECTION_KEY
   || contract.projection.stateVersion !== legion.LEGION_RUN_PROJECTION_STATE_VERSION) {
   fail('projection metadata drifted')
 }
-if (contract.receipts.compatibility !== publicContract.compatibilityReceiptVersion) {
-  fail('compatibility receipt metadata drifted')
+// The journal contract records the published v2 receipt it shipped with. The
+// package-pair distribution receipt may advance independently without rewriting
+// protected journal bytes.
+if (contract.receipts.compatibility !== 'dsh-legion-compatibility-receipt-v2') {
+  fail('protected compatibility receipt metadata drifted')
 }
 if (contract.projection.unknownSessionEvents !== 'identity'
   || contract.projection.checkpointMismatch !== 'refold-full-history') {

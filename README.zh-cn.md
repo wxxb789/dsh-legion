@@ -107,7 +107,7 @@ Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，
 | 可解释策略 | 提供稳定 Digest、确定性诊断、路由证据和 JSON Explain 输出。 |
 | 运行时重配置 | 可选：Host 挂载 Settings Provider 后，可通过 `legion` 命名空间修改同一份配置并即时重新发布，无需重启。参见[运行时重配置](docs/settings.md)。 |
 | Web 设置卡片 | DSH「设置 → 插件」页中的插件卡片，支持暂存编辑与覆盖标记。参见[设置卡片](docs/settings-card.md)。 |
-| Live Run Receipt | 独立的 `dsh-legion-receipts` companion 为当前 Session 显示 Cohort Run 成员事实；headless 执行仍返回有界 terminal summary。 |
+| Live Run Receipt | 独立的 `dsh-legion-receipts` companion 为当前 Session 显示 Cohort Run 成员事实；headless 执行仍返回有界 terminal summary。参见 [Run Receipt](docs/run-receipts.md)。 |
 | ACP 委派 | 可选 Specialist，通过 DSH 的 ACP 后端委派给 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode。参见 [ACP 委派](docs/acp-delegation.md)。 |
 | 原生 DSH 生命周期 | Continuation、取消、结算通知、Provider 生命周期和 HMR 注册仍由 DSH 管理。 |
 
@@ -214,7 +214,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-本地 Checkout 必须先生成两个 Package 的 `lib/` 构建产物。Root Package 会安装精确版本的 `dsh-legion-receipts` companion dependency；Bundle Patch 挂载两行 Host 配置：`legion-settings` 提供 `legion` namespace 与 Settings card，`legion-receipts` 提供 live Run Receipt feed 与 Web UI。缺少任一 Client artifact 都会让 Host 激活失败。安装操作仍不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。
+本地 Checkout 必须先生成两个 Package 的 `lib/` 构建产物。Root Package 会安装精确版本的 `dsh-legion-receipts` companion dependency；Bundle Patch 挂载两行 Host 配置：`legion-settings` 提供 `legion` namespace 与 Settings card，`legion-receipts` 提供 live Run Receipt feed 与 Web UI。两个 Package 构成同一组版本耦合的 Pair；不要把 Companion 覆盖为另一个版本。缺少任一 Client artifact 都会让 Host 激活失败。安装操作仍不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。
 
 ## 创建 Legion Agent Preset
 
@@ -240,7 +240,7 @@ dsh plugin --profile web add .
 
 ### 升级 GitHub 安装
 
-分支安装可以通过 pnpm 的 Update 命令重新解析到当前 `main` 提交，DSH 会转发该命令：
+分支安装可以通过 pnpm 的 Update 命令重新解析到当前 `main` 提交，DSH 会转发该命令。Root Update 会同时解析其精确版本的 Companion Dependency；不要独立升级这两个 Package：
 
 ~~~bash
 dsh plugin --profile web update dsh-legion
@@ -272,7 +272,7 @@ dsh plugin --profile web add .
 
 需要从所有安装过 Legion 的 DSH Host `profile` 中分别卸载：
 
-1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。下一步删除 Package 时会一并移除贡献 `legion-settings` 配置行的 Bundle Layer；若该配置行是手工复制进已合成的 `cordis.yml` 的，需要自行在那里删除。
+1. 从用户自有 Agent Preset 中移除或禁用 `name: dsh-legion` 配置行。下一步删除 Root Package 时会一并移除精确版本的 Companion Dependency，以及贡献 `legion-settings` 和 `legion-receipts` 两行的 Bundle Layer；若配置行是手工复制进已合成的 `cordis.yml` 的，需要自行在那里删除。
 2. 删除已安装的 Package：
 
    ~~~bash
@@ -315,6 +315,12 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 ~~~
 
 一个请求不能混用 Specialist 和 Strategy 字段；调用级限制只能收紧编译后的 Strategy 限制。
+
+### 查看 Run Receipt
+
+Web Host 挂载 Package Bundle 后，`dsh-legion-receipts` Companion 会在 Run Receipt Overlay 中显示当前 Session 的 Cohort Run。每一代 Client Stream 都会先收到完整 Baseline，再收到完整 Replacement；只要 Parent Session 与 Companion Instance 仍然存活，Client Refresh 或 Carrier Reconnect 就能恢复同一组 Active Facts。
+
+Full Facts 只是进程内的观察状态：Session Dispose、Companion Reload 或 Host Restart 后从空状态开始，Browser Storage 只保存展示偏好。无法通过 DSH 官方接口证明的 Remote Facts 会标记为 Unavailable，而不是写成 Zero；Known Subtotal 因此可能只有 Partial Coverage。Headless 或缺少 Companion 时，执行仍会完成，并返回有界 Terminal Tool Summary。操作方式、状态语义、Acceptance Evidence 与 Manual Web Checklist 参见 [Run Receipt](docs/run-receipts.md)。
 
 ## 配置参考
 
@@ -572,6 +578,7 @@ pnpm run check
 - [Durable Strategy Runs](docs/durable-runs.md)
 - [Journal Contract v1](docs/journal-contract-v1.md)
 - [Run Replay](docs/run-replay.md)
+- [Run Receipt](docs/run-receipts.md)
 - [版本化配置与回滚](docs/adr/0008-versioned-config-and-rollback.md)
 - [声明式 Cohort 与 Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [显式 Strategy 暴露权限](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)

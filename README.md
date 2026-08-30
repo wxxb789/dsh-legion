@@ -107,7 +107,7 @@ If you are not running DeepSeek Harness, Legion is not the right tool, and a sta
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
 | Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
 | Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. See [the settings card](docs/settings-card.md). |
-| Live Run Receipt | The separately packaged `dsh-legion-receipts` companion shows live per-member Cohort Run facts for the current Session; headless execution keeps the bounded terminal summary. |
+| Live Run Receipt | The separately packaged `dsh-legion-receipts` companion shows live per-member Cohort Run facts for the current Session; headless execution keeps the bounded terminal summary. See [Run Receipts](docs/run-receipts.md). |
 | ACP delegation | Optional Specialists for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. See [ACP delegation](docs/acp-delegation.md). |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
@@ -214,7 +214,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-A local checkout needs both packages' built `lib/` artifacts. The root package installs the exact `dsh-legion-receipts` companion dependency, and the bundle patch mounts two Host-plane rows: `legion-settings` serves the `legion` namespace and Settings card, while `legion-receipts` serves the live Run Receipt feed and Web UI. Missing either Client artifact fails Host activation loudly. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it.
+A local checkout needs both packages' built `lib/` artifacts. The root package installs the exact `dsh-legion-receipts` companion dependency, and the bundle patch mounts two Host-plane rows: `legion-settings` serves the `legion` namespace and Settings card, while `legion-receipts` serves the live Run Receipt feed and Web UI. The two packages are one version-coupled pair; do not override the companion to another version. Missing either Client artifact fails Host activation loudly. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it.
 
 ## Set up a Legion agent preset
 
@@ -240,7 +240,7 @@ A copied preset is a versioned template. It does not automatically inherit later
 
 ### GitHub installation
 
-A branch installation re-resolves to the current `main` commit through pnpm's update command, which DSH forwards:
+A branch installation re-resolves to the current `main` commit through pnpm's update command, which DSH forwards. The root update resolves its exact companion dependency with it; do not update the pair independently:
 
 ~~~bash
 dsh plugin --profile web update dsh-legion
@@ -272,7 +272,7 @@ dsh plugin --profile web add .
 
 Remove Legion from every DSH Host `profile` where it was installed:
 
-1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. Removing the package in the next step removes the bundle layer that contributes the `legion-settings` row; a row you copied by hand into a composed `cordis.yml` is yours to remove there.
+1. Remove or disable the `name: dsh-legion` row in user-owned agent presets. Removing the root package in the next step removes its exact companion dependency and the bundle layer that contributes both `legion-settings` and `legion-receipts`; a row you copied by hand into a composed `cordis.yml` is yours to remove there.
 2. Remove the package:
 
    ~~~bash
@@ -315,6 +315,12 @@ Strategies are hidden by default. A deployment must explicitly set `enableStrate
 ~~~
 
 Specialist and Strategy fields cannot be mixed. Invocation limits may only narrow compiled Strategy limits.
+
+### Observe a Run Receipt
+
+When the Web Host mounts the package bundle, the `dsh-legion-receipts` companion shows the current Session's Cohort Runs in the Run Receipt overlay. It receives a complete baseline before complete replacements, so Client refresh and carrier reconnect recover the same active facts while the parent Session and companion instance remain live.
+
+Full facts are process-local observation state: Session disposal, companion reload, or Host restart starts empty, and browser storage contains presentation preferences only. Remote facts that official DSH seams cannot prove are unavailable rather than zero; known subtotals may therefore have partial coverage. Headless or missing-companion execution still completes and returns the bounded terminal tool summary. See [Run Receipts](docs/run-receipts.md) for operation, state semantics, acceptance evidence, and the manual Web checklist.
 
 ## Configuration
 
@@ -570,6 +576,7 @@ Useful references:
 - [Durable Strategy Runs](docs/durable-runs.md)
 - [Journal contract v1](docs/journal-contract-v1.md)
 - [Run replay](docs/run-replay.md)
+- [Run Receipts](docs/run-receipts.md)
 - [Versioned configuration and rollback](docs/adr/0008-versioned-config-and-rollback.md)
 - [Declarative Cohort and Strategy IR](docs/adr/0010-declarative-team-strategy-ir.md)
 - [Explicit Strategy exposure authority](docs/adr/0012-model-strategy-exposure-is-explicit-authority.md)

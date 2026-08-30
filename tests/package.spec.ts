@@ -63,6 +63,7 @@ describe('published package contract', () => {
       expect(root.scripts?.[local]).not.toMatch(recursive)
       expect(companion.scripts?.[local]).not.toMatch(recursive)
     }
+    expect(root.scripts?.['test:unit:package']).toContain('--exclude "packages/**"')
     expect(root.scripts?.prepare).toBe('pnpm run build:package')
     expect(companion.scripts?.prepare).toBe('pnpm run build:package')
     expect(root.files).toContain('scripts/workspace-packages.mjs')
@@ -84,7 +85,8 @@ describe('published package contract', () => {
     ) as PackageManifest
     expect(manifest.files).toEqual(expect.arrayContaining([
       'lib', 'cordis.patch.yml', 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md',
-      'examples', 'presets', 'scripts/registry-config.mjs', 'README.md', 'LICENSE',
+      'docs/run-receipts.md', 'examples', 'presets', 'scripts/registry-config.mjs',
+      'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
     expect(manifest.exports).toMatchObject({
@@ -136,6 +138,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'contracts/compatibility.json')),
       access(resolve(ROOT, 'contracts/journal-v1.json')),
       access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md')),
+      access(resolve(ROOT, 'docs/run-receipts.md')),
       access(resolve(ROOT, 'examples/durable-stair-step.config.yml')),
     ])
     expect(await readFile(resolve(ROOT, manifest.bin!['dsh-legion']!), 'utf8'))

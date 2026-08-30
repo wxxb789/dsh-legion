@@ -40,7 +40,7 @@ if (journalContract.projection.key !== legion.LEGION_RUN_PROJECTION_KEY
 const capabilities = legion.detectDurableCapabilities({ get: () => undefined })
 if (capabilities.durableMutation !== false
   || capabilities.diagnostics.length !== 5) {
-  throw new Error('packed rc.6 capability detection did not fail closed')
+  throw new Error('packed capability detection did not fail closed')
 }
 const packedDigest = (character) => `sha256:${character.repeat(64)}`
 const runId = legion.RunId('packed-durable-run')
@@ -178,12 +178,12 @@ try {
   const adapter = new PackedAdapter()
   ctx.llm.registerAdapter(['packed-mock'], adapter)
   await ctx.plugin(legion, {
-    configVersion: 2,
+    configVersion: 3,
     toolName: 'legion',
     enableRunInBackground: true,
     enableStrategies: true,
     resourceRoots: { local: resourceRootName },
-    profiles: {
+    specialists: {
       packed: {
         description: 'Packed harmless delegation.',
         subagentProvider: 'spawn',
@@ -203,18 +203,18 @@ try {
         defaultRunInBackground: false,
       },
     },
-    defaultProfile: 'packed',
-    teams: {
-      'packed-team': {
-        description: 'Packed two-stage Team.',
-        members: { worker: { profile: 'packed' } },
+    defaultSpecialist: 'packed',
+    cohorts: {
+      'packed-cohort': {
+        description: 'Packed two-stage Cohort.',
+        members: { worker: { specialist: 'packed' } },
         limits: { maxMembers: 1, maxConcurrentMembers: 1 },
       },
     },
     strategies: {
       'packed-strategy': {
         description: 'Packed draft and verification Strategy.',
-        team: 'packed-team',
+        cohort: 'packed-cohort',
         stages: [
           {
             kind: 'delegate',
@@ -250,7 +250,7 @@ try {
   const strategyNames = parameterBranches
     .flatMap(branch => branch?.properties?.strategy?.enum ?? [])
   if (!Array.isArray(strategyNames) || !strategyNames.includes('packed-strategy')) {
-    throw new Error('packed Config v2 Strategy is absent from the Legion tool schema')
+    throw new Error('packed Config v3 Strategy is absent from the Legion tool schema')
   }
   const parent = ctx.agentLoop.create(SessionId('packed-parent'), {
     provider: 'packed-mock',
@@ -303,7 +303,7 @@ try {
   if (parent.session.events.some(event => event.type === 'legion/run-receipt')) {
     throw new Error('packed persistent Session contains a custom Run Receipt event')
   }
-  process.stdout.write('packed tarball completed one harmless real Config v2 Team Strategy successfully\n')
+  process.stdout.write('packed tarball completed one harmless real Config v3 Cohort Strategy successfully\n')
 } finally {
   await ctx.fiber.dispose()
   rmSync(sessionRoot, { recursive: true, force: true })

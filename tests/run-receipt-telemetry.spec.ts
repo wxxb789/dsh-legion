@@ -237,6 +237,44 @@ describe('Run Receipt public publication and degraded execution', () => {
     expect(RunReceiptSchema.safeParse(failed).success).toBe(true)
   })
 
+  it('derives stage and outcome from the frozen plan and settlement rather than child narration', async () => {
+    const narration = 'MODEL_NARRATION_SENTINEL_claims_failure_and_extra_stage'
+    const runtime = await setup({
+      name: 'remote',
+      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      inheritsParentContext: false,
+      async start() {
+        return {
+          id: SessionId('narrating-remote-child'),
+          localAgent: undefined,
+          result: Promise.resolve({
+            output: [{ type: 'text', text: narration }],
+            stopReason: 'completed',
+            lastAssistantMessage: narration,
+          }),
+          async dispose() {},
+        }
+      },
+    })
+    const publisher = new RecordingPublisher(runtime.ctx)
+    const { snapshot, plan } = executionPlan()
+
+    const outcome = await executeStrategyPlan(
+      runtime.ctx,
+      snapshot,
+      plan,
+      runtime.parent,
+      new AbortController().signal,
+    )
+
+    expect(outcome.kind).toBe('completed')
+    const receipt = latestReceipt(publisher)
+    expect(receipt.outcome).toBe('completed')
+    expect(receipt.stages).toMatchObject([{ id: 'work', status: 'completed' }])
+    expect(receipt.stages).toHaveLength(1)
+    expect(JSON.stringify(receipt)).not.toContain(narration)
+  })
+
   it('publishes the complete frozen graph before the first child starts without a Session event', async () => {
     const gate = Promise.withResolvers<SubagentResult>()
     const observed = Promise.withResolvers<void>()

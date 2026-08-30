@@ -540,7 +540,7 @@ describe('bounded Strategy execution adapter', () => {
     expect(runtime.disposed).toHaveLength(1)
   })
 
-  it('rejects a plan when execution Profile policy has drifted', async () => {
+  it('rejects a plan when execution Specialist policy has drifted', async () => {
     const runtime = setup(() => completed('unused'))
     await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
@@ -561,7 +561,7 @@ describe('bounded Strategy execution adapter', () => {
       },
     })
     expect(() => createStrategyExecutionSnapshot(changedProfiles, orchestration))
-      .toThrow(/does not match Profile catalog generation/)
+      .toThrow(/does not match Specialist catalog generation/)
     expect(runtime.starts).toHaveLength(0)
   })
 
@@ -583,7 +583,7 @@ describe('bounded Strategy execution adapter', () => {
     expect(changedRuntimeProfiles.policyDigest).toBe(profiles.policyDigest)
     expect(changedRuntimeProfiles.catalogDigest).not.toBe(profiles.catalogDigest)
     expect(() => createStrategyExecutionSnapshot(changedRuntimeProfiles, orchestration))
-      .toThrow(/does not match Profile catalog generation/)
+      .toThrow(/does not match Specialist catalog generation/)
   })
 
   it('rejects a stale Strategy Plan generation before admitting a child', async () => {

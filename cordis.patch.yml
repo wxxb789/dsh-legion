@@ -7,7 +7,8 @@
 # The delegation tool stays on the agent plane. `tools` and `system-prompt` are
 # layered registries, so a Host row would land in the global layer and hand
 # every agent a delegation surface it never asked for. That is why this file
-# mounted nothing at all until v1.3: installing the bundle made its local
+# mounted nothing until the process-wide settings and Receipt rows were
+# introduced: installing the bundle had only made its local
 # `node_modules/dsh-legion` resolvable from user-authored agent presets, and the
 # preset row did the rest.
 #

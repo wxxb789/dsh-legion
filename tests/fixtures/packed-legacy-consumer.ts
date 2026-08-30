@@ -10,7 +10,7 @@ import {
   acpProfile,
   assertAcpProfileCompatible,
   defineTeam,
-  materializeConfig,
+  materializeConfigWithDiagnostics,
   type CompiledCatalog,
   type LegionProfile,
   type TeamRunOutcome,
@@ -44,9 +44,23 @@ assertAcpProfileCompatible('legacy-acp', acp)
 if (Object.keys(acpCatalogLayer([])).join(',') !== 'id,profiles') {
   throw new Error('legacy ACP Catalog Layer shape changed')
 }
-const config = materializeConfig({ profiles: { legacy: profile }, defaultProfile: 'legacy' })
+const materialized = materializeConfigWithDiagnostics({
+  profiles: { legacy: profile },
+  defaultProfile: 'legacy',
+})
+const config = materialized.config
 if (config.configVersion !== 2 || config.defaultProfile !== 'legacy' || !PROFILE_NAME.test('legacy')) {
   throw new Error('legacy Config materialization changed')
+}
+if (materialized.diagnostics.map(diagnostic => [
+  diagnostic.path,
+  diagnostic.replacement,
+  diagnostic.removalVersion,
+]).join('|') !== [
+  ['config.profiles', 'config.specialists', '2.0.0'],
+  ['config.defaultProfile', 'config.defaultSpecialist', '2.0.0'],
+].join('|')) {
+  throw new Error('legacy Config diagnostics changed')
 }
 if (TEAM_RUN_OUTCOMES.join(',') !== 'completed,degraded,cancelled,failed') {
   throw new Error('legacy Cohort Run outcomes changed')

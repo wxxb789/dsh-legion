@@ -93,7 +93,7 @@ Legion keeps one configuration vocabulary. The DSH settings service, which from 
 - [x] Ship the browser settings card as an ordinary DSH client bundle, verified by executing the artifact under the loader's protocol.
 - [x] Ship the separate `dsh-legion-receipts` Host/Client companion, which streams live-Session baselines and complete replacements through official DSH Typert/Gateway and renders the current Session in `shell.overlay`.
 
-The official DSH Client Test Runtime renders the companion overlay and verifies DOM, interaction, accessibility, Session switching, and reconnect behavior. Full Receipt facts remain process-local observation state for one live Session and companion instance; Host restart starts empty, while the bounded terminal tool summary remains available without Web or the companion.
+The official DSH Client Test Runtime renders the companion overlay and verifies DOM, interaction, accessibility, Session switching, and reconnect behavior. Full Receipt facts remain process-local observation state for one live Session and companion instance; Host restart starts empty, while the bounded terminal tool summary remains available without Web or the companion. The root installs the exact same-version companion package; remote-only facts that official DSH seams cannot prove remain unavailable, and known aggregates report partial coverage rather than false totals.
 
 ## v1.2 — Optional ACP delegation
 
