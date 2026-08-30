@@ -48,7 +48,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
-      DSH_LEGION_RENDERER_TEST_SOURCE: ${{ github.workspace }}/dsh-renderer-source/packages/client/ui-renderer/src
+      DSH_LEGION_DSH_TEST_SOURCE: ${{ github.workspace }}/dsh-test-source
     strategy:
       fail-fast: false
       matrix:
@@ -75,8 +75,12 @@ jobs:
         with:
           repository: deepseek-ai/deepseek-harness
           ref: ${{ steps.dsh-test-source.outputs.tag }}
-          path: dsh-renderer-source
-          sparse-checkout: packages/client/ui-renderer/src
+          path: dsh-test-source
+          sparse-checkout: |
+            packages/client/ui-chat/src
+            packages/client/ui-conversation/src
+            packages/client/ui-renderer/src
+            packages/client/ui-session/src
           sparse-checkout-cone-mode: false
       - if: inputs.dsh-source-artifact != ''
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

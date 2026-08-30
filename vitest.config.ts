@@ -11,9 +11,14 @@ const installed = (path: string): string => {
   const packageRoot = resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, packageName)
   return separator === -1 ? packageRoot : resolve(packageRoot, path.slice(separator + 1))
 }
-const rendererTestSource = process.env.DSH_LEGION_RENDERER_TEST_SOURCE
-  ?? installed('dsh-client-ui-renderer/src')
-const rendererTestFile = (path: string): string => resolve(rendererTestSource, 'client', path)
+const officialClientSource = (
+  packageName: string,
+  sourceDirectory: string,
+  path: string,
+  localFallback = `src/${path}`,
+): string => process.env.DSH_LEGION_DSH_TEST_SOURCE === undefined
+  ? installed(`${packageName}/${localFallback}`)
+  : resolve(process.env.DSH_LEGION_DSH_TEST_SOURCE, 'packages/client', sourceDirectory, 'src', path)
 
 export default defineConfig({
   resolve: {
@@ -21,12 +26,20 @@ export default defineConfig({
     alias: {
       '@deepseek-ai/dsh-api-gateway/client': installed('dsh-api-gateway/lib/types/client/index.js'),
       '@deepseek-ai/dsh-api-session-controller/client': installed('dsh-api-session-controller/lib/types/client/index.js'),
-      '@deepseek-ai/dsh-client-ui-chat/client': installed('dsh-client-ui-chat/lib/types/client/contract/snapshot.js'),
-      '@deepseek-ai/dsh-client-ui-conversation/client': installed('dsh-client-ui-conversation/lib/types/client/contract/snapshot.js'),
-      '@deepseek-ai/dsh-client-ui-renderer/client': installed('dsh-client-ui-renderer/lib/types/client/index.js'),
-      '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': rendererTestFile('bind.ts'),
-      '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': rendererTestFile('scoped-slots.tsx'),
-      '@deepseek-ai/dsh-client-ui-session/client': installed('dsh-client-ui-session/lib/types/client/index.js'),
+      '@deepseek-ai/dsh-client-ui-chat/client': officialClientSource(
+        'dsh-client-ui-chat', 'ui-chat', 'client/contract/snapshot.ts', 'lib/types/client/contract/snapshot.js',
+      ),
+      '@deepseek-ai/dsh-client-ui-conversation/client': officialClientSource(
+        'dsh-client-ui-conversation', 'ui-conversation', 'client/contract/snapshot.ts', 'lib/types/client/contract/snapshot.js',
+      ),
+      '@deepseek-ai/dsh-client-ui-renderer/client': officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/index.ts'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/bind.ts'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/scoped-slots.tsx'),
+      '@deepseek-ai/dsh-client-ui-session/client': officialClientSource('dsh-client-ui-session', 'ui-session', 'client/index.ts'),
+      'use-sync-external-store/shim/with-selector': resolve(
+        resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'use-sync-external-store'),
+        'shim/with-selector.js',
+      ),
     },
   },
   test: {

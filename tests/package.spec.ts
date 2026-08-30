@@ -74,8 +74,8 @@ describe('published package contract', () => {
     expect(root.files).toContain('scripts/run-workspace-script.mjs')
     const config = await readFile(resolve(ROOT, 'vitest.config.ts'), 'utf8')
     expect(config).toContain("include: ['src/**/*.ts', 'packages/*/src/**/*.ts']")
-    expect(config).toContain('process.env.DSH_LEGION_RENDERER_TEST_SOURCE')
-    expect(config).toContain("rendererTestFile('scoped-slots.tsx')")
+    expect(config).toContain('process.env.DSH_LEGION_DSH_TEST_SOURCE')
+    expect(config).toContain("officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/scoped-slots.tsx')")
   })
 
   it('makes source DSH installation workspace-manifest driven', async () => {

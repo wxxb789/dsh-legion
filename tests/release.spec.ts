@@ -124,12 +124,18 @@ describe('reproducible CI and release contracts', () => {
       uses: expect.stringMatching(/^actions\/checkout@/u),
       with: expect.objectContaining({
         repository: 'deepseek-ai/deepseek-harness',
-        path: 'dsh-renderer-source',
-        'sparse-checkout': 'packages/client/ui-renderer/src',
+        path: 'dsh-test-source',
+        'sparse-checkout': [
+          'packages/client/ui-chat/src',
+          'packages/client/ui-conversation/src',
+          'packages/client/ui-renderer/src',
+          'packages/client/ui-session/src',
+          '',
+        ].join('\n'),
         'sparse-checkout-cone-mode': false,
       }),
     }))
-    expect(workflow).toContain('DSH_LEGION_RENDERER_TEST_SOURCE')
+    expect(workflow).toContain('DSH_LEGION_DSH_TEST_SOURCE')
     expect(parsedWorkflow.jobs.quality.steps).toContainEqual({ run: 'pnpm run test:composition:built' })
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('minimum')
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('latest-tested')
