@@ -8,6 +8,7 @@ export default defineConfig({
   target: 'es2024',
   fixedExtension: false,
   deps: { neverBundle: [/^@deepseek-ai\//] },
+  tsconfig: 'tsconfig.host.json',
   dts: true,
   clean: false,
 })

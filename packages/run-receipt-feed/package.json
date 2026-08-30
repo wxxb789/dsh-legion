@@ -1,0 +1,91 @@
+{
+  "name": "dsh-legion-receipts",
+  "version": "1.2.0",
+  "description": "Live-session Run Receipt Remote companion for dsh-legion.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types.js",
+    "lib/client.js",
+    "lib/types/**/*.d.ts",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts"
+  ],
+  "scripts": {
+    "build": "pnpm run clean && pnpm run build:host && pnpm run build:client",
+    "build:host": "tsc -b tsconfig.host-face.json && pnpm run bundle:host",
+    "build:client": "tsc -b tsconfig.client.json && pnpm run bundle:client",
+    "bundle:host": "tsdown --config tsdown.config.ts",
+    "bundle:client": "tsdown --config tsdown.client.config.ts",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "typecheck": "pnpm run clean && tsc -b tsconfig.host-face.json && pnpm run bundle:host && tsc -b tsconfig.client.json",
+    "test": "vitest run tests/package.spec.ts",
+    "verify:pack": "npm pack --dry-run --ignore-scripts"
+  },
+  "dsh": {
+    "client": {
+      "external": [],
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-remotes": ">=0.1.2-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.1.2-alpha.1 <0.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-remotes": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-typert-generator": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.1",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wxxb789/dsh-legion.git",
+    "directory": "packages/run-receipt-feed"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}

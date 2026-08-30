@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    "tsBuildInfoFile": ".tmp/tsbuild/host.tsbuildinfo",
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": ["./packages/run-receipt-feed/typert-protocol/index.d.ts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "packages/*/tests/**/*.ts",
+    "build/**/*.ts",
+    "scripts/**/*.ts",
+    "tsdown.config.ts",
+    "tsdown.bin.config.ts",
+    "tsdown.client.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "src/client/**",
+    "packages/*/src/**"
+  ],
+  "references": [
+    { "path": "./packages/run-receipt-feed/typert-protocol" },
+    { "path": "./packages/run-receipt-feed/tsconfig.host-face.json" }
+  ]
+}

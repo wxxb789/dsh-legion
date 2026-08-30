@@ -181,9 +181,12 @@ describe('client bundle artifact', () => {
     expect(materialize().id).toBe(manifest.name)
   })
 
-  it('requires nothing outside the Host platform table supplied by the loader seam', () => {
-    const { required } = materialize()
-    expect(required.length).toBeGreaterThan(0)
+  it('preserves the root bundle module-table requests exactly', () => {
+    expect(materialize().required).toEqual([
+      '@deepseek-ai/dsh-client-store',
+      'react',
+      '@deepseek-ai/dsh-client-ui-primitives',
+    ])
   })
 
   it('injects one loader-owned stylesheet before the factory returns', () => {

@@ -1,4 +1,4 @@
-# DSH bundle: mount Legion's Host-plane settings row.
+# DSH bundle: mount Legion's Host-plane Settings and Receipt companion rows.
 #
 # `dsh plugin add dsh-legion` appends this package to the Host `profile`'s
 # `dsh.profile.bundles` list because the manifest declares `dsh.bundle.patch`,
@@ -41,3 +41,5 @@
       config:
         role: settings
         specialists: {}
+    - id: legion-receipts
+      name: dsh-legion-receipts

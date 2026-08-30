@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "../lib/typert-protocol",
+    "tsBuildInfoFile": "../lib/typert-protocol/tsconfig.tsbuildinfo"
+  },
+  "files": ["index.d.ts"]
+}

@@ -63,9 +63,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "pnpm run clean && tsdown && tsdown --config tsdown.bin.config.ts && tsdown --config tsdown.client.config.ts",
-    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && pnpm run build:host && pnpm run build:client",
+    "build:host": "tsc -b tsconfig.host.json && tsdown && tsdown --config tsdown.bin.config.ts && pnpm --dir packages/run-receipt-feed run bundle:host",
+    "build:client": "tsc -b tsconfig.client.json && tsdown --config tsdown.client.config.ts && pnpm --dir packages/run-receipt-feed run bundle:client",
+    "clean": "node -e \"const fs=require('node:fs'); for (const path of ['lib','packages/run-receipt-feed/lib','.tmp/tsbuild']) fs.rmSync(path,{recursive:true,force:true})\"",
+    "typecheck": "pnpm run clean && tsc -b tsconfig.host.json && pnpm --dir packages/run-receipt-feed run bundle:host && tsc -b tsconfig.client.json",
     "test:unit": "vitest run",
     "test": "pnpm run build && pnpm run test:unit",
     "verify:pack": "npm pack --dry-run --ignore-scripts",
@@ -151,11 +153,14 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
+    "dsh-legion-receipts": "workspace:1.2.0",
     "js-yaml": "^4.2.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": ">=0.1.2-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-client-store": ">=0.1.2-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.1.2-alpha.1 <0.2.0",
     "@deepseek-ai/dsh-llm": ">=0.1.2-alpha.1 <0.2.0",
     "@deepseek-ai/dsh-session": ">=0.1.2-alpha.1 <0.2.0",
     "@deepseek-ai/dsh-subagent": ">=0.1.2-alpha.1 <0.2.0",

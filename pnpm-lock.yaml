@@ -11,6 +11,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
+      dsh-legion-receipts:
+        specifier: workspace:1.2.0
+        version: link:packages/run-receipt-feed
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.1
@@ -105,6 +108,34 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+      tsdown:
+        specifier: ^0.22.2
+        version: 0.22.14(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1))
+
+  packages/run-receipt-feed:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(87775923ccdcfa6984b453f9c013b2ce)
+      '@deepseek-ai/dsh-typert-generator':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
       tsdown:
         specifier: ^0.22.2
         version: 0.22.14(typescript@6.0.3)
@@ -795,6 +826,12 @@ packages:
       '@deepseek-ai/dsh-system-prompt': ^0.1.2-alpha.1
       '@deepseek-ai/dsh-user-approval': ^0.1.2-alpha.1
 
+  '@deepseek-ai/dsh-typert-generator@0.1.2-alpha.1':
+    resolution: {integrity: sha512-C4XYZIUTtz9pbYq2nU1Rmrnd9FmqXScEhvA1Nff5ZE86QUYKL3c8asOTA3kYCo21DF0feD3XYlo/0EmBZ4qqgQ==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ^4.0.1
+      '@deepseek-ai/dsh-invariants': ^0.1.2-alpha.1
+
   '@deepseek-ai/dsh-typert-protocol@0.1.2-alpha.1':
     resolution: {integrity: sha512-/tVFIlaO8u/hPKOhxmEKyiO9DD5shh/s9FkK/Awsw5p9MrWkw+sKwLTNpneI9v5moAuQQwp4RB0T3Gaz+WCADw==}
     peerDependencies:
@@ -854,8 +891,18 @@ packages:
   '@deepseek-ai/schemastery@3.18.1':
     resolution: {integrity: sha1-taN0YlUEMUCMlPsPwx/YoqVHFXY=}
 
+  '@jridgewell/gen-mapping@0.3.13':
+    resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
+
+  '@jridgewell/resolve-uri@3.1.2':
+    resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
+    engines: {node: '>=6.0.0'}
+
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha1-aRKwDSxjHA0Vzhp6tXzWV/Ko+Lo=}
+
+  '@jridgewell/trace-mapping@0.3.31':
+    resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
   '@koromix/koffi-darwin-arm64@3.1.5':
     resolution: {integrity: sha1-dVT78FlWzhvy/6P8WsA83+9YqfQ=}
@@ -2743,6 +2790,13 @@ snapshots:
       '@deepseek-ai/dsh-user-approval': 0.1.2-alpha.1(40c5fe91881dcacb9ab27442d8dd64fb)
       '@deepseek-ai/schemastery': 3.18.1
 
+  '@deepseek-ai/dsh-typert-generator@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-invariants': 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)
+      '@jridgewell/gen-mapping': 0.3.13
+      typescript: 6.0.3
+
   '@deepseek-ai/dsh-typert-protocol@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))':
     dependencies:
       '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
@@ -2801,7 +2855,19 @@ snapshots:
       '@deepseek-ai/cosmokit': 1.8.2
       '@standard-schema/spec': 1.1.0
 
+  '@jridgewell/gen-mapping@0.3.13':
+    dependencies:
+      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/trace-mapping': 0.3.31
+
+  '@jridgewell/resolve-uri@3.1.2': {}
+
   '@jridgewell/sourcemap-codec@1.5.5': {}
+
+  '@jridgewell/trace-mapping@0.3.31':
+    dependencies:
+      '@jridgewell/resolve-uri': 3.1.2
+      '@jridgewell/sourcemap-codec': 1.5.5
 
   '@koromix/koffi-darwin-arm64@3.1.5':
     optional: true

@@ -27,12 +27,13 @@ describe('published package contract', () => {
     expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
     const patchPath = resolve(ROOT, manifest.dsh!.bundle!.patch!)
     const patch = load(await readFile(patchPath, 'utf8'), { schema: entryListSchema })
-    // One Host-plane row, and it contributes only the settings namespace and the
-    // card bundle: a delegation row here would land in the global tool layer.
+    // The exact Settings row stays service-free; the companion owns its Host
+    // service in a separate Loader row. Neither belongs on the Agent tool plane.
     expect(patch).toEqual([
       {
         insert: [
           { id: 'legion-settings', name: 'dsh-legion', config: { role: 'settings', specialists: {} } },
+          { id: 'legion-receipts', name: 'dsh-legion-receipts' },
         ],
       },
     ])
@@ -54,11 +55,18 @@ describe('published package contract', () => {
     })
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
     expect(manifest.dependencies).toHaveProperty('js-yaml')
+    expect(manifest.dependencies?.['dsh-legion-receipts']).toBe('workspace:1.2.0')
     const compatibility = JSON.parse(
       await readFile(resolve(ROOT, 'contracts/compatibility.json'), 'utf8'),
     ) as { dshPeerRange: string }
-    expect(manifest.peerDependencies?.['@deepseek-ai/dsh-agent'])
-      .toBe(compatibility.dshPeerRange)
+    for (const dependency of [
+      '@deepseek-ai/dsh-agent',
+      '@deepseek-ai/dsh-client-store',
+      '@deepseek-ai/dsh-client-ui-primitives',
+    ]) {
+      expect(manifest.peerDependencies?.[dependency], dependency)
+        .toBe(compatibility.dshPeerRange)
+    }
     expect(manifest.scripts?.['test:packed-delegation'])
       .toBe('node scripts/verify-packed-delegation.mjs')
     await Promise.all([

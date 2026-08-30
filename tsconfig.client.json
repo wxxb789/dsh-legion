@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    "tsBuildInfoFile": ".tmp/tsbuild/client.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": [
+    "src/client/**/*.ts",
+    "src/internal/value.ts",
+    "src/catalog-layer.ts",
+    "src/compiler.ts",
+    "src/config.ts",
+    "src/identity.ts",
+    "src/orchestration-contract.ts",
+    "src/orchestration.ts",
+    "src/resources.ts",
+    "src/result-contract.ts",
+    "src/route.ts",
+    "src/run-receipt.ts"
+  ],
+  "references": [
+    { "path": "./packages/run-receipt-feed/tsconfig.client.json" }
+  ]
+}
