@@ -1,5 +1,5 @@
 import { dirname, resolve } from 'node:path'
-import { compileCatalog } from './compiler.ts'
+import { compileSpecialistCatalog } from './compiler.ts'
 import { explainCatalog, renderExplainHuman, type ExplainViewV1 } from './explain.ts'
 import { LegionInputError, loadConfigFileWithDiagnostics, loadProviderSnapshotFile } from './input.ts'
 import type { ConfigDeprecationDiagnostic } from './config.ts'
@@ -131,7 +131,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     const resources = await loadSpecialistResources(config, {
       baseDirectory: dirname(resolve(command.config)),
     })
-    const catalog = compileCatalog(config, fixture ?? { providers: {} }, resources)
+    const catalog = compileSpecialistCatalog(config, fixture ?? { providers: {} }, resources)
     const view = explainCatalog(catalog, {
       providerSnapshot: fixture === undefined ? 'empty-fixture' : 'fixture',
     })

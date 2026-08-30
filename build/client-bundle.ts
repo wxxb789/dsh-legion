@@ -10,7 +10,6 @@ interface ClientManifest {
 export interface ClientBundleOptions {
   readonly manifest: URL
   readonly entry: string
-  readonly outDir?: string
   readonly inline?: readonly string[]
 }
 
@@ -22,7 +21,7 @@ export function clientBanner(id: string): string {
   return `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`
 }
 
-function packageId(packageJson: URL): string {
+export function clientPackageId(packageJson: URL): string {
   const manifest = JSON.parse(readFileSync(packageJson, 'utf8')) as ClientManifest
   if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
     throw new Error('client bundle package.json must declare a non-empty name')
@@ -39,14 +38,14 @@ function isBareSpecifier(specifier: string): boolean {
 
 /** Build one DSH lazy-CJS Client artifact, inlining only package-owned wire code. */
 export function clientBundle(options: ClientBundleOptions): ReturnType<typeof defineConfig> {
-  const id = packageId(options.manifest)
+  const id = clientPackageId(options.manifest)
   const inline = new Set(options.inline ?? [])
   const shouldInline = (specifier: string): boolean => inline.has(specifier) || !isBareSpecifier(specifier)
   const mode = process.env.NODE_ENV ?? 'production'
   const config: UserConfig = {
     name: `${id}/client`,
     entry: { client: options.entry },
-    outDir: options.outDir ?? 'lib',
+    outDir: 'lib',
     format: 'cjs',
     platform: 'browser',
     target: 'es2024',

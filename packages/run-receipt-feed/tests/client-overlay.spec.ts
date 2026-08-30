@@ -136,33 +136,29 @@ class FollowChannel implements AsyncIterable<ReceiptFeedFrame>, AsyncIterator<Re
 }
 
 class FollowScript {
-  private readonly channels = new Map<string, FollowChannel[]>()
+  private readonly unread = new Map<string, FollowChannel[]>()
   private readonly waiters = new Map<string, ((channel: FollowChannel) => void)[]>()
 
   open(sessionId: string, signal: AbortSignal): AsyncIterable<ReceiptFeedFrame> {
     const channel = new FollowChannel(signal)
-    const channels = this.channels.get(sessionId) ?? []
-    channels.push(channel)
-    this.channels.set(sessionId, channels)
-    this.waiters.get(sessionId)?.shift()?.(channel)
+    const waiter = this.waiters.get(sessionId)?.shift()
+    if (waiter === undefined) {
+      const unread = this.unread.get(sessionId) ?? []
+      unread.push(channel)
+      this.unread.set(sessionId, unread)
+    } else {
+      waiter(channel)
+    }
     return channel
   }
 
   nextOpen(sessionId: string): Promise<FollowChannel> {
-    const channels = this.channels.get(sessionId)
-    if (channels !== undefined) {
-      const unread = channels.find(channel => !(channel as unknown as { claimed?: boolean }).claimed)
-      if (unread !== undefined) {
-        ;(unread as unknown as { claimed: boolean }).claimed = true
-        return Promise.resolve(unread)
-      }
-    }
+    const unread = this.unread.get(sessionId)
+    const channel = unread?.shift()
+    if (channel !== undefined) return Promise.resolve(channel)
     return new Promise((resolve) => {
       const waiters = this.waiters.get(sessionId) ?? []
-      waiters.push((channel) => {
-        ;(channel as unknown as { claimed: boolean }).claimed = true
-        resolve(channel)
-      })
+      waiters.push(resolve)
       this.waiters.set(sessionId, waiters)
     })
   }

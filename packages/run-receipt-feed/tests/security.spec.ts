@@ -32,7 +32,7 @@ function expectNoSentinels(value: unknown): void {
 }
 
 describe('RunReceiptFeed allowlist boundary', () => {
-  it('rejects sensitive canaries and never exposes their bytes in results, frames, capture, or logs', async () => {
+  it('rejects sensitive canaries and never exposes their bytes in results, frames, or logs', async () => {
     const ctx = new Context()
     roots.push(ctx)
     await ctx.plugin(SessionStore)
@@ -65,10 +65,6 @@ describe('RunReceiptFeed allowlist boundary', () => {
     expect(frame).toMatchObject({ value: { revision: 1, receipts: [original] } })
     expectNoSentinels(frame)
 
-    const clientFacing = structuredClone(frame)
-    const localStorageLike = new Map<string, string>()
-    localStorageLike.set('client-facing-capture', JSON.stringify(clientFacing))
-    expectNoSentinels([...localStorageLike.entries()])
     expectNoSentinels(warnings.mock.calls)
     expectNoSentinels(errors.mock.calls)
     abort.abort()

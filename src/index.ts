@@ -4,6 +4,7 @@ import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/ds
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
+import { RUN_RECEIPT_TOKEN_FIELDS } from 'dsh-legion-receipts'
 import {
   Config,
   materializeConfig,
@@ -37,6 +38,7 @@ import {
   renderOrchestrationGuidance,
 } from './orchestration.ts'
 import {
+  COHORT_RUN_OUTCOMES,
   createStrategyExecutionSnapshot,
   executeStrategyPlan,
   type StrategyExecutionSnapshot,
@@ -769,7 +771,7 @@ function createToolDefinition(
                   outcome: {
                     type: 'string' as const,
                     required: true as const,
-                    enum: ['completed', 'degraded', 'cancelled', 'failed'],
+                    enum: COHORT_RUN_OUTCOMES,
                   },
                   elapsedMs: { type: 'number' as const, required: true as const },
                   stageCounts: {
@@ -802,13 +804,19 @@ function createToolDefinition(
                     type: 'object' as const,
                     required: true as const,
                     additionalProperties: false,
-                    properties: {
-                      totalTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
-                      uncachedInputTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
-                      outputTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
-                      cacheReadTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
-                      cacheWriteTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
-                    },
+                    properties: Object.fromEntries(RUN_RECEIPT_TOKEN_FIELDS.map(field => [
+                      field,
+                      {
+                        required: true as const,
+                        oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const,
+                      },
+                    ])) as Record<(typeof RUN_RECEIPT_TOKEN_FIELDS)[number], {
+                      readonly required: true
+                      readonly oneOf: readonly [
+                        { readonly type: 'number' },
+                        { readonly type: 'null' },
+                      ]
+                    }>,
                   },
                   unavailableCounts: {
                     type: 'object' as const,

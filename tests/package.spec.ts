@@ -75,7 +75,7 @@ describe('published package contract', () => {
   it('makes source DSH installation workspace-manifest driven', async () => {
     const installer = await readFile(resolve(ROOT, 'scripts/install-dsh-tarballs.mjs'), 'utf8')
     expect(installer).toContain('readWorkspacePackages(projectRoot)')
-    expect(installer).toContain("for (const group of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])")
+    expect(installer).toContain('for (const group of workspaceDependencyGroups())')
     expect(installer).not.toContain("const packagePath = join(projectRoot, 'package.json')")
   })
 

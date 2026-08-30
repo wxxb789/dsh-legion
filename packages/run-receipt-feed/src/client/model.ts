@@ -57,10 +57,9 @@ class ReceiptFeedUnavailableError extends Error {
 }
 
 function hasPartialFacts(receipt: RunReceipt): boolean {
-  if (receipt.participation.coverage.status !== 'complete'
+  return receipt.participation.coverage.status !== 'complete'
     || receipt.timing.coverage.status !== 'complete'
-    || receipt.tokenAccount.coverage !== 'complete') return true
-  return Object.values(receipt.tokenAccount.totals).some(total => total.coverage.status !== 'complete')
+    || receipt.tokenAccount.coverage !== 'complete'
 }
 
 function clearedTerminal(previous: ReceiptSessionModel | undefined, next: ReceiptSessionModel): boolean {
@@ -92,11 +91,11 @@ function contentState(
   opening: boolean,
 ): ClientReceiptState {
   if (next.receipts.length === 0) {
-    if (previous !== undefined && previous.receipts.length > 0) {
-      if (opening && next.revision <= previous.revision) return 'new-instance-empty'
-      if (previous.receipts.some(receipt => receipt.outcome !== 'running')) return 'direct-clear-empty'
-    }
-    return 'ready-empty'
+    if (previous === undefined || previous.receipts.length === 0) return 'ready-empty'
+    if (opening && next.revision <= previous.revision) return 'new-instance-empty'
+    return previous.receipts.some(receipt => receipt.outcome !== 'running')
+      ? 'direct-clear-empty'
+      : 'ready-empty'
   }
   if (next.receipts.some(hasPartialFacts)) return 'partial'
   return next.receipts.some(receipt => receipt.outcome === 'running') ? 'active' : 'settled'
@@ -193,7 +192,9 @@ export class ClientReceiptModel {
       carrierFailed: error => {
         if (!this.current(epoch, sessionId)) return
         const previous = this.store.getSnapshot()
-        this.store.set({ ...previous, state: 'reconnecting', diagnostic: error.message })
+        if (previous.state !== 'reconnecting' || previous.diagnostic !== error.message) {
+          this.store.set({ ...previous, state: 'reconnecting', diagnostic: error.message })
+        }
       },
     })
     return new RemoteSnapshotStream<ReceiptFeedBaseline, ReceiptFeedReplacement>(stream, {

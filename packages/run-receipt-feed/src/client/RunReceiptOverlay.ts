@@ -243,11 +243,17 @@ function stages(receipt: RunReceipt, t: RunReceiptOverlayProps['t']): ReactNode 
 
 function participants(receipt: RunReceipt, t: RunReceiptOverlayProps['t']): ReactNode {
   const samples = new Map(receipt.tokenAccount.sessions.map(sample => [sample.childId, sample]))
+  const rowsByStage = new Map<string, RunReceiptParticipant[]>()
+  for (const participant of receipt.participation.rows) {
+    const rows = rowsByStage.get(participant.stage)
+    if (rows === undefined) rowsByStage.set(participant.stage, [participant])
+    else rows.push(participant)
+  }
   return h('section', { className: 'dsh-legion-receipt__section', key: 'participants' }, [
     h('h2', { key: 'heading' }, t('participants')),
     ...receipt.stages.map(stage => {
-      const rows = receipt.participation.rows.filter(participant => participant.stage === stage.id)
-      if (rows.length === 0) return null
+      const rows = rowsByStage.get(stage.id)
+      if (rows === undefined) return null
       return h('section', { className: 'dsh-legion-receipt__stage-group', key: stage.id }, [
         h('h3', { key: 'heading' }, `${stage.id} · ${stage.member}`),
         h('ul', { key: 'rows' }, rows.map(participant => participantRow(participant, samples.get(participant.childId), t))),

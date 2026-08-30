@@ -5,16 +5,15 @@
  * the committed lockfile remains the separate distribution-install contract.
  */
 import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, relative, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
 import { runNativeCommand } from './native-command.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { restoreProjectFiles } from './source-install-restore.mjs'
-import { readWorkspacePackages } from './workspace-packages.mjs'
+import { readWorkspacePackages, workspaceDependencyGroups } from './workspace-packages.mjs'
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const projectRoot = resolve(import.meta.dirname, '..')
 const { values } = parseArgs({
   options: {
     from: { type: 'string' },
@@ -77,7 +76,7 @@ for (const filename of readdirSync(tarballRoot).filter(name => name.endsWith('.t
   }
   if (tarballs.has(manifest.name)) throw new Error(`duplicate packed package ${manifest.name}`)
   const specFor = directory => `file:${relative(directory, tarball).replaceAll('\\', '/')}`
-  tarballs.set(manifest.name, { version: manifest.version, tarball, specFor, manifest })
+  tarballs.set(manifest.name, { version: manifest.version, specFor, manifest })
 }
 if (tarballs.size === 0) throw new Error(`${tarballRoot} contains no npm tarballs`)
 
@@ -93,9 +92,9 @@ const manifestSources = new Map(workspacePackages.map(item => [
   readFileSync(item.manifestPath, 'utf8'),
 ]))
 const compatibility = JSON.parse(readFileSync(join(projectRoot, 'contracts', 'compatibility.json'), 'utf8'))
-const direct = new Map()
+const direct = new Set()
 for (const workspacePackage of workspacePackages) {
-  for (const group of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+  for (const group of workspaceDependencyGroups()) {
     for (const [name, expected] of Object.entries(workspacePackage.manifest[group] ?? {})) {
       if (!isDshPackage(name)) continue
       const packed = tarballs.get(name)
@@ -106,13 +105,13 @@ for (const workspacePackage of workspacePackages) {
         || (group === 'devDependencies' && packed.version !== expected)) {
         throw new Error(`${name} tarball version ${packed.version} does not match ${workspacePackage.name} ${group} declaration ${expected}`)
       }
-      direct.set(name, packed)
+      direct.add(name)
       workspacePackage.manifest[group][name] = packed.specFor(workspacePackage.directory)
     }
   }
 }
 const closure = new Set()
-const queue = [...direct.keys()]
+const queue = [...direct]
 while (queue.length > 0) {
   const name = queue.shift()
   if (closure.has(name)) continue

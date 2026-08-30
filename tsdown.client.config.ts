@@ -3,14 +3,15 @@ import {
   CLIENT_INTRO,
   clientBanner,
   clientBundle,
+  clientPackageId,
 } from './build/client-bundle.ts'
 
-const ID = 'dsh-legion'
+const manifest = new URL('./package.json', import.meta.url)
 
-export const CLIENT_BANNER = clientBanner(ID)
+export const CLIENT_BANNER = clientBanner(clientPackageId(manifest))
 export { CLIENT_FOOTER, CLIENT_INTRO }
 
 export default clientBundle({
-  manifest: new URL('./package.json', import.meta.url),
+  manifest,
   entry: 'src/client/index.ts',
 })

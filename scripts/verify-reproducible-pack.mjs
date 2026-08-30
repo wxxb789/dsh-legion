@@ -1,12 +1,11 @@
 import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, relative, resolve } from 'node:path'
 import { runNativeCommand } from './native-command.mjs'
 import { readPackedPackageSet, verifyPackedPackageContents } from './package-set.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
 import { readWorkspacePackages } from './workspace-packages.mjs'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const root = resolve(import.meta.dirname, '..')
 const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
 const sourceMode = arguments_.find(argument => argument.startsWith('--source='))?.slice(9)
   ?? 'workspace'
@@ -26,11 +25,11 @@ function run(program, args, cwd) {
   runNativeCommand(program, args, cwd)
 }
 
-const excludedRoots = new Set(['.git', 'dist', 'lib', 'node_modules'])
+const excludedSegments = new Set(['.git', '.tmp', 'coverage', 'dist', 'lib', 'node_modules'])
 const copySource = source => {
   const relativeSource = relative(root, source)
   if (relativeSource === '') return true
-  return !excludedRoots.has(relativeSource.split(/[\\/]/u)[0])
+  return !relativeSource.split(/[\\/]/u).some(segment => excludedSegments.has(segment))
 }
 const sourceArchive = join(sandbox, 'source.tar')
 if (sourceMode === 'git') {

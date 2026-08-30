@@ -82,7 +82,8 @@
     "typecheck:package": "pnpm run clean:package && tsc -b tsconfig.host.json && tsc -b tsconfig.client.json",
     "test:unit": "node scripts/run-workspace-script.mjs test:unit:package",
     "test:unit:package": "vitest run tests --exclude tests/loader-smoke.spec.ts --exclude \"packages/**\"",
-    "test:composition": "pnpm run build && vitest run tests/loader-smoke.spec.ts --maxWorkers=1",
+    "test:composition": "pnpm run build && pnpm run test:composition:built",
+    "test:composition:built": "vitest run tests/loader-smoke.spec.ts --maxWorkers=1",
     "test": "pnpm run build && pnpm run test:unit",
     "verify:pack": "node scripts/run-workspace-script.mjs verify:pack:package",
     "verify:pack:package": "pnpm --config.ignore-scripts=true pack --dry-run",
@@ -101,7 +102,7 @@
     "benchmark:protocol": "node scripts/benchmark-protocol.mjs",
     "benchmark:quality:evaluate": "node scripts/evaluate-quality-campaign.mjs",
     "benchmark:exposure:evaluate": "node scripts/evaluate-exposure-evidence.mjs",
-    "check": "pnpm run typecheck && pnpm run build && pnpm run verify:contract && pnpm run verify:journal-contract && pnpm run test:unit && pnpm run test:composition && pnpm run benchmark:protocol && pnpm run verify:reproducible-pack && pnpm run verify:pack",
+    "check": "pnpm run typecheck && pnpm run build && pnpm run verify:contract && pnpm run verify:journal-contract && pnpm run test:unit && pnpm run test:composition:built && pnpm run benchmark:protocol && pnpm run verify:reproducible-pack && pnpm run verify:pack",
     "prepare": "pnpm run build:package",
     "prepack": "pnpm run typecheck:package && pnpm run build:package && pnpm run test:unit:package"
   },

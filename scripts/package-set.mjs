@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
-import { basename, join, posix } from 'node:path'
+import { join, posix } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 export const packageTarballFilename = ({ name, version }) => (
@@ -88,7 +88,7 @@ export function verifyPackedPackageContents(item) {
   return {
     name: item.name,
     version: item.version,
-    tarballFile: basename(item.tarball),
+    tarballFile: item.tarballFile,
     tarballSha256: item.tarballSha256,
   }
 }

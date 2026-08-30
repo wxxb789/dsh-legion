@@ -3,7 +3,6 @@ import {
   copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { runNativeCommand } from './native-command.mjs'
 import { readPackedPackageSet } from './package-set.mjs'
@@ -11,7 +10,7 @@ import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
 import { readWorkspacePackages } from './workspace-packages.mjs'
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const projectRoot = resolve(import.meta.dirname, '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
 const publicContract = JSON.parse(await readFile(join(projectRoot, 'contracts', 'v1.json'), 'utf8'))
 const compatibilityPolicy = JSON.parse(await readFile(
@@ -148,8 +147,6 @@ try {
     || rootArtifact.manifest.dependencies?.[companionArtifact.name] !== companionArtifact.version) {
     throw new Error('packed delegation requires one exact dsh-legion package pair')
   }
-  const tarball = rootArtifact.tarball
-
   const dshVersion = resolveDshVersion(dshVersionSpec)
   process.stdout.write(`testing packed delegation against DSH ${dshVersion}\n`)
   // Pinning only the direct dependencies is not enough to hold one generation.
@@ -268,12 +265,11 @@ try {
       if (installedManifest.version !== artifact.version) {
         throw new Error(`packed consumer installed ${artifact.name}@${String(installedManifest.version)} instead of ${artifact.version}`)
       }
-      const tarballSha256 = createHash('sha256').update(await readFile(artifact.tarball)).digest('hex')
       return {
         name: artifact.name,
         version: installedManifest.version,
         tarballFile: artifact.tarballFile,
-        tarballSha256: `sha256:${tarballSha256}`,
+        tarballSha256: artifact.tarballSha256,
       }
     }))
     const consumerLockfile = await readFile(join(consumerDir, 'pnpm-lock.yaml'))

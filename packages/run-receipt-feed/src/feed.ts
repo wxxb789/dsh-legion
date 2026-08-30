@@ -4,6 +4,7 @@ import { deepFreeze } from '@deepseek-ai/dsh-llm'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import {
   RECEIPT_FEED_LIMITS,
+  RUN_RECEIPT_TOKEN_FIELDS,
   ReceiptPublicationSchema,
   type ReceiptFeedFrame,
   type ReceiptFeedReplacement,
@@ -15,16 +16,8 @@ import {
   type RunReceiptParticipant,
   type RunReceiptStage,
   type RunReceiptTokenEvidence,
-  type RunReceiptTokenField,
 } from './types.ts'
 
-const TOKEN_FIELDS = [
-  'totalTokens',
-  'uncachedInputTokens',
-  'outputTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-] as const satisfies readonly RunReceiptTokenField[]
 const TERMINAL_STAGE_STATUSES = new Set(['completed', 'degraded', 'cancelled', 'failed'])
 let processFollowerCount = 0
 
@@ -117,7 +110,7 @@ function validateReplacement(previous: RunReceipt, next: RunReceipt): SemanticFa
     if (candidate === undefined
       || (sample.logRevision !== null
         && (candidate.logRevision === null || candidate.logRevision < sample.logRevision))
-      || TOKEN_FIELDS.some(field => !validTokenTransition(sample[field], candidate[field]))) {
+      || RUN_RECEIPT_TOKEN_FIELDS.some(field => !validTokenTransition(sample[field], candidate[field]))) {
       return 'invalid-transition'
     }
   }

@@ -16,6 +16,7 @@ import type TokenMeter from '@deepseek-ai/dsh-token-meter'
 import { deriveTurnTokenUsage, type TurnTokenUsage } from '@deepseek-ai/dsh-token-meter/client'
 import {
   RECEIPT_FEED_LIMITS,
+  RUN_RECEIPT_TOKEN_FIELDS,
   ReceiptPublicationResultSchema,
   type RunReceipt as PublishedRunReceipt,
   type RunReceiptEvidenceCoverage,
@@ -121,23 +122,13 @@ interface SessionCut {
   readonly header: Session['header']
   readonly events: readonly SessionEvent[]
   readonly logRevision: number
-  readonly projections?: ProjectionSnapshot
 }
 
 interface ParticipantCandidate {
   readonly row: PublishedRunReceiptParticipant
   readonly record: LifecycleRecord
   readonly stageOrder: number
-  readonly treeOrder: number
 }
-
-const TOKEN_FIELDS = [
-  'totalTokens',
-  'uncachedInputTokens',
-  'outputTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-] as const satisfies readonly RunReceiptTokenField[]
 
 function coverage(
   reported: number,
@@ -408,22 +399,22 @@ function completeTurns(events: readonly SessionEvent[]): {
 }
 
 interface TokenDimension {
-  readonly values: number[]
+  sum: number
   missing: boolean
   observed: boolean
 }
 
 function dimension(): TokenDimension {
-  return { values: [], missing: false, observed: false }
+  return { sum: 0, missing: false, observed: false }
 }
 
 function addUsage(
   dimensions: Record<RunReceiptTokenField, TokenDimension>,
   usage: TurnTokenUsage,
 ): void {
-  dimensions.totalTokens.values.push(usage.totalTokens)
-  dimensions.uncachedInputTokens.values.push(usage.uncachedInputTokens)
-  dimensions.outputTokens.values.push(usage.outputTokens)
+  dimensions.totalTokens.sum += usage.totalTokens
+  dimensions.uncachedInputTokens.sum += usage.uncachedInputTokens
+  dimensions.outputTokens.sum += usage.outputTokens
   dimensions.totalTokens.observed = true
   dimensions.uncachedInputTokens.observed = true
   dimensions.outputTokens.observed = true
@@ -431,7 +422,7 @@ function addUsage(
     const value = usage[field]
     if (value === undefined) dimensions[field].missing = true
     else {
-      dimensions[field].values.push(value)
+      dimensions[field].sum += value
       dimensions[field].observed = true
     }
   }
@@ -447,11 +438,11 @@ function addCompactionUsage(
 ): void {
   const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens } = usage
   if (!safeCount(inputTokens) || !safeCount(outputTokens)) {
-    for (const field of TOKEN_FIELDS) dimensions[field].missing = true
+    for (const field of RUN_RECEIPT_TOKEN_FIELDS) dimensions[field].missing = true
     return
   }
-  dimensions.uncachedInputTokens.values.push(inputTokens)
-  dimensions.outputTokens.values.push(outputTokens)
+  dimensions.uncachedInputTokens.sum += inputTokens
+  dimensions.outputTokens.sum += outputTokens
   dimensions.uncachedInputTokens.observed = true
   dimensions.outputTokens.observed = true
   const knownSubtotal = inputTokens
@@ -459,13 +450,13 @@ function addCompactionUsage(
     + (safeCount(cacheReadTokens) ? cacheReadTokens : 0)
     + (safeCount(cacheWriteTokens) ? cacheWriteTokens : 0)
   if (safeCount(totalTokens) && totalTokens >= knownSubtotal) {
-    dimensions.totalTokens.values.push(totalTokens)
+    dimensions.totalTokens.sum += totalTokens
     dimensions.totalTokens.observed = true
   } else if (totalTokens === undefined
     && safeCount(cacheReadTokens)
     && safeCount(cacheWriteTokens)
     && Number.isSafeInteger(knownSubtotal)) {
-    dimensions.totalTokens.values.push(knownSubtotal)
+    dimensions.totalTokens.sum += knownSubtotal
     dimensions.totalTokens.observed = true
   } else {
     dimensions.totalTokens.missing = true
@@ -476,14 +467,13 @@ function addCompactionUsage(
   ] as const) {
     if (!safeCount(value)) dimensions[field].missing = true
     else {
-      dimensions[field].values.push(value)
+      dimensions[field].sum += value
       dimensions[field].observed = true
     }
   }
 }
 
 function tokenEvidence(
-  field: RunReceiptTokenField,
   dimension: TokenDimension,
   incomplete: boolean,
 ): RunReceiptTokenEvidence {
@@ -491,9 +481,8 @@ function tokenEvidence(
   if (!dimension.observed) {
     return unavailableToken(incomplete ? 'incomplete-turn' : 'not-reported')
   }
-  const value = dimension.values.reduce((sum, item) => sum + item, 0)
-  if (!Number.isSafeInteger(value)) return unavailableToken('observation-failed')
-  return knownToken(value, missing || (field.startsWith('cache') && dimension.missing))
+  if (!Number.isSafeInteger(dimension.sum)) return unavailableToken('observation-failed')
+  return knownToken(dimension.sum, missing)
 }
 
 function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTokenSample {
@@ -518,12 +507,10 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
       if (!Number.isSafeInteger(measured.logRevision)
         || measured.logRevision < 0
         || measured.logRevision > session.events.length) return unavailable('observation-failed')
-      const projections = projectionRegistry(ctx)?.snapshot(session, ['subagentTiming'])
       cut = {
         header: session.header,
         events: session.events.slice(0, measured.logRevision),
         logRevision: measured.logRevision,
-        ...projections === undefined ? {} : { projections },
       }
     } catch {
       return unavailable('observation-failed')
@@ -545,7 +532,7 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
   for (const window of windows) {
     const usage = deriveTurnTokenUsage(window)
     if (usage === undefined) {
-      for (const field of TOKEN_FIELDS) dimensions[field].missing = true
+      for (const field of RUN_RECEIPT_TOKEN_FIELDS) dimensions[field].missing = true
     } else {
       addUsage(dimensions, usage)
     }
@@ -558,11 +545,11 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
   return {
     childId: String(record.info.id),
     logRevision: cut.logRevision,
-    totalTokens: tokenEvidence('totalTokens', dimensions.totalTokens, incomplete),
-    uncachedInputTokens: tokenEvidence('uncachedInputTokens', dimensions.uncachedInputTokens, incomplete),
-    outputTokens: tokenEvidence('outputTokens', dimensions.outputTokens, incomplete),
-    cacheReadTokens: tokenEvidence('cacheReadTokens', dimensions.cacheReadTokens, incomplete),
-    cacheWriteTokens: tokenEvidence('cacheWriteTokens', dimensions.cacheWriteTokens, incomplete),
+    totalTokens: tokenEvidence(dimensions.totalTokens, incomplete),
+    uncachedInputTokens: tokenEvidence(dimensions.uncachedInputTokens, incomplete),
+    outputTokens: tokenEvidence(dimensions.outputTokens, incomplete),
+    cacheReadTokens: tokenEvidence(dimensions.cacheReadTokens, incomplete),
+    cacheWriteTokens: tokenEvidence(dimensions.cacheWriteTokens, incomplete),
   }
 }
 
@@ -609,7 +596,7 @@ function tokenAccount(
     cacheReadTokens: aggregateTokenField(samples, 'cacheReadTokens', unavailableParticipants, truncated),
     cacheWriteTokens: aggregateTokenField(samples, 'cacheWriteTokens', unavailableParticipants, truncated),
   }
-  const statuses = TOKEN_FIELDS.map(field => totals[field].coverage.status)
+  const statuses = RUN_RECEIPT_TOKEN_FIELDS.map(field => totals[field].coverage.status)
   return {
     coverage: statuses.every(status => status === 'complete')
       ? 'complete'
@@ -622,8 +609,8 @@ function tokenAccount(
 }
 
 class HostRunReceiptParticipationObserver implements RunReceiptParticipationObserver {
-  private readonly recordsByChild = new Map<SessionId, Map<string, LifecycleRecord>>()
-  private readonly bound = new Map<string, LifecycleRecord>()
+  private readonly recordsByChild = new Map<SessionId, Map<SubagentRunInfo['runId'], LifecycleRecord>>()
+  private readonly bound = new Map<SubagentRunInfo['runId'], LifecycleRecord>()
   private readonly agents = new Map<SessionId, Agent>()
   private readonly stageOrder: ReadonlyMap<string, number>
   private readonly unavailable = new Set<string>()
@@ -672,7 +659,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     record.binding = binding
     if (agent !== undefined) record.localAgent = agent
     record.depth = 1
-    this.bound.set(String(record.info.runId), record)
+    this.bound.set(record.info.runId, record)
     this.unavailable.delete(`direct:${String(childId)}`)
     if (agent !== undefined) this.agents.set(agent.id, agent)
     this.bindPendingNested(record)
@@ -746,13 +733,12 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
             header: observation.header,
             events: observation.events,
             logRevision: observation.cursor + 1,
-            ...observation.projections === undefined ? {} : { projections: observation.projections },
           },
         }
         record.coldTiming = sessionTiming(observation.projections)
         record.coldToken = sessionTokenSample(this.ctx, record)
         record.coldCut = undefined
-        this.bound.set(String(record.info.runId), record)
+        this.bound.set(record.info.runId, record)
         this.unavailable.delete(`cold:${String(entry.id)}`)
       } catch {
         this.unavailable.add(`cold:${String(entry.id)}`)
@@ -778,8 +764,8 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         parentId: this.parent.id,
         depth: 1,
       }
-      const records = this.recordsByChild.get(info.id) ?? new Map<string, LifecycleRecord>()
-      records.set(String(info.runId), record)
+      const records = this.recordsByChild.get(info.id) ?? new Map<SubagentRunInfo['runId'], LifecycleRecord>()
+      records.set(info.runId, record)
       this.recordsByChild.set(info.id, records)
       this.attachPendingNested(info.id, record)
       return
@@ -793,8 +779,8 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       depth: (root?.depth ?? 1) + 1,
       ...root === undefined ? {} : { root },
     }
-    const records = this.recordsByChild.get(info.id) ?? new Map<string, LifecycleRecord>()
-    records.set(String(info.runId), record)
+    const records = this.recordsByChild.get(info.id) ?? new Map<SubagentRunInfo['runId'], LifecycleRecord>()
+    records.set(info.runId, record)
     this.recordsByChild.set(info.id, records)
     this.bindNested(record)
     this.emit()
@@ -815,7 +801,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       this.unavailable.add(`nested-remote:${String(record.info.runId)}`)
       return
     }
-    this.bound.set(String(record.info.runId), record)
+    this.bound.set(record.info.runId, record)
   }
 
   private attachPendingNested(parentId: SessionId, root: LifecycleRecord): void {
@@ -841,7 +827,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
 
   private onSubagentEnd(carrier: unknown, info: SubagentRunEndInfo): void {
     if (!this.listening) return
-    const record = this.recordsByChild.get(info.id)?.get(String(info.runId))
+    const record = this.recordsByChild.get(info.id)?.get(info.runId)
     if (record === undefined) return
     if (carrier !== this.parent
       && (!isAgent(carrier) || record.parentId !== carrier.id)) return
@@ -922,7 +908,6 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       },
       record,
       stageOrder: this.stageOrder.get(binding.stage) ?? Number.MAX_SAFE_INTEGER,
-      treeOrder: depth,
     }
   }
 
@@ -946,7 +931,6 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
       .sort((left, right) => left.stageOrder - right.stageOrder
         || left.row.childIndex - right.row.childIndex
         || left.row.depth - right.row.depth
-        || left.treeOrder - right.treeOrder
         || left.row.childId.localeCompare(right.row.childId))
     const dynamicUnavailable = records.length - candidates.length
     const maximum = RECEIPT_FEED_LIMITS.participantsPerReceipt
@@ -1020,19 +1004,19 @@ export function summarizeRunReceipt(
     stageCounts,
     participationCounts,
     tokenTotals: Object.fromEntries(
-      TOKEN_FIELDS.map(field => [field, receipt.tokenAccount.totals[field].value]),
+      RUN_RECEIPT_TOKEN_FIELDS.map(field => [field, receipt.tokenAccount.totals[field].value]),
     ) as Readonly<Record<RunReceiptTokenField, number | null>>,
     unavailableCounts: {
       participation: receipt.participation.coverage.unavailable,
       timing: receipt.timing.coverage.unavailable,
-      tokenDimensions: TOKEN_FIELDS.reduce(
+      tokenDimensions: RUN_RECEIPT_TOKEN_FIELDS.reduce(
         (sum, field) => sum + receipt.tokenAccount.totals[field].coverage.unavailable,
         0,
       ),
     },
     truncatedCounts: {
       participation: receipt.participation.coverage.truncated,
-      tokenSessions: Math.max(...TOKEN_FIELDS.map(field => receipt.tokenAccount.totals[field].coverage.truncated)),
+      tokenSessions: Math.max(...RUN_RECEIPT_TOKEN_FIELDS.map(field => receipt.tokenAccount.totals[field].coverage.truncated)),
     },
     coverage: {
       participation: receipt.participation.coverage.status,

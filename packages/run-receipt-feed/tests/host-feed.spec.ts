@@ -49,27 +49,28 @@ function follow(feed: RunReceiptFeedType, session: Session): {
 
 function withTokenStatus(
   value: RunReceipt,
-  status: 'reported' | 'provisional' | 'unavailable',
+  status: 'provisional' | 'unavailable',
 ): RunReceipt {
   const count = value.tokenAccount.sessions.length
+  const unavailable = status === 'unavailable'
   const evidenceCoverage = {
-    status: status === 'reported' ? 'complete' as const : status === 'provisional' ? 'partial' as const : 'unavailable' as const,
+    status: unavailable ? 'unavailable' as const : 'partial' as const,
     total: count,
-    reported: status === 'reported' ? count : 0,
-    provisional: status === 'provisional' ? count : 0,
-    unavailable: status === 'unavailable' ? count : 0,
+    reported: 0,
+    provisional: unavailable ? 0 : count,
+    unavailable: unavailable ? count : 0,
     truncated: 0,
   }
   const fields = ['totalTokens', 'uncachedInputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const
   const sessions = value.tokenAccount.sessions.map(sample => Object.fromEntries([
     ['childId', sample.childId],
     ['logRevision', sample.logRevision],
-    ...fields.map((field) => [field, status === 'unavailable'
+    ...fields.map((field) => [field, unavailable
       ? { status, reason: 'observation-failed' as const }
       : { status, value: sample[field].status === 'unavailable' ? 0 : sample[field].value, source: 'session-fold' as const }]),
   ]) as unknown as RunReceipt['tokenAccount']['sessions'][number])
   const totals = Object.fromEntries(fields.map((field) => [field, {
-    value: status === 'unavailable' ? null : value.tokenAccount.totals[field].value,
+    value: unavailable ? null : value.tokenAccount.totals[field].value,
     coverage: evidenceCoverage,
   }])) as unknown as RunReceipt['tokenAccount']['totals']
   return {

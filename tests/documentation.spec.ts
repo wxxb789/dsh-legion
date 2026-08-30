@@ -195,6 +195,15 @@ async function repositoryDocuments(directory: string): Promise<string[]> {
   return files.flat()
 }
 
+let repositoryDocumentInventoryPromise: Promise<string[]> | undefined
+
+function repositoryDocumentInventory(): Promise<string[]> {
+  return repositoryDocumentInventoryPromise ??= repositoryDocuments(ROOT).catch((error: unknown) => {
+    repositoryDocumentInventoryPromise = undefined
+    throw error
+  })
+}
+
 function historicalMarkdown(name: string): boolean {
   return HISTORICAL_DOCS.has(name)
     || HISTORICAL_DOC_ALLOWLIST.some(entry => name.startsWith(entry.prefix))
@@ -268,7 +277,7 @@ function levelTwoSection(source: string, title: string): string {
 
 describe('repository vocabulary', () => {
   it('classifies every repository document as current prose or explicitly allowed machine/history data', async () => {
-    const unclassified = (await repositoryDocuments(ROOT)).filter((path) => {
+    const unclassified = (await repositoryDocumentInventory()).filter((path) => {
       const name = nameOf(path)
       const extension = extname(name).toLowerCase()
       if (extension === '.md') return !currentMarkdown(path) && !historicalMarkdown(name)
@@ -301,7 +310,7 @@ describe('repository vocabulary', () => {
   })
 
   it('uses Specialist and Cohort in current prose', async () => {
-    const files = (await repositoryDocuments(ROOT)).filter(currentMarkdown)
+    const files = (await repositoryDocumentInventory()).filter(currentMarkdown)
     const violations = (await Promise.all(files.map(async (path) => {
       return proseViolations(nameOf(path), await readFile(path, 'utf8'))
     }))).flat()
@@ -359,7 +368,7 @@ describe('repository vocabulary', () => {
   })
 
   it('uses the renamed Settings ADR path and resolves every ADR 0023 link', async () => {
-    const files = (await repositoryDocuments(ROOT)).filter((path) => {
+    const files = (await repositoryDocumentInventory()).filter((path) => {
       const name = nameOf(path)
       return name.endsWith('.md') && !name.startsWith('docs/plans/')
     })
@@ -447,7 +456,7 @@ describe('repository vocabulary', () => {
   })
 
   it('ships only the canonical Config v3 dialect in current README and YAML examples', async () => {
-    const yaml = (await repositoryDocuments(ROOT)).filter(currentYaml)
+    const yaml = (await repositoryDocumentInventory()).filter(currentYaml)
     const files = [resolve(ROOT, 'README.md'), resolve(ROOT, 'README.zh-cn.md'), ...yaml]
     const retiredKey = /(?:^|[{,\s])(?:profiles|defaultProfile|teams|profile|team):(?:\s|$)/u
     const violations = (await Promise.all(files.map(async (path) => {
@@ -462,7 +471,7 @@ describe('repository vocabulary', () => {
   })
 
   it('uses current nouns in shipped YAML prose', async () => {
-    const files = (await repositoryDocuments(ROOT)).filter(currentYaml)
+    const files = (await repositoryDocumentInventory()).filter(currentYaml)
     const violations = (await Promise.all(files.map(async (path) => {
       const name = nameOf(path)
       const source = await readFile(path, 'utf8')

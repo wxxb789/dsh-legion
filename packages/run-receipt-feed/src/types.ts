@@ -63,12 +63,14 @@ export interface RunReceiptParticipant {
   readonly timing: RunReceiptTimingEvidence
 }
 
-export type RunReceiptTokenField =
-  | 'totalTokens'
-  | 'uncachedInputTokens'
-  | 'outputTokens'
-  | 'cacheReadTokens'
-  | 'cacheWriteTokens'
+export const RUN_RECEIPT_TOKEN_FIELDS = Object.freeze([
+  'totalTokens',
+  'uncachedInputTokens',
+  'outputTokens',
+  'cacheReadTokens',
+  'cacheWriteTokens',
+] as const)
+export type RunReceiptTokenField = typeof RUN_RECEIPT_TOKEN_FIELDS[number]
 
 export type RunReceiptTokenEvidence =
   | {
@@ -202,14 +204,6 @@ export type ReceiptFeedFrame = ReceiptFeedBaseline | ReceiptFeedReplacement | Re
 
 type ReceiptSemanticFailure = 'invalid-references' | 'invalid-aggregate' | 'invalid-transition'
 
-const TOKEN_FIELDS = [
-  'totalTokens',
-  'uncachedInputTokens',
-  'outputTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-] as const satisfies readonly RunReceiptTokenField[]
-
 function sameCoverage(left: RunReceiptEvidenceCoverage, right: RunReceiptEvidenceCoverage): boolean {
   return left.status === right.status
     && left.total === right.total
@@ -300,7 +294,7 @@ function validateReferences(receipt: RunReceipt): ReceiptSemanticFailure | undef
   for (const sample of receipt.tokenAccount.sessions) {
     const participant = participants.get(sample.childId)
     if (participant === undefined || samples.has(sample.childId)) return 'invalid-references'
-    const evidence = TOKEN_FIELDS.map(field => sample[field])
+    const evidence = RUN_RECEIPT_TOKEN_FIELDS.map(field => sample[field])
     if (participant.source === 'remote') {
       if (sample.logRevision !== null
         || evidence.some(value => value.status !== 'unavailable' || value.reason !== 'remote-unobservable')) {
@@ -353,7 +347,7 @@ function validateAggregate(receipt: RunReceipt): ReceiptSemanticFailure | undefi
   }
 
   const aggregateStatuses: RunReceiptCoverageStatus[] = []
-  for (const field of TOKEN_FIELDS) {
+  for (const field of RUN_RECEIPT_TOKEN_FIELDS) {
     const values = receipt.tokenAccount.sessions.map(sample => sample[field])
     const reported = values.filter(value => value.status === 'reported').length
     const provisional = values.filter(value => value.status === 'provisional').length

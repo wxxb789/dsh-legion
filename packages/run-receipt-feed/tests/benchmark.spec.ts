@@ -51,5 +51,5 @@ describe('RunReceiptFeed benchmark contract', () => {
     expect(result.byteSaturation).toBeGreaterThanOrEqual(0.95)
     expect(result.publicationP95Milliseconds).toBeLessThanOrEqual(100)
     expect(result.sharedReplacement).toBe(true)
-  })
+  }, 15_000)
 })

@@ -31,6 +31,13 @@ import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestrati
 import { createRunReceipt, finishRunReceipt } from '../src/run-receipt.ts'
 
 const contexts: Context[] = []
+const FULL_PROVIDER_CAPABILITIES = {
+  agentOptions: true,
+  outputSchema: true,
+  depthLimit: true,
+  toolFilter: true,
+  persona: true,
+} as const satisfies SubagentProvider['capabilities']
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
@@ -171,7 +178,7 @@ function executionPlan() {
     providers: {
       remote: {
         continuable: false,
-        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: FULL_PROVIDER_CAPABILITIES,
       },
     },
   })
@@ -196,7 +203,7 @@ function independentReviewPlan() {
     providers: {
       remote: {
         continuable: false,
-        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: FULL_PROVIDER_CAPABILITIES,
       },
     },
   })
@@ -241,7 +248,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     const narration = 'MODEL_NARRATION_SENTINEL_claims_failure_and_extra_stage'
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         return {
@@ -282,7 +289,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let feed!: RunReceiptFeed
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         const abort = new AbortController()
@@ -340,7 +347,7 @@ describe('Run Receipt public publication and degraded execution', () => {
   it('keeps ordinary Strategy execution when the publisher and observation services are missing', async () => {
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         return {
@@ -375,7 +382,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let started = false
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         started = true
@@ -409,7 +416,7 @@ describe('Run Receipt public publication and degraded execution', () => {
   it('records a rejected publication without changing the Strategy outcome', async () => {
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         return {
@@ -438,7 +445,7 @@ describe('Run Receipt public publication and degraded execution', () => {
   it('classifies an unknown publication result as incompatible without changing execution', async () => {
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         return {
@@ -467,7 +474,7 @@ describe('Run Receipt public publication and degraded execution', () => {
   it('binds remote lifecycle start and end that both arrive before the returned run is observed', async () => {
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         return {
@@ -506,7 +513,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let starts = 0
     const runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start() {
         const index = starts++
@@ -555,7 +562,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let publisher!: RecordingPublisher
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('local-status-child'), {
@@ -627,7 +634,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const index = starts++
@@ -694,7 +701,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('nested-root-child'), {
@@ -763,7 +770,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('cold-root-child'), {
@@ -825,7 +832,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('truncation-root-child'), {
@@ -900,7 +907,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('settled-fork-child'), {
@@ -973,7 +980,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
       name: 'remote',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+      capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
         const session = runtime.ctx.sessions.create(SessionId('cache-absent-child'), {
