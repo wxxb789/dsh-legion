@@ -3,12 +3,12 @@ import type { CatalogLayer } from './orchestration-contract.ts'
 /** Curated defaults expressed only through the same public catalog data contract as user layers. */
 export const DEFAULT_CATALOG_LAYER = {
   id: 'legion-defaults-v1',
-  teams: {
+  cohorts: {
     'independent-review': {
       description: 'One executor and one independent reviewer.',
       members: {
-        executor: { profile: 'deep' },
-        reviewer: { profile: 'review' },
+        executor: { specialist: 'deep' },
+        reviewer: { specialist: 'review' },
       },
       limits: { maxMembers: 2, maxConcurrentMembers: 1 },
     },
@@ -16,21 +16,21 @@ export const DEFAULT_CATALOG_LAYER = {
       description: 'Three independent researchers and one evidence synthesizer.',
       members: {
         researchers: {
-          profile: 'quick',
+          specialist: 'quick',
           minParticipants: 2,
           maxParticipants: 3,
           tags: ['research'],
         },
-        synthesizer: { profile: 'deep' },
+        synthesizer: { specialist: 'deep' },
       },
       limits: { maxMembers: 4, maxConcurrentMembers: 3 },
     },
     'plan-execute-review': {
       description: 'A planner/executor, independent reviewer, and bounded repair activation.',
       members: {
-        planner: { profile: 'deep' },
-        executor: { profile: 'deep' },
-        reviewer: { profile: 'review' },
+        planner: { specialist: 'deep' },
+        executor: { specialist: 'deep' },
+        reviewer: { specialist: 'review' },
       },
       limits: { maxMembers: 3, maxConcurrentMembers: 1 },
     },
@@ -38,7 +38,7 @@ export const DEFAULT_CATALOG_LAYER = {
   strategies: {
     'independent-review': {
       description: 'Execute once and independently review the produced evidence.',
-      team: 'independent-review',
+      cohort: 'independent-review',
       stages: [
         {
           kind: 'delegate',
@@ -71,7 +71,7 @@ export const DEFAULT_CATALOG_LAYER = {
     },
     'research-panel': {
       description: 'Run independent research in parallel and deterministically synthesize the panel.',
-      team: 'research-panel',
+      cohort: 'research-panel',
       stages: [
         {
           kind: 'fanout',
@@ -104,7 +104,7 @@ export const DEFAULT_CATALOG_LAYER = {
     },
     'plan-execute-review': {
       description: 'Plan, execute, review, then perform one bounded evidence-aware repair.',
-      team: 'plan-execute-review',
+      cohort: 'plan-execute-review',
       stages: [
         {
           kind: 'delegate',

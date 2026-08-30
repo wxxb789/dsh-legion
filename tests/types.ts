@@ -30,6 +30,13 @@ import {
   type TeamRunOutcome,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
+import type {
+  ConfigDeprecationDiagnostic,
+  ConfigExportTarget,
+  ConfigVersion,
+  CurrentConfig,
+} from '../src/config.ts'
+import type { CatalogLayer } from '../src/orchestration-contract.ts'
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
@@ -73,11 +80,50 @@ const routedConfig: LegionConfig = {
   },
 }
 
-const currentNounConfig: LegionConfig = {
+const currentNounConfig: CurrentConfig = {
+  configVersion: 3,
   toolName: 'legion',
   enableRunInBackground: true,
+  defaultSpecialist: 'deep',
   specialists: routedConfig.profiles,
-  cohorts: {},
+  cohorts: {
+    coding: { description: 'Coding.', members: { executor: { specialist: 'deep' } } },
+  },
+}
+const currentLayer: CatalogLayer<(typeof currentNounConfig.specialists)['deep']> = {
+  id: 'current',
+  specialists: currentNounConfig.specialists,
+  cohorts: currentNounConfig.cohorts!,
+  disable: { specialists: ['unused'], cohorts: ['unused'] },
+}
+const invalidCurrentMember: NonNullable<CurrentConfig['cohorts']> = {
+  invalid: {
+    description: 'Invalid.',
+    members: {
+      worker: {
+        // @ts-expect-error Current v3 Member Slots use specialist.
+        profile: 'deep',
+      },
+    },
+  },
+}
+const invalidCurrentLayer: CatalogLayer<SpecialistSpecForTypeTest> = {
+  id: 'invalid',
+  disable: {
+    // @ts-expect-error Current Catalog Layers use specialists.
+    profiles: ['legacy'],
+  },
+}
+type SpecialistSpecForTypeTest = (typeof currentNounConfig.specialists)['deep']
+const currentVersion: ConfigVersion = 3
+const currentTarget: ConfigExportTarget = 3
+const migrationDiagnostic: ConfigDeprecationDiagnostic = {
+  code: 'LEGION_CONFIG_KEY_DEPRECATED',
+  severity: 'warning',
+  path: 'config.defaultProfile',
+  replacement: 'config.defaultSpecialist',
+  removalVersion: '2.0.0',
+  message: 'deprecated',
 }
 
 const invocation: DelegationInvocation = {
@@ -96,6 +142,12 @@ const profileAsString: string = profile
 void config
 void routedConfig
 void currentNounConfig
+void currentLayer
+void invalidCurrentMember
+void invalidCurrentLayer
+void currentVersion
+void currentTarget
+void migrationDiagnostic
 void invocation
 void profileAsString
 void team
@@ -176,7 +228,7 @@ void stairStepPolicy
 
 const typedStrategy = defineStrategy({
   description: 'Typed pipeline.',
-  team: 'coding',
+  cohort: 'coding',
   stages: [
     {
       kind: 'delegate',
@@ -208,8 +260,8 @@ void typedStrategy
 const codingTeam = defineTeam('coding', {
   description: 'Coding.',
   members: {
-    executor: { profile: 'deep' },
-    reviewer: { profile: 'review' },
+    executor: { specialist: 'deep' },
+    reviewer: { specialist: 'review' },
   },
 })
 defineStrategyFor(codingTeam, typedStrategy)
@@ -223,7 +275,7 @@ defineStrategyFor(codingTeam, {
 // @ts-expect-error A stage cannot consume an artifact produced by a later stage.
 defineStrategy({
   description: 'Invalid forward reference.',
-  team: 'coding',
+  cohort: 'coding',
   stages: [{
     kind: 'delegate',
     id: 'first',
@@ -257,8 +309,8 @@ defineStrategy({
 const requiredSlotsTeam = defineTeam('required-slots', {
   description: 'Required slots.',
   members: {
-    first: { profile: 'deep', minParticipants: 1 },
-    second: { profile: 'review', minParticipants: 1 },
+    first: { specialist: 'deep', minParticipants: 1 },
+    second: { specialist: 'review', minParticipants: 1 },
   },
 })
 // @ts-expect-error A typed Strategy must cover every Team slot with positive minimum participation.

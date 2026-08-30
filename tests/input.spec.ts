@@ -3,6 +3,7 @@ import {
   LegionInputError,
   loadConfigFile,
   parseConfigDocument,
+  parseConfigDocumentWithDiagnostics,
   parseProviderSnapshotDocument,
 } from '../src/input.ts'
 
@@ -37,6 +38,29 @@ describe('doctor input boundaries', () => {
 
     expect(yaml).toEqual(json)
     expect(yaml.profiles.quick?.result).toBe('text')
+  })
+
+  it('returns canonical current config with complete migration diagnostics', () => {
+    const current = parseConfigDocumentWithDiagnostics('legion.yml', `
+configVersion: 3
+toolName: legion
+enableRunInBackground: true
+defaultSpecialist: quick
+specialists:
+  quick:
+    description: Fast work.
+    subagentProvider: spawn
+    maxDepth: 2
+    defaultRunInBackground: true
+`)
+    const retired = parseConfigDocumentWithDiagnostics('legion.yml', yamlConfig)
+
+    expect(current.config).toMatchObject({ configVersion: 3, defaultSpecialist: 'quick' })
+    expect(current.diagnostics).toEqual([])
+    expect(retired.config).toEqual(current.config)
+    expect(retired.diagnostics.map(item => item.path)).toEqual([
+      'config.profiles', 'config.defaultProfile',
+    ])
   })
 
   it('validates and detaches a versioned provider fixture', () => {

@@ -24,6 +24,20 @@ function io(files: Record<string, string>): {
 }
 
 const config = `
+configVersion: 3
+toolName: legion
+defaultSpecialist: quick
+enableRunInBackground: true
+specialists:
+  quick:
+    description: Fast work.
+    subagentProvider: spawn
+    maxDepth: 2
+    defaultRunInBackground: true
+`
+
+const retiredConfig = `
+configVersion: 2
 toolName: legion
 defaultProfile: quick
 enableRunInBackground: true
@@ -33,6 +47,26 @@ profiles:
     subagentProvider: spawn
     maxDepth: 2
     defaultRunInBackground: true
+teams:
+  workers:
+    description: Workers.
+    members:
+      worker:
+        profile: quick
+strategies:
+  work:
+    description: Work.
+    team: workers
+    stages:
+      - kind: delegate
+        id: work
+        member: worker
+        inputs: [{ artifact: objective, contract: objective-v1 }]
+        output: { artifact: result, contract: text }
+        prompt: Work.
+    completion: { artifact: result, contract: text }
+    limits: { maxAgents: 1, maxConcurrent: 1, deadlineMs: 60000, maxOutputBytes: 64000 }
+    memberFailure: fail
 `
 
 const providers = `
@@ -82,8 +116,64 @@ describe('dsh-legion CLI', () => {
       'explain', 'legion.yml', '--providers', 'providers.yml', '--json',
     ], json.io)).toBe(EXIT_OK)
     expect(json.stderr).toEqual([])
-    const document = JSON.parse(json.stdout.join('')) as { version: number; source: { providerSnapshot: string } }
+    const document = JSON.parse(json.stdout.join('')) as {
+      version: number
+      source: { providerSnapshot: string }
+      configDiagnostics?: unknown
+    }
     expect(document).toMatchObject({ version: 1, source: { providerSnapshot: 'fixture' } })
+    expect(document.configDiagnostics).toBeUndefined()
+    expect(human.stdout.join('')).not.toContain('Config diagnostics:')
+  })
+
+  it('renders every retired Config path in human and JSON doctor output', async () => {
+    const human = io({ 'legion.yml': retiredConfig, 'providers.yml': providers })
+    expect(await runCli(['doctor', 'legion.yml', '--providers', 'providers.yml'], human.io))
+      .toBe(EXIT_OK)
+    expect(human.stderr).toEqual([])
+    expect(human.stdout.join('')).toContain('Config diagnostics:')
+    for (const path of [
+      'config.profiles',
+      'config.defaultProfile',
+      'config.teams',
+      'config.teams.workers.members.worker.profile',
+      'config.strategies.work.team',
+    ]) {
+      expect(human.stdout.join('')).toContain(path)
+    }
+    expect(human.stdout.join('')).toContain('remove in 2.0.0')
+
+    const json = io({ 'legion.yml': retiredConfig, 'providers.yml': providers })
+    expect(await runCli([
+      'doctor', 'legion.yml', '--providers', 'providers.yml', '--json',
+    ], json.io)).toBe(EXIT_OK)
+    expect(json.stderr).toEqual([])
+    const document = JSON.parse(json.stdout.join('')) as {
+      configDiagnostics: Array<{ path: string; replacement: string; removalVersion: string }>
+    }
+    expect(document.configDiagnostics.map(item => ({
+      path: item.path,
+      replacement: item.replacement,
+      removalVersion: item.removalVersion,
+    }))).toEqual([
+      { path: 'config.profiles', replacement: 'config.specialists', removalVersion: '2.0.0' },
+      {
+        path: 'config.defaultProfile',
+        replacement: 'config.defaultSpecialist',
+        removalVersion: '2.0.0',
+      },
+      { path: 'config.teams', replacement: 'config.cohorts', removalVersion: '2.0.0' },
+      {
+        path: 'config.teams.workers.members.worker.profile',
+        replacement: 'config.teams.workers.members.worker.specialist',
+        removalVersion: '2.0.0',
+      },
+      {
+        path: 'config.strategies.work.team',
+        replacement: 'config.strategies.work.cohort',
+        removalVersion: '2.0.0',
+      },
+    ])
   })
 
   it('returns warning success for an empty fixture and diagnostics failure for explicit incompatibility', async () => {

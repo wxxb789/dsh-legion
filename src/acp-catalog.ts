@@ -225,7 +225,7 @@ export function assertAcpProfileCompatible(name: string, profile: SpecialistSpec
 export function acpCatalogLayer(
   agents: readonly AcpAgentSpec[],
   options: AcpCatalogOptions = {},
-): CatalogLayer<SpecialistSpec> {
+): CatalogLayer<SpecialistSpec> & { readonly profiles: Readonly<Record<string, SpecialistSpec>> } {
   const profiles: Record<string, SpecialistSpec> = {}
   for (const agent of agents) {
     if (profiles[agent.id] !== undefined) {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { materializeCompiledConfig, type Config } from '../src/config.ts'
+import { materializeCompiledConfig, type Config, type CurrentConfig } from '../src/config.ts'
 import {
   SpecialistResourceError,
   assertResourceSnapshot,
@@ -45,6 +45,19 @@ function config(paths: string[], maxResourceBytes = 65536): Config {
   }
 }
 
+function currentConfig(paths: string[], maxResourceBytes = 65536): CurrentConfig {
+  const legacy = config(paths, maxResourceBytes)
+  return {
+    configVersion: 3,
+    toolName: legacy.toolName,
+    enableRunInBackground: legacy.enableRunInBackground,
+    resourceRoots: { local: 'resources' },
+    maxResourceBytes,
+    defaultSpecialist: 'quick',
+    specialists: legacy.profiles,
+  }
+}
+
 async function expectResourceError(promise: Promise<unknown>, code: string): Promise<void> {
   try {
     await promise
@@ -62,6 +75,9 @@ describe('profile prompt resource loader', () => {
     writeFileSync(file, Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('Use concise evidence.\n')]))
 
     const first = await loadSpecialistResources(config(['prompts/quick.md']), { baseDirectory: root })
+    const canonical = await loadSpecialistResources(currentConfig(['prompts/quick.md']), { baseDirectory: root })
+    expect(canonical).toEqual(first)
+    expect(Object.keys(canonical)).toContain('profiles')
     expect(first.profiles.quick).toEqual([expect.objectContaining({
       reference: 'local:prompts/quick.md',
       content: 'Use concise evidence.\n',

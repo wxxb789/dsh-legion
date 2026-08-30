@@ -2,7 +2,12 @@ import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { load as loadYaml } from 'js-yaml'
 import z from '@deepseek-ai/schemastery'
-import { materializeConfig, type Config as LegionConfig } from './config.ts'
+import {
+  materializeCompiledConfigWithDiagnostics,
+  materializeConfig,
+  type CompiledConfigResult,
+  type Config as LegionConfig,
+} from './config.ts'
 import type { RuntimeSnapshot } from './compiler.ts'
 
 export type InputErrorCode =
@@ -113,6 +118,19 @@ export function parseConfigDocument(file: string, source: string): LegionConfig 
   }
 }
 
+/** Parse one Config document into the canonical model with migration diagnostics. */
+export function parseConfigDocumentWithDiagnostics(
+  file: string,
+  source: string,
+): CompiledConfigResult {
+  const input = parseDocument(file, source)
+  try {
+    return materializeCompiledConfigWithDiagnostics(input)
+  } catch (error: unknown) {
+    throw new LegionInputError('CONFIG_INVALID', file, `invalid Legion config in ${file}: ${String(error)}`, error)
+  }
+}
+
 /** Parse and runtime-validate one explicit provider snapshot fixture. */
 export function parseProviderSnapshotDocument(file: string, source: string): ProviderSnapshotFixtureV1 {
   const input = parseDocument(file, source)
@@ -148,6 +166,13 @@ export async function loadConfigFile(
   readTextFile: ReadTextFile = path => readFile(path, 'utf8'),
 ): Promise<LegionConfig> {
   return parseConfigDocument(file, await readInput(file, readTextFile))
+}
+
+export async function loadConfigFileWithDiagnostics(
+  file: string,
+  readTextFile: ReadTextFile = path => readFile(path, 'utf8'),
+): Promise<CompiledConfigResult> {
+  return parseConfigDocumentWithDiagnostics(file, await readInput(file, readTextFile))
 }
 
 export async function loadProviderSnapshotFile(

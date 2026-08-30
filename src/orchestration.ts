@@ -278,13 +278,13 @@ function compiledCohort(
   let sumMin = 0
   let sumMax = 0
   for (const [slot, authored] of entries) {
-    let profile: EffectiveSpecialist | undefined = profiles.specialists[authored.profile]
+    let profile: EffectiveSpecialist | undefined = profiles.specialists[authored.specialist]
     if (profile === undefined) {
       push(
         diagnostics,
         'TEAM_PROFILE_UNKNOWN',
         'error',
-        `team "${name}" member "${slot}" references unknown profile "${authored.profile}"`,
+        `team "${name}" member "${slot}" references unknown profile "${authored.specialist}"`,
         { team: name },
       )
       continue
@@ -306,7 +306,7 @@ function compiledCohort(
         diagnostics,
         'TEAM_PROFILE_INACTIVE',
         'warning',
-        `team "${name}" member "${slot}" currently uses inactive profile "${authored.profile}"`,
+        `team "${name}" member "${slot}" currently uses inactive profile "${authored.specialist}"`,
         { team: name },
       )
     }
@@ -419,7 +419,7 @@ function compileStrategyTemplate(
       diagnostics,
       'STRATEGY_TEAM_UNKNOWN',
       'error',
-      `strategy "${name}" references unavailable team "${spec.team}"`,
+      `strategy "${name}" references unavailable team "${spec.cohort}"`,
       { strategy: name },
     )
     return undefined
@@ -788,7 +788,7 @@ export function compileOrchestrationCatalog(
   const strategies: Record<string, CompiledStrategyTemplate> = {}
   for (const name of Object.keys(profiles.strategies).sort()) {
     const spec = profiles.strategies[name]!
-    const strategy = compileStrategyTemplate(name, spec, cohorts[spec.team], profiles, diagnostics)
+    const strategy = compileStrategyTemplate(name, spec, cohorts[spec.cohort], profiles, diagnostics)
     if (strategy !== undefined) strategies[name] = strategy
   }
   const identity = {

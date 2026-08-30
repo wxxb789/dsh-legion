@@ -22,7 +22,7 @@ export const STRATEGY_LIMIT_MAXIMUMS = Object.freeze({
 export type ArtifactContract = (typeof ARTIFACT_CONTRACTS)[number]
 
 export interface MemberSlotSpec {
-  readonly profile: string
+  readonly specialist: string
   readonly minParticipants?: number
   readonly maxParticipants?: number
   readonly tags?: readonly string[]
@@ -111,7 +111,7 @@ export interface StairStepPolicySpec {
 
 export interface StrategySpec {
   readonly description: string
-  readonly team: string
+  readonly cohort: string
   readonly stages: readonly StrategyStageSpec[]
   readonly advancement?: StairStepPolicySpec
   readonly completion: {
@@ -123,25 +123,37 @@ export interface StrategySpec {
 }
 
 export interface CatalogDisableSpec {
-  readonly profiles?: readonly string[]
-  readonly teams?: readonly string[]
+  readonly specialists?: readonly string[]
+  readonly cohorts?: readonly string[]
   readonly strategies?: readonly string[]
 }
 
-export interface CatalogLayer<Profile> {
+export interface CatalogLayer<Specialist> {
   readonly id: string
-  readonly profiles?: Readonly<Record<string, Profile>>
-  readonly teams?: Readonly<Record<string, CohortSpec>>
+  readonly specialists?: Readonly<Record<string, Specialist>>
+  readonly cohorts?: Readonly<Record<string, CohortSpec>>
   readonly strategies?: Readonly<Record<string, StrategySpec>>
   readonly disable?: CatalogDisableSpec
 }
 
-const MemberSlotSchema = z.object({
-  profile: z.string().pattern(ORCHESTRATION_NAME).required(),
+const MemberSlotFields = {
   minParticipants: z.number().step(1).min(0).max(16),
   maxParticipants: z.number().step(1).min(1).max(16),
   tags: z.array(z.string().pattern(ORCHESTRATION_NAME)),
-}) as unknown as z<MemberSlotSpec>
+}
+
+const MemberSlotSchema = z.union([
+  z.object({
+    specialist: z.string().pattern(ORCHESTRATION_NAME).required(),
+    ...MemberSlotFields,
+  }),
+  z.object({
+    profile: z.string().pattern(ORCHESTRATION_NAME).required()
+      .description('Deprecated: use "specialist" instead.')
+      .deprecated(),
+    ...MemberSlotFields,
+  }),
+]) as unknown as z<MemberSlotSpec>
 
 const CohortLimitsSchema: z<CohortLimits> = z.object({
   maxMembers: z.number().step(1).min(1).max(16),
@@ -224,9 +236,8 @@ export const StairStepPolicySpecSchema = z.object({
   ]),
 }) as unknown as z<StairStepPolicySpec>
 
-export const StrategySpecSchema = z.object({
+const StrategySpecFields = {
   description: z.string().min(1).required(),
-  team: z.string().pattern(ORCHESTRATION_NAME).required(),
   stages: z.array(StrategyStageSchema).min(1).max(32).required(),
   advancement: z.union([StairStepPolicySpecSchema]),
   completion: z.object({
@@ -235,7 +246,20 @@ export const StrategySpecSchema = z.object({
   }).required(),
   limits: StrategyLimitsSchema.required(),
   memberFailure: z.union(['fail', 'allow-partial'] as const).required(),
-}) as unknown as z<StrategySpec>
+}
+
+export const StrategySpecSchema = z.union([
+  z.object({
+    ...StrategySpecFields,
+    cohort: z.string().pattern(ORCHESTRATION_NAME).required(),
+  }),
+  z.object({
+    ...StrategySpecFields,
+    team: z.string().pattern(ORCHESTRATION_NAME).required()
+      .description('Deprecated: use "cohort" instead.')
+      .deprecated(),
+  }),
+]) as unknown as z<StrategySpec>
 
 function record(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
@@ -256,40 +280,40 @@ function assertKnownKeys(value: unknown, allowed: readonly string[], at: string)
   }
 }
 
-/** Enforce strict object vocabularies before Schemastery materialization. */
+/** Enforce strict canonical orchestration vocabularies after Config normalization. */
 export function assertKnownOrchestrationKeys(
-  teams: unknown,
+  cohorts: unknown,
   strategies: unknown,
   at = 'catalog',
 ): void {
-  const teamMap = record(teams)
-  if (teams !== undefined && teamMap === undefined) {
-    throw new Error(`dsh-legion: ${at}.teams must be a plain object`)
+  const cohortMap = record(cohorts)
+  if (cohorts !== undefined && cohortMap === undefined) {
+    throw new Error(`dsh-legion: ${at}.cohorts must be a plain object`)
   }
-  if (teamMap !== undefined) {
-    for (const [name, team] of Object.entries(teamMap)) {
-      assertKnownKeys(team, ['description', 'members', 'limits'], `${at}.teams.${name}`)
-      const source = record(team)
+  if (cohortMap !== undefined) {
+    for (const [name, cohort] of Object.entries(cohortMap)) {
+      assertKnownKeys(cohort, ['description', 'members', 'limits'], `${at}.cohorts.${name}`)
+      const source = record(cohort)
       const members = record(source?.members)
       if (source?.members !== undefined && members === undefined) {
-        throw new Error(`dsh-legion: ${at}.teams.${name}.members must be a plain object`)
+        throw new Error(`dsh-legion: ${at}.cohorts.${name}.members must be a plain object`)
       }
       if (members !== undefined) {
         for (const [slot, member] of Object.entries(members)) {
           if (!ORCHESTRATION_NAME.test(slot)) {
-            throw new Error(`dsh-legion: ${at}.teams.${name}.members has invalid slot name "${slot}"`)
+            throw new Error(`dsh-legion: ${at}.cohorts.${name}.members has invalid slot name "${slot}"`)
           }
           assertKnownKeys(
             member,
-            ['profile', 'minParticipants', 'maxParticipants', 'tags'],
-            `${at}.teams.${name}.members.${slot}`,
+            ['specialist', 'minParticipants', 'maxParticipants', 'tags'],
+            `${at}.cohorts.${name}.members.${slot}`,
           )
         }
       }
       assertKnownKeys(
         source?.limits,
         ['maxMembers', 'maxConcurrentMembers'],
-        `${at}.teams.${name}.limits`,
+        `${at}.cohorts.${name}.limits`,
       )
     }
   }
@@ -301,7 +325,7 @@ export function assertKnownOrchestrationKeys(
     for (const [name, strategy] of Object.entries(strategyMap)) {
       assertKnownKeys(
         strategy,
-        ['description', 'team', 'stages', 'advancement', 'completion', 'limits', 'memberFailure'],
+        ['description', 'cohort', 'stages', 'advancement', 'completion', 'limits', 'memberFailure'],
         `${at}.strategies.${name}`,
       )
       const source = record(strategy)
@@ -477,13 +501,13 @@ type InvalidMemberStage<Cohort extends CohortSpec, Stage> = Stage extends {
 : Stage
 type InvalidMemberStages<Cohort extends CohortSpec, Stages extends readonly StrategyStageSpec[]> =
   Stages[number] extends infer Stage ? InvalidMemberStage<Cohort, Stage> : never
-type RequiredTeamMembers<Cohort extends CohortSpec> = {
+type RequiredCohortMembers<Cohort extends CohortSpec> = {
   [Name in keyof Cohort['members'] & string]: MemberMinimum<Cohort['members'][Name]> extends 0
     ? never
     : Name
 }[keyof Cohort['members'] & string]
 type MissingRequiredMembers<Cohort extends CohortSpec, Stages extends readonly StrategyStageSpec[]> =
-  Exclude<RequiredTeamMembers<Cohort>, StageMembers<Stages>>
+  Exclude<RequiredCohortMembers<Cohort>, StageMembers<Stages>>
 
 /** Type-level authoring helper; runtime data still crosses the normal schema/compiler seam. */
 export function defineStrategy<const Spec extends StrategySpec>(
@@ -496,10 +520,10 @@ export function defineStrategyFor<
   const Cohort extends DefinedCohort<string, CohortSpec>,
   const Spec extends StrategySpec,
 >(
-  _team: Cohort,
+  _cohort: Cohort,
   spec: Spec
     & ValidStrategySpec<Spec>
-    & (Spec['team'] extends Cohort['name'] ? unknown : never)
+    & (Spec['cohort'] extends Cohort['name'] ? unknown : never)
     & (Exclude<StageMembers<Spec['stages']>, keyof Cohort['spec']['members'] & string> extends never
       ? unknown
       : never)

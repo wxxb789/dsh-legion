@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { compileCatalog } from '../src/compiler.ts'
-import { materializeConfig, type Config } from '../src/config.ts'
+import { materializeConfig, type LegionConfig } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import {
   OrchestrationCompileError,
@@ -10,7 +10,7 @@ import {
   compileStrategy,
 } from '../src/orchestration.ts'
 
-const config: Config = {
+const config: LegionConfig = {
   configVersion: 2,
   toolName: 'legion',
   enableRunInBackground: true,
@@ -106,11 +106,11 @@ describe('Team and Strategy compiler', () => {
     const authored = {
       ...config,
       catalogLayers: [],
-      teams: DEFAULT_CATALOG_LAYER.teams,
+      teams: DEFAULT_CATALOG_LAYER.cohorts,
       strategies: {
         incremental: {
           ...base,
-          team: 'independent-review',
+          cohort: 'independent-review',
           advancement: {
             kind: 'stair-step' as const,
             plannerMember: 'executor',
@@ -149,14 +149,14 @@ describe('Team and Strategy compiler', () => {
     const base = DEFAULT_CATALOG_LAYER.strategies?.['independent-review']
     if (base === undefined) throw new Error('missing default Strategy')
     expect(() => materializeConfig({
-      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.teams,
+      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.cohorts,
       strategies: { broken: { ...base, advancement: {
         kind: 'stair-step', plannerMember: 'executor', verifierMember: 'reviewer', hidden: true,
       } } },
     })).toThrow(/unknown field.*hidden/)
 
     const materialized = materializeConfig({
-      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.teams,
+      ...config, catalogLayers: [], teams: DEFAULT_CATALOG_LAYER.cohorts,
       strategies: { broken: { ...base, advancement: {
         kind: 'stair-step', plannerMember: 'missing', verifierMember: 'reviewer',
         maxMilestones: 1, maxNoProgressMilestones: 2,
@@ -177,7 +177,7 @@ describe('Team and Strategy compiler', () => {
     const recreatedConfig = materializeConfig({
       ...config,
       catalogLayers: [],
-      teams: DEFAULT_CATALOG_LAYER.teams,
+      teams: DEFAULT_CATALOG_LAYER.cohorts,
       strategies: DEFAULT_CATALOG_LAYER.strategies,
     })
     const profileCatalog = compileCatalog(recreatedConfig, runtime)

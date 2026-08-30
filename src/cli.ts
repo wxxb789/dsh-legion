@@ -1,7 +1,8 @@
 import { dirname, resolve } from 'node:path'
 import { compileCatalog } from './compiler.ts'
 import { explainCatalog, renderExplainHuman, type ExplainViewV1 } from './explain.ts'
-import { LegionInputError, loadConfigFile, loadProviderSnapshotFile } from './input.ts'
+import { LegionInputError, loadConfigFileWithDiagnostics, loadProviderSnapshotFile } from './input.ts'
+import type { ConfigDeprecationDiagnostic } from './config.ts'
 import { loadSpecialistResources } from './resources.ts'
 import { replayExportedSessionEvents, renderLegionRunHuman } from './durable-run/replay.ts'
 
@@ -97,6 +98,17 @@ function exitCode(view: ExplainViewV1): number {
   return view.summary.errors > 0 ? EXIT_DIAGNOSTICS : EXIT_OK
 }
 
+function renderConfigDiagnostics(diagnostics: readonly ConfigDeprecationDiagnostic[]): string {
+  if (diagnostics.length === 0) return ''
+  return [
+    '',
+    'Config diagnostics:',
+    ...diagnostics.map(diagnostic =>
+      `WARN  ${diagnostic.code} ${diagnostic.path} -> ${diagnostic.replacement} (remove in ${diagnostic.removalVersion})`),
+    '',
+  ].join('\n')
+}
+
 /** Run the CLI adapter without capturing Node globals, for deterministic tests. */
 export async function runCli(argv: readonly string[], io: CliIo): Promise<number> {
   let command: CliCommand
@@ -111,7 +123,8 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       io.stdout.write(command.json ? JSON.stringify(view, null, 2) + '\n' : renderLegionRunHuman(view))
       return EXIT_OK
     }
-    const config = await loadConfigFile(command.config, io.readTextFile)
+    const materialized = await loadConfigFileWithDiagnostics(command.config, io.readTextFile)
+    const config = materialized.config
     const fixture = command.providers === undefined
       ? undefined
       : await loadProviderSnapshotFile(command.providers, io.readTextFile)
@@ -123,12 +136,15 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
       providerSnapshot: fixture === undefined ? 'empty-fixture' : 'fixture',
     })
     if (command.json) {
-      io.stdout.write(JSON.stringify(view, null, 2) + '\n')
+      const document = materialized.diagnostics.length === 0
+        ? view
+        : { ...view, configDiagnostics: materialized.diagnostics }
+      io.stdout.write(JSON.stringify(document, null, 2) + '\n')
     } else {
       io.stdout.write(renderExplainHuman(view, {
         command: command.kind,
         detail: command.kind === 'explain' ? 'profiles' : 'summary',
-      }))
+      }) + renderConfigDiagnostics(materialized.diagnostics))
     }
     return exitCode(view)
   } catch (error: unknown) {

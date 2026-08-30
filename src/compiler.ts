@@ -1,7 +1,7 @@
 import type { SubagentCapabilities } from '@deepseek-ai/dsh-subagent'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { CompiledConfig, DurableRunPolicySpec, SpecialistSpec, ResultContract, RouteCandidate } from './config.ts'
-import { materializeCompiledConfig } from './config.ts'
+import { materializeCompiledConfig, projectConfigToPublishedV2 } from './config.ts'
 import { deepFreeze, sha256Digest } from './internal/value.ts'
 import { outputSchemaFor } from './result-contract.ts'
 import type { SelectedRoutePlan } from './route.ts'
@@ -408,20 +408,21 @@ export function compileSpecialistCatalog(
     })
   }
 
+  const published = projectConfigToPublishedV2(config)
   const policy = {
-    configVersion: config.configVersion,
-    toolName: config.toolName,
-    enableRunInBackground: config.enableRunInBackground,
-    enableStrategies: config.enableStrategies,
-    enableDurableRuns: config.enableDurableRuns,
-    durableRunPolicy: config.durableRunPolicy,
-    ...config.defaultSpecialist === undefined ? {} : { defaultProfile: config.defaultSpecialist },
-    ...config.guidance === undefined ? {} : { guidance: config.guidance },
-    resourceRoots: Object.fromEntries(Object.keys(config.resourceRoots).sort().map(name => [name, config.resourceRoots[name]])),
-    maxResourceBytes: config.maxResourceBytes,
-    profiles: Object.fromEntries(Object.keys(config.specialists).sort().map(name => [name, config.specialists[name]])),
-    teams: Object.fromEntries(Object.keys(config.cohorts).sort().map(name => [name, config.cohorts[name]])),
-    strategies: Object.fromEntries(Object.keys(config.strategies).sort().map(name => [name, config.strategies[name]])),
+    configVersion: published.configVersion,
+    toolName: published.toolName,
+    enableRunInBackground: published.enableRunInBackground,
+    enableStrategies: published.enableStrategies,
+    enableDurableRuns: published.enableDurableRuns,
+    durableRunPolicy: published.durableRunPolicy,
+    ...published.defaultProfile === undefined ? {} : { defaultProfile: published.defaultProfile },
+    ...published.guidance === undefined ? {} : { guidance: published.guidance },
+    resourceRoots: published.resourceRoots,
+    maxResourceBytes: published.maxResourceBytes,
+    profiles: published.profiles,
+    teams: published.teams,
+    strategies: published.strategies,
   }
   const runtime = {
     providers: Object.fromEntries(Object.keys(snapshot.providers).sort().map(name => [name, snapshot.providers[name]])),

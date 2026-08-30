@@ -5,7 +5,7 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SubagentRuntime, { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import { compileCatalog } from '../src/compiler.ts'
-import { materializeConfig, type Config } from '../src/config.ts'
+import { materializeConfig, type LegionConfig } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
@@ -25,7 +25,7 @@ const review = {
   verification: ['reviewed'],
 }
 
-function config(): Config {
+function config(): LegionConfig {
   return {
     configVersion: 2,
     toolName: 'legion',
@@ -107,7 +107,7 @@ function setup(
   return { ctx, provider, starts, disposed }
 }
 
-function catalogs(authored: Config = config()) {
+function catalogs(authored: LegionConfig = config()) {
   const materialized = materializeConfig(authored)
   const profiles = compileCatalog(materialized, {
     providers: {
@@ -166,7 +166,7 @@ describe('bounded Strategy execution adapter', () => {
     await runtime.ctx.plugin(AgentRegistry)
     await runtime.ctx.plugin(SubagentRuntime)
     runtime.ctx.subagents.registerProvider(runtime.provider)
-    const authored: Config = {
+    const authored: LegionConfig = {
       ...config(),
       teams: {
         single: {

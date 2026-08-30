@@ -6,31 +6,39 @@ import {
   type CatalogLayer,
   type StrategySpec,
   type CohortSpec,
+  type MemberSlotSpec,
 } from './orchestration-contract.ts'
 import { resolveCatalogLayers } from './catalog-layer.ts'
 import { deepCopy, deepFreeze } from './internal/value.ts'
 
 export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
+/** Published 1.x no-target materialize/export version. */
 export const CURRENT_CONFIG_VERSION = 2 as const
-export type ConfigVersion = 1 | typeof CURRENT_CONFIG_VERSION
+/** Canonical version used by the new current Config interfaces. */
+export const CANONICAL_CONFIG_VERSION = 3 as const
+const PUBLISHED_CONFIG_VERSION = CURRENT_CONFIG_VERSION
+export type ConfigVersion = 1 | typeof PUBLISHED_CONFIG_VERSION | typeof CANONICAL_CONFIG_VERSION
 export type ConfigExportTarget = ConfigVersion | 'legacy-unversioned'
 export const RESULT_CONTRACTS = Object.freeze(['text', 'findings-v1', 'review-v1', 'plan-delta-v1'] as const)
 export type ResultContract = (typeof RESULT_CONTRACTS)[number]
 
-/** Current and retired Config Document namespace keys for the v1.2 expansion window. */
+/** Current and retired Config Document keys for the 1.x compatibility window. */
 const CONFIG_NAMESPACE_VOCABULARY = Object.freeze({
   specialist: Object.freeze({ current: 'specialists', retired: 'profiles' }),
+  defaultSpecialist: Object.freeze({ current: 'defaultSpecialist', retired: 'defaultProfile' }),
+  memberSpecialist: Object.freeze({ current: 'specialist', retired: 'profile' }),
   cohort: Object.freeze({ current: 'cohorts', retired: 'teams' }),
+  strategyCohort: Object.freeze({ current: 'cohort', retired: 'team' }),
 } as const)
 
-const CONFIG_NAMESPACE_KEYS = Object.freeze(Object.values(CONFIG_NAMESPACE_VOCABULARY)
-  .flatMap(({ current, retired }) => [current, retired]))
+const CONFIG_KEY_REMOVAL_VERSION = '2.0.0' as const
 
 export interface ConfigDeprecationDiagnostic {
   readonly code: 'LEGION_CONFIG_KEY_DEPRECATED'
   readonly severity: 'warning'
   readonly path: string
   readonly replacement: string
+  readonly removalVersion: typeof CONFIG_KEY_REMOVAL_VERSION
   readonly message: string
 }
 
@@ -114,39 +122,73 @@ export interface SpecialistSpec {
   readonly promptFiles?: PromptFileReference[]
 }
 
-export interface Config {
-  /** Explicit document version; omission is the pre-v0.4 unversioned v1 shape. */
-  readonly configVersion?: ConfigVersion
-  /** What this composed row contributes; a composition fact, never a stored setting. */
-  readonly role?: LegionRowRole
-  /** Model-facing tool name. */
-  readonly toolName: string
-  /** Internally normalized Specialist namespace. */
-  readonly profiles: Record<string, SpecialistSpec>
-  /** Profile used when the tool call omits profile. */
-  readonly defaultProfile?: string
-  /** Whether the tool exposes and accepts run_in_background. */
-  readonly enableRunInBackground: boolean
-  /** Explicit opt-in for model-callable Strategies; defaults to false. */
-  readonly enableStrategies?: boolean
-  /** Enables programmatic durable contracts; model-facing journal execution remains unavailable before M3. */
-  readonly enableDurableRuns?: boolean
-  /** Bounded policy for one single-caller static DAG activation. */
-  readonly durableRunPolicy?: DurableRunPolicySpec
-  /** Additional coordinator guidance appended after the generated routing table. */
-  readonly guidance?: string
-  /** Deployment-owned aliases to directories containing prompt fragments. */
-  readonly resourceRoots?: Record<string, string>
-  /** Maximum combined prompt-fragment bytes loaded for one profile. */
-  readonly maxResourceBytes?: number
-  /** Ordered installed/project catalog layers; the root maps form the final deployment layer. */
-  catalogLayers?: CatalogLayer<SpecialistSpec>[]
-  /** Internally normalized Cohort namespace. */
-  teams?: Record<string, CohortSpec>
-  /** Named declarative Strategies in the final deployment layer. */
-  strategies?: Record<string, StrategySpec>
+type LegacyMemberSlotSpec = Omit<MemberSlotSpec, 'specialist'> & { readonly profile: string }
+type LegacyCohortSpec = Omit<CohortSpec, 'members'> & {
+  readonly members: Readonly<Record<string, LegacyMemberSlotSpec>>
+}
+type LegacyStrategySpec = Omit<StrategySpec, 'cohort'> & { readonly team: string }
+interface LegacyCatalogDisableSpec {
+  readonly profiles?: readonly string[]
+  readonly teams?: readonly string[]
+  readonly strategies?: readonly string[]
+}
+interface LegacyCatalogLayer<Specialist> {
+  readonly id: string
+  readonly profiles?: Readonly<Record<string, Specialist>>
+  readonly teams?: Readonly<Record<string, LegacyCohortSpec>>
+  readonly strategies?: Readonly<Record<string, LegacyStrategySpec>>
+  readonly disable?: LegacyCatalogDisableSpec
 }
 
+/** Published 1.x Config materialization shape retained until 2.0. */
+export interface Config {
+  readonly configVersion?: 1 | typeof PUBLISHED_CONFIG_VERSION
+  readonly role?: LegionRowRole
+  readonly toolName: string
+  readonly profiles: Record<string, SpecialistSpec>
+  readonly defaultProfile?: string
+  readonly enableRunInBackground: boolean
+  readonly enableStrategies?: boolean
+  readonly enableDurableRuns?: boolean
+  readonly durableRunPolicy?: DurableRunPolicySpec
+  readonly guidance?: string
+  readonly resourceRoots?: Record<string, string>
+  readonly maxResourceBytes?: number
+  readonly catalogLayers?: LegacyCatalogLayer<SpecialistSpec>[]
+  readonly teams?: Record<string, LegacyCohortSpec>
+  readonly strategies?: Record<string, LegacyStrategySpec>
+}
+
+/** Canonical Config v3 authored dialect used by new current interfaces. */
+export interface CurrentConfig {
+  readonly configVersion: typeof CANONICAL_CONFIG_VERSION
+  readonly role?: LegionRowRole
+  readonly toolName: string
+  readonly specialists: Record<string, SpecialistSpec>
+  readonly defaultSpecialist?: string
+  readonly enableRunInBackground: boolean
+  readonly enableStrategies?: boolean
+  readonly enableDurableRuns?: boolean
+  readonly durableRunPolicy?: DurableRunPolicySpec
+  readonly guidance?: string
+  readonly resourceRoots?: Record<string, string>
+  readonly maxResourceBytes?: number
+  readonly catalogLayers?: CatalogLayer<SpecialistSpec>[]
+  readonly cohorts?: Record<string, CohortSpec>
+  readonly strategies?: Record<string, StrategySpec>
+}
+
+type AuthoredMemberSlotSpec = Omit<MemberSlotSpec, 'specialist'> & (
+  | { readonly specialist: string; readonly profile?: never }
+  | { readonly specialist?: never; readonly profile: string }
+)
+type AuthoredCohortSpec = Omit<CohortSpec, 'members'> & {
+  readonly members: Readonly<Record<string, AuthoredMemberSlotSpec>>
+}
+type AuthoredStrategySpec = Omit<StrategySpec, 'cohort'> & (
+  | { readonly cohort: string; readonly team?: never }
+  | { readonly cohort?: never; readonly team: string }
+)
 interface AuthoredCatalogDisableSpec {
   readonly specialists?: readonly string[]
   readonly profiles?: readonly string[]
@@ -154,27 +196,37 @@ interface AuthoredCatalogDisableSpec {
   readonly teams?: readonly string[]
   readonly strategies?: readonly string[]
 }
-
-interface AuthoredCatalogLayer<Profile> extends Omit<
-  CatalogLayer<Profile>,
-  'profiles' | 'teams' | 'disable'
-> {
-  readonly specialists?: Readonly<Record<string, Profile>>
-  readonly profiles?: Readonly<Record<string, Profile>>
-  readonly cohorts?: Readonly<Record<string, CohortSpec>>
-  readonly teams?: Readonly<Record<string, CohortSpec>>
+interface AuthoredCatalogLayer<Specialist> {
+  readonly id: string
+  readonly specialists?: Readonly<Record<string, Specialist>>
+  readonly profiles?: Readonly<Record<string, Specialist>>
+  readonly cohorts?: Readonly<Record<string, AuthoredCohortSpec>>
+  readonly teams?: Readonly<Record<string, AuthoredCohortSpec>>
+  readonly strategies?: Readonly<Record<string, AuthoredStrategySpec>>
   readonly disable?: AuthoredCatalogDisableSpec
 }
-
-interface LegionConfigFields extends Omit<Config, 'profiles' | 'teams' | 'catalogLayers'> {
+interface LegionConfigFields {
+  readonly configVersion?: ConfigVersion
+  readonly role?: LegionRowRole
+  readonly toolName: string
   readonly specialists?: Record<string, SpecialistSpec>
   readonly profiles?: Record<string, SpecialistSpec>
-  readonly cohorts?: Record<string, CohortSpec>
-  readonly teams?: Record<string, CohortSpec>
+  readonly defaultSpecialist?: string
+  readonly defaultProfile?: string
+  readonly enableRunInBackground: boolean
+  readonly enableStrategies?: boolean
+  readonly enableDurableRuns?: boolean
+  readonly durableRunPolicy?: DurableRunPolicySpec
+  readonly guidance?: string
+  readonly resourceRoots?: Record<string, string>
+  readonly maxResourceBytes?: number
   readonly catalogLayers?: AuthoredCatalogLayer<SpecialistSpec>[]
+  readonly cohorts?: Record<string, AuthoredCohortSpec>
+  readonly teams?: Record<string, AuthoredCohortSpec>
+  readonly strategies?: Record<string, AuthoredStrategySpec>
 }
 
-/** Authored Config Document accepted during the v1.2 dual-spelling window. */
+/** Compatibility ingress for v1, v2, and v3 authored documents. */
 export type LegionConfig = LegionConfigFields & (
   | { readonly specialists: Record<string, SpecialistSpec>; readonly profiles?: Record<string, SpecialistSpec> }
   | { readonly specialists?: Record<string, SpecialistSpec>; readonly profiles: Record<string, SpecialistSpec> }
@@ -253,7 +305,7 @@ const CatalogLayerSchema = z.object({
 }) as unknown as z<AuthoredCatalogLayer<SpecialistSpec>>
 
 export interface MaterializedConfig extends Config {
-  readonly configVersion: typeof CURRENT_CONFIG_VERSION
+  readonly configVersion: typeof PUBLISHED_CONFIG_VERSION
   readonly profiles: Record<string, SpecialistSpec>
   readonly resourceRoots: Record<string, string>
   readonly maxResourceBytes: number
@@ -261,8 +313,26 @@ export interface MaterializedConfig extends Config {
   readonly enableDurableRuns: boolean
   readonly durableRunPolicy: Required<DurableRunPolicySpec>
   readonly catalogLayers: []
-  readonly teams: Record<string, CohortSpec>
+  readonly teams: Record<string, LegacyCohortSpec>
+  readonly strategies: Record<string, LegacyStrategySpec>
+}
+
+export interface MaterializedCurrentConfig extends CurrentConfig {
+  readonly configVersion: typeof CANONICAL_CONFIG_VERSION
+  readonly specialists: Record<string, SpecialistSpec>
+  readonly resourceRoots: Record<string, string>
+  readonly maxResourceBytes: number
+  readonly enableStrategies: boolean
+  readonly enableDurableRuns: boolean
+  readonly durableRunPolicy: Required<DurableRunPolicySpec>
+  readonly catalogLayers: []
+  readonly cohorts: Record<string, CohortSpec>
   readonly strategies: Record<string, StrategySpec>
+}
+
+export interface MaterializedCurrentConfigResult {
+  readonly config: MaterializedCurrentConfig
+  readonly diagnostics: readonly ConfigDeprecationDiagnostic[]
 }
 
 const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
@@ -271,7 +341,9 @@ const DurableRunPolicySchema: z<DurableRunPolicySpec> = z.object({
 })
 
 export const Config = z.object({
-  configVersion: z.union([z.const(1 as const), z.const(CURRENT_CONFIG_VERSION)]),
+  configVersion: z.union([
+    z.const(1 as const), z.const(PUBLISHED_CONFIG_VERSION), z.const(CANONICAL_CONFIG_VERSION),
+  ]),
   // Hidden from configuration surfaces on purpose: the role is read from the
   // row entry, so a control offering to change it in the stored document would
   // offer a change no row obeys.
@@ -281,7 +353,10 @@ export const Config = z.object({
   [CONFIG_NAMESPACE_VOCABULARY.specialist.retired]: z.dict(SpecialistSpecSchema)
     .description('Deprecated: use "specialists" instead.')
     .deprecated(),
-  defaultProfile: z.string().pattern(PROFILE_NAME),
+  defaultSpecialist: z.string().pattern(PROFILE_NAME),
+  defaultProfile: z.string().pattern(PROFILE_NAME)
+    .description('Deprecated: use "defaultSpecialist" instead.')
+    .deprecated(),
   enableRunInBackground: z.boolean().default(true),
   enableStrategies: z.boolean(),
   enableDurableRuns: z.boolean(),
@@ -337,9 +412,12 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined
 }
 
+type VocabularyKeys = { readonly current: string; readonly retired: string }
+type NormalizeEntry = (value: unknown, at: string, diagnostics: ConfigDeprecationDiagnostic[]) => unknown
+
 function appendDeprecationDiagnostic(
   retiredValue: unknown,
-  keys: { readonly current: string; readonly retired: string },
+  keys: VocabularyKeys,
   at: string,
   diagnostics: ConfigDeprecationDiagnostic[],
 ): void {
@@ -351,15 +429,34 @@ function appendDeprecationDiagnostic(
     severity: 'warning',
     path,
     replacement,
+    removalVersion: CONFIG_KEY_REMOVAL_VERSION,
     message: `dsh-legion: ${path} is deprecated; use ${replacement} instead`,
   })
 }
 
-function mergeNamespaceEntries(
+function mergeScalarSpelling(
   source: Record<string, unknown>,
-  keys: { readonly current: string; readonly retired: string },
+  keys: VocabularyKeys,
   at: string,
   diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const current = source[keys.current]
+  const retired = source[keys.retired]
+  appendDeprecationDiagnostic(retired, keys, at, diagnostics)
+  if (current !== undefined && retired !== undefined) {
+    throw new Error(
+      `dsh-legion: ${at} cannot use both "${keys.current}" and retired "${keys.retired}"`,
+    )
+  }
+  return current ?? retired
+}
+
+function mergeNamespaceEntries(
+  source: Record<string, unknown>,
+  keys: VocabularyKeys,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+  normalizeEntry?: NormalizeEntry,
 ): Record<string, unknown> | undefined {
   const currentValue = source[keys.current]
   const retiredValue = source[keys.retired]
@@ -372,19 +469,28 @@ function mergeNamespaceEntries(
   if (retiredValue !== undefined && retired === undefined) {
     throw new Error(`dsh-legion: ${at}.${keys.retired} must be a plain object`)
   }
-  const duplicate = Object.keys(current ?? {}).find(name => Object.hasOwn(retired ?? {}, name))
+  const duplicate = Object.keys(current ?? {}).sort().find(name => Object.hasOwn(retired ?? {}, name))
   if (duplicate !== undefined) {
     throw new Error(
       `dsh-legion: ${at} entry "${duplicate}" cannot use both "${keys.current}" and retired "${keys.retired}"`,
     )
   }
   if (current === undefined && retired === undefined) return undefined
-  return { ...retired, ...current }
+  const normalize = (entries: Record<string, unknown> | undefined, key: string) => Object.fromEntries(
+    Object.keys(entries ?? {}).sort().map(name => [
+      name,
+      normalizeEntry?.(entries![name], `${at}.${key}.${name}`, diagnostics) ?? entries![name],
+    ]),
+  )
+  return {
+    ...normalize(retired, keys.retired),
+    ...normalize(current, keys.current),
+  }
 }
 
 function mergeNamespaceNames(
   source: Record<string, unknown>,
-  keys: { readonly current: string; readonly retired: string },
+  keys: VocabularyKeys,
   at: string,
   diagnostics: ConfigDeprecationDiagnostic[],
 ): readonly unknown[] | undefined {
@@ -409,6 +515,67 @@ function mergeNamespaceNames(
   return [...retired ?? [], ...current ?? []]
 }
 
+function normalizeMemberSlot(
+  input: unknown,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const specialist = mergeScalarSpelling(
+    source, CONFIG_NAMESPACE_VOCABULARY.memberSpecialist, at, diagnostics,
+  )
+  const { specialist: _specialist, profile: _profile, ...rest } = source
+  return { ...rest, ...specialist === undefined ? {} : { specialist } }
+}
+
+function normalizeCohort(
+  input: unknown,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const members = record(source.members)
+  if (source.members !== undefined && members === undefined) return input
+  return {
+    ...source,
+    ...members === undefined
+      ? {}
+      : {
+          members: Object.fromEntries(Object.keys(members).sort().map(name => [
+            name,
+            normalizeMemberSlot(members[name], `${at}.members.${name}`, diagnostics),
+          ])),
+        },
+  }
+}
+
+function normalizeStrategy(
+  input: unknown,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const source = record(input)
+  if (source === undefined) return input
+  const cohort = mergeScalarSpelling(source, CONFIG_NAMESPACE_VOCABULARY.strategyCohort, at, diagnostics)
+  const { cohort: _cohort, team: _team, ...rest } = source
+  return { ...rest, ...cohort === undefined ? {} : { cohort } }
+}
+
+function normalizeStrategyMap(
+  input: unknown,
+  at: string,
+  diagnostics: ConfigDeprecationDiagnostic[],
+): unknown {
+  const strategies = record(input)
+  if (strategies === undefined) return input
+  return Object.fromEntries(Object.keys(strategies).sort().map(name => [
+    name,
+    normalizeStrategy(strategies[name], `${at}.${name}`, diagnostics),
+  ]))
+}
+
 function normalizeCatalogDisable(
   input: unknown,
   at: string,
@@ -416,13 +583,13 @@ function normalizeCatalogDisable(
 ): unknown {
   const source = record(input)
   if (source === undefined) return input
-  const profiles = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
-  const teams = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics)
+  const specialists = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
+  const cohorts = mergeNamespaceNames(source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics)
   const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, ...rest } = source
   return {
     ...rest,
-    ...profiles === undefined ? {} : { profiles },
-    ...teams === undefined ? {} : { teams },
+    ...specialists === undefined ? {} : { specialists },
+    ...cohorts === undefined ? {} : { cohorts },
   }
 }
 
@@ -434,13 +601,16 @@ function normalizeCatalogLayer(
   const source = record(input)
   if (source === undefined) return input
   const at = `config.catalogLayers[${String(index)}]`
-  const profiles = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
-  const teams = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics)
-  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, disable, ...rest } = source
+  const specialists = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, at, diagnostics)
+  const cohorts = mergeNamespaceEntries(
+    source, CONFIG_NAMESPACE_VOCABULARY.cohort, at, diagnostics, normalizeCohort,
+  )
+  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, strategies, disable, ...rest } = source
   return {
     ...rest,
-    ...profiles === undefined ? {} : { profiles },
-    ...teams === undefined ? {} : { teams },
+    ...specialists === undefined ? {} : { specialists },
+    ...cohorts === undefined ? {} : { cohorts },
+    ...strategies === undefined ? {} : { strategies: normalizeStrategyMap(strategies, `${at}.strategies`, diagnostics) },
     ...disable === undefined ? {} : { disable: normalizeCatalogDisable(disable, `${at}.disable`, diagnostics) },
   }
 }
@@ -451,13 +621,23 @@ function normalizeConfigNamespaces(
 ): unknown {
   const source = record(input)
   if (source === undefined) return input
-  const profiles = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, 'config', diagnostics)
-  const teams = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.cohort, 'config', diagnostics)
-  const { specialists: _specialists, profiles: _profiles, cohorts: _cohorts, teams: _teams, catalogLayers, ...rest } = source
+  const specialists = mergeNamespaceEntries(source, CONFIG_NAMESPACE_VOCABULARY.specialist, 'config', diagnostics)
+  const defaultSpecialist = mergeScalarSpelling(
+    source, CONFIG_NAMESPACE_VOCABULARY.defaultSpecialist, 'config', diagnostics,
+  )
+  const cohorts = mergeNamespaceEntries(
+    source, CONFIG_NAMESPACE_VOCABULARY.cohort, 'config', diagnostics, normalizeCohort,
+  )
+  const { configVersion: _configVersion, specialists: _specialists, profiles: _profiles,
+    defaultSpecialist: _defaultSpecialist, defaultProfile: _defaultProfile,
+    cohorts: _cohorts, teams: _teams, strategies, catalogLayers, ...rest } = source
   return {
     ...rest,
-    ...profiles === undefined ? {} : { profiles },
-    ...teams === undefined ? {} : { teams },
+    configVersion: CANONICAL_CONFIG_VERSION,
+    ...specialists === undefined ? {} : { specialists },
+    ...defaultSpecialist === undefined ? {} : { defaultSpecialist },
+    ...cohorts === undefined ? {} : { cohorts },
+    ...strategies === undefined ? {} : { strategies: normalizeStrategyMap(strategies, 'config.strategies', diagnostics) },
     ...catalogLayers === undefined
       ? {}
       : {
@@ -501,13 +681,14 @@ function assertPortableRelativePath(path: string, at: string): void {
   }
 }
 
-function assertKnownConfigKeys(input: unknown): void {
+function assertAuthoredConfigVersion(input: unknown): void {
   const source = record(input)
   if (source !== undefined
     && Object.hasOwn(source, 'configVersion')
     && source.configVersion !== undefined
     && source.configVersion !== 1
-    && source.configVersion !== CURRENT_CONFIG_VERSION) {
+    && source.configVersion !== PUBLISHED_CONFIG_VERSION
+    && source.configVersion !== CANONICAL_CONFIG_VERSION) {
     throw new Error(`dsh-legion: unsupported configVersion ${String(source.configVersion)}`)
   }
   const authoredVersion = source?.configVersion ?? 1
@@ -529,291 +710,241 @@ function assertKnownConfigKeys(input: unknown): void {
       'dsh-legion: configVersion 2 is required for catalogLayers, teams, strategies, enableStrategies, or durable runs',
     )
   }
+}
+
+function assertKnownSpecialists(value: unknown, at: string): void {
+  const specialists = record(value)
+  if (value !== undefined && specialists === undefined) {
+    throw new Error(`dsh-legion: ${at} must be a plain object`)
+  }
+  for (const [name, specialist] of Object.entries(specialists ?? {})) {
+    const path = `${at}.${name}`
+    assertKnownKeys(
+      specialist,
+      [
+        'description', 'subagentProvider', 'agentOptions', 'routes', 'persona', 'toolFilter',
+        'maxDepth', 'defaultRunInBackground', 'result', 'promptFiles',
+      ],
+      path,
+    )
+    const specialistRecord = record(specialist)
+    assertKnownKeys(specialistRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `${path}.agentOptions`)
+    assertKnownKeys(specialistRecord?.toolFilter, ['allow', 'deny'], `${path}.toolFilter`)
+    if (Array.isArray(specialistRecord?.routes)) {
+      specialistRecord.routes.forEach((route, index) => {
+        assertKnownKeys(
+          route,
+          ['id', 'provider', 'model', 'maxTokens', 'constraints', 'instructions'],
+          `${path}.routes[${String(index)}]`,
+        )
+        assertKnownKeys(
+          record(route)?.constraints,
+          ['minContextTokens', 'minEffectiveOutputTokens'],
+          `${path}.routes[${String(index)}].constraints`,
+        )
+      })
+    }
+    if (Array.isArray(specialistRecord?.promptFiles)) {
+      specialistRecord.promptFiles.forEach((reference, index) => {
+        assertKnownKeys(reference, ['root', 'path'], `${path}.promptFiles[${String(index)}]`)
+      })
+    }
+  }
+}
+
+function assertKnownConfigKeys(input: unknown): void {
+  const source = record(input)
   assertKnownKeys(
     input,
     [
-      'configVersion',
-      'role',
-      'toolName',
-      ...CONFIG_NAMESPACE_KEYS,
-      'defaultProfile',
-      'enableRunInBackground',
-      'enableStrategies',
-      'enableDurableRuns',
-      'durableRunPolicy',
-      'guidance',
-      'resourceRoots',
-      'maxResourceBytes',
-      'catalogLayers',
-      'teams',
-      'strategies',
+      'configVersion', 'role', 'toolName', 'specialists', 'defaultSpecialist',
+      'enableRunInBackground', 'enableStrategies', 'enableDurableRuns', 'durableRunPolicy',
+      'guidance', 'resourceRoots', 'maxResourceBytes', 'catalogLayers', 'cohorts', 'strategies',
     ],
     'config',
   )
   assertKnownKeys(source?.durableRunPolicy, ['maxStartsPerActivation', 'maxConcurrentTasks'], 'durableRunPolicy')
-  for (const namespace of [
-    CONFIG_NAMESPACE_VOCABULARY.specialist.retired,
-    CONFIG_NAMESPACE_VOCABULARY.specialist.current,
-  ]) {
-    const profiles = record(source?.[namespace])
-    if (source?.[namespace] !== undefined && profiles === undefined) {
-      throw new Error(`dsh-legion: ${namespace} must be a plain object`)
-    }
-    if (profiles === undefined) continue
-    for (const [name, profile] of Object.entries(profiles)) {
-      const at = `${namespace}.${name}`
-      assertKnownKeys(
-        profile,
-        [
-          'description',
-          'subagentProvider',
-          'agentOptions',
-          'routes',
-          'persona',
-          'toolFilter',
-          'maxDepth',
-          'defaultRunInBackground',
-          'result',
-          'promptFiles',
-        ],
-        at,
-      )
-      const profileRecord = record(profile)
-      assertKnownKeys(profileRecord?.agentOptions, ['provider', 'model', 'maxTokens'], `${at}.agentOptions`)
-      assertKnownKeys(profileRecord?.toolFilter, ['allow', 'deny'], `${at}.toolFilter`)
-      if (Array.isArray(profileRecord?.routes)) {
-        profileRecord.routes.forEach((route, index) => {
-          assertKnownKeys(
-            route,
-            ['id', 'provider', 'model', 'maxTokens', 'constraints', 'instructions'],
-            `${at}.routes[${String(index)}]`,
-          )
-          assertKnownKeys(
-            record(route)?.constraints,
-            ['minContextTokens', 'minEffectiveOutputTokens'],
-            `${at}.routes[${String(index)}].constraints`,
-          )
-        })
-      }
-      if (Array.isArray(profileRecord?.promptFiles)) {
-        profileRecord.promptFiles.forEach((reference, index) => {
-          assertKnownKeys(reference, ['root', 'path'], `${at}.promptFiles[${String(index)}]`)
-        })
-      }
-    }
-  }
-  assertKnownOrchestrationKeys(source?.teams, source?.strategies)
-  assertKnownOrchestrationKeys(source?.cohorts, undefined)
+  assertKnownSpecialists(source?.specialists, 'config.specialists')
+  assertKnownOrchestrationKeys(source?.cohorts, source?.strategies, 'config')
   if (Array.isArray(source?.catalogLayers)) {
     source.catalogLayers.forEach((layer, index) => {
+      const at = `config.catalogLayers[${String(index)}]`
       const layerRecord = record(layer)
-      assertKnownKeys(
-        layer,
-        ['id', ...CONFIG_NAMESPACE_KEYS, 'strategies', 'disable'],
-        `catalogLayers[${String(index)}]`,
-      )
-      assertKnownKeys(
-        layerRecord?.disable,
-        [...CONFIG_NAMESPACE_KEYS, 'strategies'],
-        `catalogLayers[${String(index)}].disable`,
-      )
-      assertKnownConfigKeys({
-        configVersion: 2,
-        ...layerRecord?.profiles === undefined ? {} : { profiles: layerRecord.profiles },
-        ...layerRecord?.specialists === undefined ? {} : { specialists: layerRecord.specialists },
-        ...layerRecord?.teams === undefined ? {} : { teams: layerRecord.teams },
-        ...layerRecord?.cohorts === undefined ? {} : { cohorts: layerRecord.cohorts },
-        strategies: layerRecord?.strategies ?? {},
-      })
+      assertKnownKeys(layer, ['id', 'specialists', 'cohorts', 'strategies', 'disable'], at)
+      assertKnownKeys(layerRecord?.disable, ['specialists', 'cohorts', 'strategies'], `${at}.disable`)
+      assertKnownSpecialists(layerRecord?.specialists, `${at}.specialists`)
+      assertKnownOrchestrationKeys(layerRecord?.cohorts, layerRecord?.strategies, at)
     })
   }
 }
 
-function materializeConfigInternal(
+function copyNamedEntries<Value>(
+  entries: Readonly<Record<string, Value>>,
+): Record<string, Value> {
+  return Object.fromEntries(Object.keys(entries).sort().map(name => [
+    name,
+    deepCopy(entries[name]!),
+  ]))
+}
+
+function materializeCurrentConfigInternal(
   input: unknown,
   diagnostics: ConfigDeprecationDiagnostic[],
-): MaterializedConfig {
+): MaterializedCurrentConfig {
   const authored = cloneAuthoredValue(input)
   assertNoNull(authored)
-  assertKnownConfigKeys(authored)
+  assertAuthoredConfigVersion(authored)
   const normalized = normalizeConfigNamespaces(authored, diagnostics)
-  const parsedDocument = Config(normalized as LegionConfig | null | undefined)
-  const { catalogLayers, specialists: _specialists, cohorts: _cohorts, ...parsedFields } = parsedDocument
-  const parsed: Config = {
-    ...parsedFields,
-    profiles: parsedDocument.profiles ?? {},
-    teams: parsedDocument.teams ?? {},
-    ...catalogLayers === undefined
-      ? {}
-      : {
-          catalogLayers: catalogLayers.map((layer) => ({
-            id: layer.id,
-            ...layer.profiles === undefined ? {} : { profiles: layer.profiles },
-            ...layer.teams === undefined ? {} : { teams: layer.teams },
-            ...layer.strategies === undefined ? {} : { strategies: layer.strategies },
-            ...layer.disable === undefined
-              ? {}
-              : {
-                  disable: {
-                    ...layer.disable.profiles === undefined ? {} : { profiles: layer.disable.profiles },
-                    ...layer.disable.teams === undefined ? {} : { teams: layer.disable.teams },
-                    ...layer.disable.strategies === undefined ? {} : { strategies: layer.disable.strategies },
-                  },
-                },
-          })),
-        },
-  }
-  const layerIds = new Set((parsed.catalogLayers ?? []).map(layer => layer.id))
+  assertKnownConfigKeys(normalized)
+  const parsedDocument = Config(normalized as LegionConfig | null | undefined) as unknown as CurrentConfig
+  validateSettingsSection(parsedDocument as LegionConfig)
+  const parsedLayers = parsedDocument.catalogLayers ?? []
+  const layerIds = new Set(parsedLayers.map(layer => layer.id))
   let deploymentLayerId = 'deployment'
   for (let suffix = 2; layerIds.has(deploymentLayerId); suffix += 1) {
     deploymentLayerId = `deployment-${String(suffix)}`
   }
   const resolved = resolveCatalogLayers([
-    ...(parsed.catalogLayers ?? []),
+    ...parsedLayers,
     {
       id: deploymentLayerId,
-      profiles: parsed.profiles,
-      teams: parsed.teams ?? {},
-      strategies: parsed.strategies ?? {},
+      specialists: parsedDocument.specialists ?? {},
+      cohorts: parsedDocument.cohorts ?? {},
+      strategies: parsedDocument.strategies ?? {},
     },
   ])
-  const effective: Config = {
-    ...parsed,
-    configVersion: CURRENT_CONFIG_VERSION,
-    enableStrategies: parsed.enableStrategies ?? false,
-    enableDurableRuns: parsed.enableDurableRuns ?? false,
-    durableRunPolicy: parsed.durableRunPolicy ?? {},
-    profiles: { ...resolved.specialists },
-    teams: { ...resolved.cohorts },
-    strategies: { ...resolved.strategies },
-    catalogLayers: [],
-  }
-  validateConfig(effective)
-  return deepFreeze({
-    configVersion: CURRENT_CONFIG_VERSION,
-    toolName: effective.toolName,
-    enableRunInBackground: effective.enableRunInBackground,
-    enableStrategies: effective.enableStrategies ?? false,
-    enableDurableRuns: effective.enableDurableRuns ?? false,
+  const effective: MaterializedCurrentConfig = {
+    configVersion: CANONICAL_CONFIG_VERSION,
+    toolName: parsedDocument.toolName,
+    enableRunInBackground: parsedDocument.enableRunInBackground,
+    enableStrategies: parsedDocument.enableStrategies ?? false,
+    enableDurableRuns: parsedDocument.enableDurableRuns ?? false,
     durableRunPolicy: {
-      maxStartsPerActivation: effective.durableRunPolicy?.maxStartsPerActivation ?? 16,
-      maxConcurrentTasks: effective.durableRunPolicy?.maxConcurrentTasks ?? 4,
+      maxStartsPerActivation: parsedDocument.durableRunPolicy?.maxStartsPerActivation ?? 16,
+      maxConcurrentTasks: parsedDocument.durableRunPolicy?.maxConcurrentTasks ?? 4,
     },
-    resourceRoots: { ...effective.resourceRoots },
-    maxResourceBytes: effective.maxResourceBytes ?? 64 * 1024,
-    ...effective.defaultProfile === undefined ? {} : { defaultProfile: effective.defaultProfile },
-    ...effective.guidance === undefined ? {} : { guidance: effective.guidance },
-    profiles: Object.fromEntries(Object.keys(effective.profiles).sort().map((name) => {
-      const profile = effective.profiles[name]!
-      return [name, {
-        description: profile.description,
-        subagentProvider: profile.subagentProvider,
-        ...profile.agentOptions === undefined ? {} : { agentOptions: { ...profile.agentOptions } },
-        ...profile.routes === undefined
-          ? {}
-          : {
-              routes: profile.routes.map(route => ({
-                id: route.id,
-                provider: route.provider,
-                model: route.model,
-                ...route.maxTokens === undefined ? {} : { maxTokens: route.maxTokens },
-                ...route.constraints === undefined
-                  ? {}
-                  : {
-                      constraints: {
-                        ...route.constraints.minContextTokens === undefined
-                          ? {}
-                          : { minContextTokens: route.constraints.minContextTokens },
-                        ...route.constraints.minEffectiveOutputTokens === undefined
-                          ? {}
-                          : {
-                              minEffectiveOutputTokens:
-                                route.constraints.minEffectiveOutputTokens,
-                            },
-                      },
-                    },
-                ...route.instructions === undefined ? {} : { instructions: route.instructions },
-              })),
-            },
-        ...profile.persona === undefined ? {} : { persona: profile.persona },
-        ...profile.toolFilter === undefined
-          ? {}
-          : {
-              toolFilter: {
-                ...profile.toolFilter.allow === undefined ? {} : { allow: [...profile.toolFilter.allow] },
-                ...profile.toolFilter.deny === undefined ? {} : { deny: [...profile.toolFilter.deny] },
-              },
-            },
-        maxDepth: profile.maxDepth,
-        defaultRunInBackground: profile.defaultRunInBackground,
-        result: profile.result ?? 'text',
-        ...profile.promptFiles === undefined
-          ? {}
-          : { promptFiles: profile.promptFiles.map(reference => ({ ...reference })) },
-      } satisfies SpecialistSpec]
-    })),
+    resourceRoots: { ...parsedDocument.resourceRoots },
+    maxResourceBytes: parsedDocument.maxResourceBytes ?? 64 * 1024,
+    ...parsedDocument.defaultSpecialist === undefined
+      ? {}
+      : { defaultSpecialist: parsedDocument.defaultSpecialist },
+    ...parsedDocument.guidance === undefined ? {} : { guidance: parsedDocument.guidance },
+    specialists: copyNamedEntries(resolved.specialists),
     catalogLayers: [],
-    teams: { ...resolved.cohorts },
-    strategies: { ...resolved.strategies },
+    cohorts: copyNamedEntries(resolved.cohorts),
+    strategies: copyNamedEntries(resolved.strategies),
+  }
+  validateCurrentConfig(
+    effective,
+    diagnostics.some(diagnostic => diagnostic.path === 'config.defaultProfile')
+      ? 'defaultProfile'
+      : 'defaultSpecialist',
+  )
+  return deepFreeze(effective)
+}
+
+function legacyCohort(spec: CohortSpec): LegacyCohortSpec {
+  return {
+    description: spec.description,
+    members: Object.fromEntries(Object.keys(spec.members).sort().map(name => {
+      const { specialist, ...member } = spec.members[name]!
+      return [name, { ...deepCopy(member), profile: specialist }]
+    })),
+    ...spec.limits === undefined ? {} : { limits: deepCopy(spec.limits) },
+  }
+}
+
+function legacyStrategy(spec: StrategySpec): LegacyStrategySpec {
+  const { cohort, ...rest } = spec
+  return { ...deepCopy(rest), team: cohort }
+}
+
+/** Project canonical v3 data to the published v2 spelling without re-entering validation. */
+export function projectConfigToPublishedV2(config: CompiledConfig): MaterializedConfig {
+  return deepFreeze({
+    configVersion: PUBLISHED_CONFIG_VERSION,
+    toolName: config.toolName,
+    enableRunInBackground: config.enableRunInBackground,
+    enableStrategies: config.enableStrategies,
+    enableDurableRuns: config.enableDurableRuns,
+    durableRunPolicy: { ...config.durableRunPolicy },
+    resourceRoots: { ...config.resourceRoots },
+    maxResourceBytes: config.maxResourceBytes,
+    ...config.defaultSpecialist === undefined ? {} : { defaultProfile: config.defaultSpecialist },
+    ...config.guidance === undefined ? {} : { guidance: config.guidance },
+    profiles: copyNamedEntries(config.specialists),
+    catalogLayers: [],
+    teams: Object.fromEntries(Object.keys(config.cohorts).sort().map(name => [
+      name,
+      legacyCohort(config.cohorts[name]!),
+    ])),
+    strategies: Object.fromEntries(Object.keys(config.strategies).sort().map(name => [
+      name,
+      legacyStrategy(config.strategies[name]!),
+    ])),
   })
 }
 
-/** Validate, materialize defaults, and report pure Config Document migration diagnostics. */
-export function materializeConfigWithDiagnostics(input: unknown): MaterializedConfigResult {
+/** Validate and migrate one authored document to the canonical Config v3 model. */
+export function materializeCurrentConfigWithDiagnostics(input: unknown): MaterializedCurrentConfigResult {
   const diagnostics: ConfigDeprecationDiagnostic[] = []
-  const config = materializeConfigInternal(input, diagnostics)
+  const config = materializeCurrentConfigInternal(input, diagnostics)
   return deepFreeze({ config, diagnostics })
 }
 
-/** Validate, materialize defaults, and detach one untrusted Legion config. */
+export function materializeCurrentConfig(input: unknown): MaterializedCurrentConfig {
+  return materializeCurrentConfigWithDiagnostics(input).config
+}
+
+/** Published 1.x materialization remains v2 until the 2.0 default switch. */
+export function materializeConfigWithDiagnostics(input: unknown): MaterializedConfigResult {
+  const current = materializeCurrentConfigWithDiagnostics(input)
+  return deepFreeze({
+    config: projectConfigToPublishedV2(current.config),
+    diagnostics: current.diagnostics,
+  })
+}
+
 export function materializeConfig(input: unknown): MaterializedConfig {
   return materializeConfigWithDiagnostics(input).config
 }
 
 /** Canonical configuration consumed after the authored compatibility boundary. */
-export interface CompiledConfig extends Omit<MaterializedConfig, 'profiles' | 'defaultProfile' | 'teams'> {
-  readonly specialists: Readonly<Record<string, SpecialistSpec>>
-  readonly defaultSpecialist?: string
-  readonly cohorts: Readonly<Record<string, CohortSpec>>
-}
-
-export interface CompiledConfigResult {
-  readonly config: CompiledConfig
-  readonly diagnostics: readonly ConfigDeprecationDiagnostic[]
-}
+export type CompiledConfig = MaterializedCurrentConfig
+export type CompiledConfigResult = MaterializedCurrentConfigResult
 
 export function materializeCompiledConfigWithDiagnostics(input: unknown): CompiledConfigResult {
-  const materialized = materializeConfigWithDiagnostics(input)
-  const { profiles, defaultProfile, teams, ...rest } = materialized.config
-  const config = deepFreeze({
-    ...rest,
-    specialists: profiles,
-    cohorts: teams,
-    ...defaultProfile === undefined ? {} : { defaultSpecialist: defaultProfile },
-  })
-  return deepFreeze({ config, diagnostics: materialized.diagnostics })
+  return materializeCurrentConfigWithDiagnostics(input)
 }
 
 export function materializeCompiledConfig(input: unknown): CompiledConfig {
-  return materializeCompiledConfigWithDiagnostics(input).config
+  return materializeCurrentConfig(input)
 }
 
-/** Export one normalized current document or a rollback-compatible unversioned document. */
+export function exportConfigDocument(input: unknown, target: typeof CANONICAL_CONFIG_VERSION): MaterializedCurrentConfig
 export function exportConfigDocument(
   input: unknown,
-  target: ConfigExportTarget = CURRENT_CONFIG_VERSION,
-): Config {
-  if (target !== CURRENT_CONFIG_VERSION && target !== 1 && target !== 'legacy-unversioned') {
+  target?: 1 | typeof PUBLISHED_CONFIG_VERSION | 'legacy-unversioned',
+): Config
+export function exportConfigDocument(
+  input: unknown,
+  target: ConfigExportTarget = PUBLISHED_CONFIG_VERSION,
+): Config | MaterializedCurrentConfig {
+  if (target !== CANONICAL_CONFIG_VERSION
+    && target !== PUBLISHED_CONFIG_VERSION
+    && target !== 1
+    && target !== 'legacy-unversioned') {
     throw new Error(`dsh-legion: unsupported config export target ${String(target)}`)
   }
-  const current = materializeConfig(input)
-  const document = deepCopy(current)
-  if (target === CURRENT_CONFIG_VERSION) return document
+  const current = materializeCurrentConfig(input)
+  if (target === CANONICAL_CONFIG_VERSION) return deepCopy(current)
+  const document = deepCopy(projectConfigToPublishedV2(current))
+  if (target === PUBLISHED_CONFIG_VERSION) return document
   if (current.enableStrategies
     || current.enableDurableRuns
     || current.durableRunPolicy.maxStartsPerActivation !== 16
     || current.durableRunPolicy.maxConcurrentTasks !== 4
-    || Object.keys(current.teams).length > 0
+    || Object.keys(current.cohorts).length > 0
     || Object.keys(current.strategies).length > 0) {
     throw new Error(
       'dsh-legion: config v2 Strategy exposure or Teams/Strategies cannot be rolled back to config v1',
@@ -830,6 +961,10 @@ export function exportConfigDocument(
     ...v1
   } = document
   return target === 1 ? { ...v1, configVersion: 1 } : v1
+}
+
+export function exportCurrentConfigDocument(input: unknown): MaterializedCurrentConfig {
+  return exportConfigDocument(input, CANONICAL_CONFIG_VERSION)
 }
 
 /**
@@ -866,13 +1001,13 @@ export function validateSettingsSection(config: LegionConfig): void {
   }
 }
 
-/** Validate cross-field facts Schemastery cannot express. */
-export function validateConfig(config: Config): void {
-  validateSettingsSection(config)
-
-  const entries = Object.entries(config.profiles)
+function validateCurrentConfig(
+  config: MaterializedCurrentConfig,
+  defaultKey: 'defaultSpecialist' | 'defaultProfile',
+): void {
+  const entries = Object.entries(config.specialists)
   if (entries.length === 0) {
-    throw new Error('dsh-legion: profiles must define at least one profile')
+    throw new Error('dsh-legion: specialists must define at least one specialist')
   }
 
   for (const [name, profile] of entries) {
@@ -939,7 +1074,13 @@ export function validateConfig(config: Config): void {
     }
   }
 
-  if (config.defaultProfile !== undefined && config.profiles[config.defaultProfile] === undefined) {
-    throw new Error(`dsh-legion: defaultProfile "${config.defaultProfile}" does not exist`)
+  if (config.defaultSpecialist !== undefined
+    && config.specialists[config.defaultSpecialist] === undefined) {
+    throw new Error(`dsh-legion: ${defaultKey} "${config.defaultSpecialist}" does not exist`)
   }
+}
+
+/** Validate a published v2 Config through the canonical compatibility boundary. */
+export function validateConfig(config: Config): void {
+  materializeCurrentConfig(config)
 }

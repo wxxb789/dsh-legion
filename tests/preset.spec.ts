@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
+import { materializeCurrentConfig } from '../src/config.ts'
 
 const PRESET = fileURLToPath(new URL('../presets/legion/agent.cordis.yml', import.meta.url))
 
@@ -50,8 +51,8 @@ describe('shipped Legion preset template', () => {
         },
       },
     })
-    expect(legion?.config).toMatchObject({
-      cohorts: DEFAULT_CATALOG_LAYER.teams,
+    expect(materializeCurrentConfig(legion?.config)).toMatchObject({
+      cohorts: DEFAULT_CATALOG_LAYER.cohorts,
       strategies: DEFAULT_CATALOG_LAYER.strategies,
     })
     expect(named.some(row => row.name === '@deepseek-ai/dsh-subagent')).toBe(false)

@@ -2,7 +2,7 @@ import { deepCopy, deepFreeze } from './internal/value.ts'
 import type { CatalogLayer, StrategySpec, CohortSpec } from './orchestration-contract.ts'
 import { ORCHESTRATION_NAME } from './orchestration-contract.ts'
 
-export type CatalogNamespace = 'profiles' | 'teams' | 'strategies'
+export type CatalogNamespace = 'specialists' | 'cohorts' | 'strategies'
 
 export interface CatalogEntryProvenance {
   readonly sourceLayer: string
@@ -84,8 +84,8 @@ export function resolveCatalogLayers<Specialist>(
       throw new Error(`dsh-legion: invalid or duplicate catalog layer id "${layer.id}"`)
     }
     ids.add(layer.id)
-    applyNamespace('profiles', layer.id, layer.profiles, layer.disable?.profiles, specialists)
-    applyNamespace('teams', layer.id, layer.teams, layer.disable?.teams, cohorts)
+    applyNamespace('specialists', layer.id, layer.specialists, layer.disable?.specialists, specialists)
+    applyNamespace('cohorts', layer.id, layer.cohorts, layer.disable?.cohorts, cohorts)
     applyNamespace('strategies', layer.id, layer.strategies, layer.disable?.strategies, strategies)
   }
   return deepFreeze({

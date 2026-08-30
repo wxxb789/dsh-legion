@@ -5,11 +5,11 @@ import { materializeConfig } from '../src/config.ts'
 
 const team: CohortSpec = {
   description: 'Base team.',
-  members: { executor: { profile: 'deep' } },
+  members: { executor: { specialist: 'deep' } },
 }
 const strategy: StrategySpec = {
   description: 'Base strategy.',
-  team: 'coding',
+  cohort: 'coding',
   stages: [{
     kind: 'delegate',
     id: 'execute',
@@ -33,14 +33,14 @@ describe('ordered catalog layering', () => {
     const layers: CatalogLayer<{ description: string }>[] = [
       {
         id: 'defaults',
-        profiles: { deep: { description: 'Default deep.' } },
-        teams: { coding: team },
+        specialists: { deep: { description: 'Default deep.' } },
+        cohorts: { coding: team },
         strategies: { coding: strategy },
       },
       {
         id: 'package',
-        profiles: { quick: { description: 'Quick.' } },
-        teams: { coding: { ...team, description: 'Package replacement.' } },
+        specialists: { quick: { description: 'Quick.' } },
+        cohorts: { coding: { ...team, description: 'Package replacement.' } },
         disable: { strategies: ['coding'] },
       },
       {
@@ -65,7 +65,7 @@ describe('ordered catalog layering', () => {
   it('retains tombstones and rejects ambiguous or duplicate layers', () => {
     const disabled = resolveCatalogLayers<{ description: string }>([{
       id: 'defaults',
-      disable: { teams: ['missing'] },
+      disable: { cohorts: ['missing'] },
     }])
     expect(disabled.disabled.cohorts.missing).toBe('defaults')
 
@@ -75,8 +75,8 @@ describe('ordered catalog layering', () => {
     ])).toThrow(/duplicate catalog layer id/)
     expect(() => resolveCatalogLayers([{
       id: 'bad',
-      teams: { coding: team },
-      disable: { teams: ['coding'] },
+      cohorts: { coding: team },
+      disable: { cohorts: ['coding'] },
     }])).toThrow(/cannot define and disable/)
   })
 
@@ -142,12 +142,12 @@ describe('ordered catalog layering', () => {
 
   it('changes semantics when layer order changes but ignores map insertion order', () => {
     const first = resolveCatalogLayers([
-      { id: 'one', teams: { coding: team } },
-      { id: 'two', teams: { coding: { ...team, description: 'Two.' } } },
+      { id: 'one', cohorts: { coding: team } },
+      { id: 'two', cohorts: { coding: { ...team, description: 'Two.' } } },
     ])
     const reversed = resolveCatalogLayers([
-      { id: 'two', teams: { coding: { ...team, description: 'Two.' } } },
-      { id: 'one', teams: { coding: team } },
+      { id: 'two', cohorts: { coding: { ...team, description: 'Two.' } } },
+      { id: 'one', cohorts: { coding: team } },
     ])
     expect(first.cohorts.coding?.description).toBe('Two.')
     expect(reversed.cohorts.coding?.description).toBe('Base team.')

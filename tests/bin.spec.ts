@@ -51,6 +51,14 @@ describe('built dsh-legion executable', () => {
       kind: 'legion-explain',
       source: { providerSnapshot: 'empty-fixture' },
       summary: { status: 'warnings' },
+      configDiagnostics: [
+        expect.objectContaining({
+          path: 'config.profiles', replacement: 'config.specialists', removalVersion: '2.0.0',
+        }),
+        expect.objectContaining({
+          path: 'config.defaultProfile', replacement: 'config.defaultSpecialist', removalVersion: '2.0.0',
+        }),
+      ],
     })
 
     writeFileSync(config, readFileSync(config, 'utf8').replace('path: quick.md', 'path: missing.md'))
