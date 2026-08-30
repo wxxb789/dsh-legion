@@ -38,6 +38,7 @@ const copySource = source => {
   if (relativeSource === '') return true
   return !relativeSource.split(/[\\/]/u).some(segment => excludedSegments.has(segment))
 }
+const sourceWorkspacePackages = readWorkspacePackages(root)
 const sourceArchive = join(sandbox, 'source.tar')
 if (sourceMode === 'git') {
   run('git', ['archive', '--format=tar', '--output', sourceArchive, 'HEAD'], root)
@@ -61,6 +62,14 @@ try {
       join(packageRoot, 'node_modules'),
       process.platform === 'win32' ? 'junction' : 'dir',
     )
+    for (const sourcePackage of sourceWorkspacePackages) {
+      if (sourcePackage.relativeDirectory === '.') continue
+      await symlink(
+        join(sourcePackage.directory, 'node_modules'),
+        join(packageRoot, sourcePackage.relativeDirectory, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      )
+    }
     run('pnpm', ['run', 'build'], packageRoot)
     await mkdir(destination)
     const workspacePackages = readWorkspacePackages(packageRoot)

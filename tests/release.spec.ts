@@ -71,6 +71,12 @@ describe('reproducible CI and release contracts', () => {
     }
   })
 
+  it('preserves package-local dependency links in clean reproducible sandboxes', () => {
+    const script = readFileSync(join(ROOT, 'scripts/verify-reproducible-pack.mjs'), 'utf8')
+    expect(script).toContain('sourceWorkspacePackages')
+    expect(script).toContain("join(packageRoot, sourcePackage.relativeDirectory, 'node_modules')")
+  })
+
   it('commits a pnpm v9 lockfile for every direct dependency', () => {
     const lock = load(readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')) as {
       lockfileVersion?: string
