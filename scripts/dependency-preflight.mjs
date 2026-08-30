@@ -1,5 +1,5 @@
 // Dependency-availability preflight: pure evaluation of the compatibility
-// policy contract's declared Host dependency lines against a registry snapshot.
+// policy contract's registry-install lines against a registry snapshot.
 //
 // This module reads nothing and fetches nothing. The CLI
 // (verify-dependency-preflight.mjs) supplies the policy contract and either a
@@ -277,25 +277,125 @@ const offers = (versions) => (versions.length === 0
 
 const finding = (value) => ({ ...value })
 
+const walkResolution = (snapshot, seeds) => {
+  const findings = []
+  let checkedLines = 0
+  const visited = new Set()
+  const pending = [...seeds]
+  while (pending.length > 0) {
+    const current = pending.shift()
+    const key = `${current.package}@${current.version}`
+    if (visited.has(key)) continue
+    visited.add(key)
+    const entry = published(snapshot, current.package)
+    if (entry === null) {
+      findings.push(finding({
+        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+        classification: 'coverage',
+        package: current.package,
+        detail: `the snapshot records nothing for ${current.package}, reached as ${current.label}`,
+      }))
+      continue
+    }
+    const manifest = object(entry.manifests[current.version])
+    if (manifest === null) {
+      findings.push(finding({
+        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+        classification: 'coverage',
+        package: current.package,
+        line: current.version,
+        detail: `the snapshot records no manifest for ${key} (${current.label})`
+          + ', so what it requires of its siblings could not be checked',
+      }))
+      continue
+    }
+    const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
+    const required = {
+      ...(object(manifest.dependencies) ?? {}),
+      ...(object(manifest.peerDependencies) ?? {}),
+    }
+    for (const [target, range] of Object.entries(required)) {
+      if (!target.startsWith(`${DSH_SCOPE}/dsh-`)) continue
+      if (object(optionalPeers[target])?.optional === true) continue
+      const targetEntry = published(snapshot, target)
+      if (targetEntry === null) {
+        findings.push(finding({
+          code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+          classification: 'coverage',
+          package: current.package,
+          line: current.version,
+          target,
+          range,
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
+            + ` and the snapshot records nothing for ${target}`,
+        }))
+        continue
+      }
+      checkedLines += 1
+      if (!evaluatableRange(range)) {
+        findings.push(finding({
+          code: 'LEGION_REQUIRED_RANGE_UNPARSEABLE',
+          classification: 'coverage',
+          package: current.package,
+          line: current.version,
+          target,
+          range,
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
+            + ', which is not a range this preflight evaluates',
+        }))
+        continue
+      }
+      const candidates = targetEntry.versions.filter(version => satisfies(version, range) === true)
+      if (candidates.length === 0) {
+        findings.push(finding({
+          code: 'LEGION_REQUIRED_RANGE_UNSATISFIABLE',
+          classification: 'upstream-publish-gap',
+          package: current.package,
+          line: current.version,
+          target,
+          range,
+          publishedVersions: targetEntry.versions,
+          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
+            + ` and no published version of ${target} satisfies it; the registry offers ${offers(targetEntry.versions)}`,
+        }))
+        continue
+      }
+      pending.push({
+        package: target,
+        version: sortVersions(candidates).at(-1),
+        label: `required by ${key}`,
+      })
+    }
+  }
+  return { findings, checkedLines }
+}
+
 /**
  * Check what the compatibility policy contract declares against what a registry
- * publishes. Declared package closure and version lines come from the contract
- * alone; this module owns no second list of Host packages.
+ * publishes. Registry-install and runtime-compatibility closures come from the
+ * contract; workspace manifests only prove the install closure is complete.
  */
-export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
+export const evaluateDependencyPreflight = ({ policy, snapshot, workspaceManifests = [] }) => {
   const registry = {
     url: typeof snapshot?.registry === 'string' ? snapshot.registry : 'unknown',
     source: snapshot?.source === 'live' ? 'live' : 'recorded',
     recordedAt: typeof snapshot?.recordedAt === 'string' ? snapshot.recordedAt : null,
   }
-  const closure = Array.isArray(policy?.dshPackageClosure) ? policy.dshPackageClosure : []
+  const registryInstallClosure = Array.isArray(policy?.registryInstallPackageClosure)
+    ? policy.registryInstallPackageClosure
+    : []
+  const runtimeCompatibilityClosure = Array.isArray(policy?.dshPackageClosure)
+    ? policy.dshPackageClosure
+    : []
   const assessed = Array.isArray(policy?.assessedDshVersions) ? policy.assessedDshVersions : []
   const declared = {
     peerRange: policy?.dshPeerRange ?? null,
     minimumDshVersion: policy?.minimumDshVersion ?? null,
     latestTestedDshVersion: policy?.latestTestedDshVersion ?? null,
     assessedDshVersions: assessed,
-    packages: closure.map(scoped),
+    registryInstallPackages: registryInstallClosure.map(scoped),
+    runtimeCompatibilityPackages: runtimeCompatibilityClosure.map(scoped),
+    packages: registryInstallClosure.map(scoped),
   }
   const localFindings = []
   const record = (value) => { localFindings.push(finding(value)) }
@@ -307,12 +407,44 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
       detail: `compatibility policy declares schemaVersion ${String(policy?.schemaVersion)}, expected ${COMPATIBILITY_POLICY_SCHEMA_VERSION}`,
     })
   }
-  if (closure.length === 0) {
+  if (registryInstallClosure.length === 0) {
     record({
-      code: 'LEGION_PACKAGE_CLOSURE_EMPTY',
+      code: 'LEGION_REGISTRY_INSTALL_CLOSURE_EMPTY',
       classification: 'local-regression',
-      detail: 'compatibility policy declares no Host package closure to resolve',
+      detail: 'compatibility policy declares no registry-install package closure to resolve',
     })
+  }
+  if (runtimeCompatibilityClosure.length === 0) {
+    record({
+      code: 'LEGION_RUNTIME_COMPATIBILITY_CLOSURE_EMPTY',
+      classification: 'local-regression',
+      detail: 'compatibility policy declares no runtime-compatibility package closure',
+    })
+  }
+  const registryInstallPackages = new Set(declared.registryInstallPackages)
+  for (const workspace of Array.isArray(workspaceManifests) ? workspaceManifests : []) {
+    const manifest = object(workspace?.manifest) ?? {}
+    const importer = typeof workspace?.path === 'string' ? workspace.path : String(manifest.name ?? 'package.json')
+    const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
+    for (const field of ['dependencies', 'peerDependencies', 'devDependencies']) {
+      for (const [name, range] of Object.entries(object(manifest[field]) ?? {})) {
+        if (!name.startsWith(`${DSH_SCOPE}/dsh-`)) continue
+        const optionalPeer = field === 'peerDependencies' && object(optionalPeers[name])?.optional === true
+        const manifestField = optionalPeer ? 'peerDependenciesMeta' : field
+        if (registryInstallPackages.has(name)) continue
+        record({
+          code: 'LEGION_REGISTRY_INSTALL_CLOSURE_INCOMPLETE',
+          classification: 'local-regression',
+          importer,
+          manifestField,
+          package: name,
+          range,
+          detail: optionalPeer
+            ? `${importer} declares optional peer ${name}@${String(range)} through peerDependencies and peerDependenciesMeta, but registryInstallPackageClosure omits it`
+            : `${importer} declares ${name}@${String(range)} in ${manifestField}, but registryInstallPackageClosure omits it`,
+        })
+      }
+    }
   }
   if (!evaluatableRange(declared.peerRange)) {
     record({
@@ -385,7 +517,7 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
         code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
         classification: 'coverage',
         package: name,
-        detail: `the registry snapshot records nothing for ${name}, which this contract declares in the Host package closure`,
+        detail: `the registry snapshot records nothing for ${name}, which this contract declares in the registry-install closure`,
       }))
       continue
     }
@@ -394,7 +526,11 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
         code: 'LEGION_PACKAGE_UNPUBLISHED',
         classification: 'upstream-publish-gap',
         package: name,
-        detail: `${name} is declared in the Host package closure and the registry publishes no version of it`,
+        range: declared.peerRange,
+        publishedVersions: [],
+        offers: [],
+        detail: `${name} is declared in the registry-install closure at ${String(declared.peerRange)}`
+          + ' and the registry offers nothing',
       }))
       resolvable.push({ package: name, versions: [] })
       continue
@@ -464,98 +600,11 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
     }
   }
 
-  // The resolution walk. Every seed is a version an install can actually pick:
-  // a declared line, or the top of the declared peer range for a consumer who
-  // pins nothing. From there the walk follows what each version requires,
-  // resolving each range the way a package manager does.
-  const visited = new Set()
-  const pending = [...seeds]
-  while (pending.length > 0) {
-    const current = pending.shift()
-    const key = `${current.package}@${current.version}`
-    if (visited.has(key)) continue
-    visited.add(key)
-    const entry = published(snapshot, current.package)
-    if (entry === null) {
-      findings.push(finding({
-        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
-        classification: 'coverage',
-        package: current.package,
-        detail: `the snapshot records nothing for ${current.package}, reached as ${current.label}`,
-      }))
-      continue
-    }
-    const manifest = object(entry.manifests[current.version])
-    if (manifest === null) {
-      findings.push(finding({
-        code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
-        classification: 'coverage',
-        package: current.package,
-        line: current.version,
-        detail: `the snapshot records no manifest for ${key} (${current.label})`
-          + ', so what it requires of its siblings could not be checked',
-      }))
-      continue
-    }
-    const optionalPeers = object(manifest.peerDependenciesMeta) ?? {}
-    const required = {
-      ...(object(manifest.dependencies) ?? {}),
-      ...(object(manifest.peerDependencies) ?? {}),
-    }
-    for (const [target, range] of Object.entries(required)) {
-      if (!target.startsWith(`${DSH_SCOPE}/dsh-`)) continue
-      // An optional peer nothing publishes is not an install failure.
-      if (object(optionalPeers[target])?.optional === true) continue
-      const targetEntry = published(snapshot, target)
-      if (targetEntry === null) {
-        findings.push(finding({
-          code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
-          classification: 'coverage',
-          package: current.package,
-          line: current.version,
-          target,
-          range,
-          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
-            + ` and the snapshot records nothing for ${target}`,
-        }))
-        continue
-      }
-      checkedLines += 1
-      if (!evaluatableRange(range)) {
-        findings.push(finding({
-          code: 'LEGION_REQUIRED_RANGE_UNPARSEABLE',
-          classification: 'coverage',
-          package: current.package,
-          line: current.version,
-          target,
-          range,
-          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
-            + ', which is not a range this preflight evaluates',
-        }))
-        continue
-      }
-      const candidates = targetEntry.versions.filter(version => satisfies(version, range) === true)
-      if (candidates.length === 0) {
-        findings.push(finding({
-          code: 'LEGION_REQUIRED_RANGE_UNSATISFIABLE',
-          classification: 'upstream-publish-gap',
-          package: current.package,
-          line: current.version,
-          target,
-          range,
-          publishedVersions: targetEntry.versions,
-          detail: `${key} (${current.label}) requires ${target}@${String(range)}`
-            + ` and no published version of ${target} satisfies it; the registry offers ${offers(targetEntry.versions)}`,
-        }))
-        continue
-      }
-      pending.push({
-        package: target,
-        version: sortVersions(candidates).at(-1),
-        label: `required by ${key}`,
-      })
-    }
-  }
+  // Every install-relevant seed and every drift candidate uses the same walk.
+  // Version-list intersection alone is not evidence that a generation installs.
+  const installWalk = walkResolution(snapshot, seeds)
+  findings.push(...installWalk.findings)
+  checkedLines += installWalk.checkedLines
 
   const common = resolvable.length === 0
     ? []
@@ -563,20 +612,44 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
       (accumulator, entry) => accumulator.filter(version => entry.versions.includes(version)),
       resolvable[0]?.versions ?? [],
     )
-  const highestResolvable = sortVersions(common).at(-1) ?? null
+  const findingKey = item => [item.code, item.package, item.line, item.target, item.range].join('\0')
+  const findingKeys = new Set(findings.map(findingKey))
+  let highestResolvable = null
+  for (const candidate of sortVersions(common).reverse()) {
+    const candidateWalk = walkResolution(snapshot, declared.packages.map(name => ({
+      package: name,
+      version: candidate,
+      label: `candidate common generation ${candidate}`,
+    })))
+    checkedLines += candidateWalk.checkedLines
+    for (const item of candidateWalk.findings) {
+      const key = findingKey(item)
+      if (findingKeys.has(key)) continue
+      findingKeys.add(key)
+      findings.push(item)
+    }
+    if (candidateWalk.findings.some(item => item.classification === 'coverage')) break
+    if (candidateWalk.findings.length === 0) {
+      highestResolvable = candidate
+      break
+    }
+  }
   const declaredLatestTested = declared.latestTestedDshVersion
-  const state = highestResolvable === null || typeof declaredLatestTested !== 'string'
-    ? 'unresolvable'
-    : !common.includes(declaredLatestTested)
-        ? 'unresolvable'
-        : compareVersions(declaredLatestTested, highestResolvable) < 0 ? 'behind' : 'current'
   const coverageIncomplete = findings.some(item => item.classification === 'coverage')
+  if (coverageIncomplete) highestResolvable = null
+  const state = coverageIncomplete
+    ? 'unknown'
+    : highestResolvable === null || typeof declaredLatestTested !== 'string'
+      ? 'unresolvable'
+      : !common.includes(declaredLatestTested)
+          ? 'unresolvable'
+          : compareVersions(declaredLatestTested, highestResolvable) < 0 ? 'behind' : 'current'
   if (state === 'unresolvable' && !coverageIncomplete) {
     findings.push(finding({
       code: 'LEGION_HOST_LINE_UNRESOLVABLE',
       classification: 'upstream-publish-gap',
       line: declaredLatestTested,
-      detail: `the declared latest-tested Host version ${String(declaredLatestTested)} is not resolvable as one generation across the declared closure`
+      detail: `the declared latest-tested Host version ${String(declaredLatestTested)} is not resolvable as one generation across the registry-install closure`
         + `; the highest resolvable version is ${highestResolvable ?? 'none'}`,
     }))
   } else if (state === 'behind') {
@@ -585,7 +658,7 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
       classification: 'advisory',
       line: declaredLatestTested,
       detail: `the declared latest-tested Host version ${String(declaredLatestTested)} has drifted behind the registry`
-        + `; ${highestResolvable} is resolvable across the declared closure and inside the declared peer range`,
+        + `; ${highestResolvable} is resolvable across the registry-install closure and inside the declared peer range`,
     }))
   }
   // Every version in the DSH 0.1.x line is a prerelease, and a package manager
@@ -617,7 +690,7 @@ export const evaluateDependencyPreflight = ({ policy, snapshot }) => {
     findings.push(finding({
       code: 'LEGION_PEER_RANGE_SPLIT_GENERATION',
       classification: 'advisory',
-      detail: `the declared peer range admits ${ahead.join(', ')} above the highest generation the whole closure publishes (${String(highestResolvable)})`
+      detail: `the declared peer range admits ${ahead.join(', ')} above the highest generation the whole registry-install closure fully resolves (${String(highestResolvable)})`
         + ', so an install that does not pin the closure can mix Host generations',
     }))
   }
@@ -665,7 +738,8 @@ export const renderDependencyPreflightReport = (report) => {
     `declared peer range: ${String(report.declared.peerRange)}`,
     `declared lines: minimum ${String(report.declared.minimumDshVersion)}, latest-tested ${String(report.declared.latestTestedDshVersion)}`
       + `, assessed ${report.declared.assessedDshVersions.join(', ')}`,
-    `declared closure: ${report.declared.packages.length} packages, ${report.checkedLines} declared lines checked`,
+    `registry-install closure: ${report.declared.registryInstallPackages.length} packages, ${report.checkedLines} lines checked`,
+    `runtime-compatibility closure: ${report.declared.runtimeCompatibilityPackages.length} packages`,
   ]
   for (const classification of ['local-regression', 'upstream-publish-gap', 'coverage', 'advisory']) {
     const group = report.findings.filter(item => item.classification === classification)

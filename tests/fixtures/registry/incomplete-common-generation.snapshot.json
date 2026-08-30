@@ -1,0 +1,35 @@
+{
+  "_provenance": "All packages advertise the same newer generation, but one candidate manifest is absent. The version list alone must not establish drift.",
+  "schemaVersion": "dsh-legion-registry-snapshot-v1",
+  "registry": "https://registry.npmjs.org",
+  "source": "recorded",
+  "recordedAt": "2026-08-30",
+  "packages": {
+    "@deepseek-ai/dsh-agent": {
+      "versions": ["0.1.0-rc.6", "0.1.1-rc.1", "0.1.1-rc.2"],
+      "distTags": { "latest": "0.1.1-rc.2" },
+      "manifests": {
+        "0.1.0-rc.6": { "dependencies": {}, "peerDependencies": {} },
+        "0.1.1-rc.1": { "dependencies": {}, "peerDependencies": {} }
+      }
+    },
+    "@deepseek-ai/dsh-invariants": {
+      "versions": ["0.1.0-rc.6", "0.1.1-rc.1", "0.1.1-rc.2"],
+      "distTags": { "latest": "0.1.1-rc.2" },
+      "manifests": {
+        "0.1.0-rc.6": { "dependencies": {}, "peerDependencies": {} },
+        "0.1.1-rc.1": { "dependencies": {}, "peerDependencies": {} },
+        "0.1.1-rc.2": { "dependencies": {}, "peerDependencies": {} }
+      }
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "versions": ["0.1.0-rc.6", "0.1.1-rc.1", "0.1.1-rc.2"],
+      "distTags": { "latest": "0.1.1-rc.2" },
+      "manifests": {
+        "0.1.0-rc.6": { "dependencies": {}, "peerDependencies": {} },
+        "0.1.1-rc.1": { "dependencies": {}, "peerDependencies": {} },
+        "0.1.1-rc.2": { "dependencies": {}, "peerDependencies": {} }
+      }
+    }
+  }
+}

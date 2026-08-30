@@ -17,6 +17,7 @@ interface CompatibilityPolicy {
   minimumDshVersion: string
   latestTestedDshVersion: string
   assessedDshVersions: string[]
+  registryInstallPackageClosure: string[]
   dshPackageClosure: string[]
 }
 
@@ -29,6 +30,11 @@ const preflight = (args: string[]) => spawnSync(
   ['scripts/verify-dependency-preflight.mjs', ...args],
   { cwd: ROOT, encoding: 'utf8' },
 )
+
+const fixtureManifestArgs = [
+  '--manifest', join(FIXTURES, 'host-line.workspace.package.json'),
+]
+const fixturePreflight = (args: string[]) => preflight([...args, ...fixtureManifestArgs])
 
 /**
  * The loopback registry serves from this process, so the child must run
@@ -71,7 +77,7 @@ const satisfyingSnapshot = (policy: CompatibilityPolicy): {
     policy.latestTestedDshVersion,
     ...policy.assessedDshVersions,
   ])]
-  const scoped = policy.dshPackageClosure.map(name => `@deepseek-ai/${name}`)
+  const scoped = policy.registryInstallPackageClosure.map(name => `@deepseek-ai/${name}`)
   return {
     schemaVersion: 'dsh-legion-registry-snapshot-v1',
     registry: 'https://registry.npmjs.org',
@@ -110,7 +116,7 @@ const withTempDirAsync = async (prefix: string, run: (dir: string) => Promise<vo
 
 describe('dependency availability preflight', () => {
   it('reports an unpublished declared line as an upstream publish gap, not a Legion defect', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('host-line.policy.json'),
       '--snapshot', fixture('published-below-declared-line.snapshot.json'),
     ])
@@ -129,7 +135,7 @@ describe('dependency availability preflight', () => {
   })
 
   it('catches an upstream package whose own sibling range no published version satisfies', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('host-line.policy.json'),
       '--snapshot', fixture('prerelease-only-sibling.snapshot.json'),
     ])
@@ -143,7 +149,7 @@ describe('dependency availability preflight', () => {
   })
 
   it('checks the version the peer range resolves to, not only the declared lines', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('host-line.policy.json'),
       '--snapshot', fixture('peer-range-top-unsatisfiable.snapshot.json'),
     ])
@@ -160,7 +166,7 @@ describe('dependency availability preflight', () => {
   })
 
   it('follows the resolution walk past the declared closure', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('host-line.policy.json'),
       '--snapshot', fixture('transitive-gap.snapshot.json'),
     ])
@@ -176,7 +182,7 @@ describe('dependency availability preflight', () => {
   })
 
   it('classifies a self-contradicting contract as a local regression instead', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('contradictory.policy.json'),
       '--snapshot', fixture('prerelease-only-sibling.snapshot.json'),
     ])
@@ -187,7 +193,7 @@ describe('dependency availability preflight', () => {
   })
 
   it('detects drift when the registry has moved past the declared latest-tested line', () => {
-    const result = preflight([
+    const result = fixturePreflight([
       '--policy', fixture('host-line.policy.json'),
       '--snapshot', fixture('newer-line-published.snapshot.json'),
     ])
@@ -195,7 +201,7 @@ describe('dependency availability preflight', () => {
     expect(result.stdout).toContain('dependency preflight: satisfied')
     expect(result.stdout).toContain('LEGION_HOST_LINE_DRIFT')
     expect(result.stdout).toContain('host line drift: behind')
-    expect(result.stdout).toContain('0.1.1-rc.2 is resolvable across the declared closure')
+    expect(result.stdout).toContain('0.1.1-rc.2 is resolvable across the registry-install closure')
     // A line that exists only as prereleases resolves as published and can
     // still defeat an installer that asks for a stable floor of it.
     expect(result.stdout).toContain('LEGION_PRERELEASE_ONLY_RESOLUTION')
@@ -209,14 +215,18 @@ describe('dependency availability preflight', () => {
       const result = preflight(['--snapshot', snapshot])
       expect(result.status).toBe(0)
       expect(result.stdout).toContain('dependency preflight: satisfied')
-      expect(result.stdout).toContain(`declared closure: ${POLICY.dshPackageClosure.length} packages`)
+      expect(result.stdout).toContain(`registry-install closure: ${POLICY.registryInstallPackageClosure.length} packages`)
+      expect(result.stdout).toContain(`runtime-compatibility closure: ${POLICY.dshPackageClosure.length} packages`)
       expect(result.stdout).toContain('host line drift: current')
     })
   })
 
   it('resolves the closure the contract declares rather than a list of its own', () => {
     withTempDir('legion-preflight-closure-', (dir) => {
-      const policy = { ...POLICY, dshPackageClosure: [...POLICY.dshPackageClosure, 'dsh-not-published'] }
+      const policy = {
+        ...POLICY,
+        registryInstallPackageClosure: [...POLICY.registryInstallPackageClosure, 'dsh-not-published'],
+      }
       const snapshot = satisfyingSnapshot(POLICY)
       // The registry answered for the extra package and published nothing.
       snapshot.packages['@deepseek-ai/dsh-not-published'] = {
@@ -228,15 +238,26 @@ describe('dependency availability preflight', () => {
       const snapshotPath = join(dir, 'snapshot.json')
       writeFileSync(policyPath, JSON.stringify(policy))
       writeFileSync(snapshotPath, JSON.stringify(snapshot))
-      const result = preflight(['--policy', policyPath, '--snapshot', snapshotPath])
+      const result = preflight(['--policy', policyPath, '--snapshot', snapshotPath, '--json'])
       expect(result.status).toBe(1)
-      expect(result.stdout).toContain('LEGION_PACKAGE_UNPUBLISHED @deepseek-ai/dsh-not-published')
+      const report = JSON.parse(result.stdout) as {
+        findings: Array<{ code: string; package?: string; range?: string; offers?: string[] }>
+      }
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        code: 'LEGION_PACKAGE_UNPUBLISHED',
+        package: '@deepseek-ai/dsh-not-published',
+        range: POLICY.dshPeerRange,
+        offers: [],
+      }))
     })
   })
 
   it('reports a declared package the snapshot never recorded as missing evidence, not as a pass', () => {
     withTempDir('legion-preflight-evidence-', (dir) => {
-      const policy = { ...POLICY, dshPackageClosure: [...POLICY.dshPackageClosure, 'dsh-never-queried'] }
+      const policy = {
+        ...POLICY,
+        registryInstallPackageClosure: [...POLICY.registryInstallPackageClosure, 'dsh-never-queried'],
+      }
       const policyPath = join(dir, 'policy.json')
       const snapshot = join(dir, 'snapshot.json')
       writeFileSync(policyPath, JSON.stringify(policy))
@@ -246,6 +267,26 @@ describe('dependency availability preflight', () => {
       expect(result.stdout).toContain('dependency preflight: incomplete-evidence')
       expect(result.stdout).toContain('LEGION_REGISTRY_COVERAGE_INCOMPLETE @deepseek-ai/dsh-never-queried')
       expect(result.stdout).toContain('neither a proven gap nor a passing line')
+    })
+  })
+
+  it('emits a typed non-applicable artifact without acquiring registry evidence', () => {
+    withTempDir('legion-preflight-not-applicable-', (dir) => {
+      const output = join(dir, 'report.json')
+      const result = preflight([
+        '--non-applicable', 'source-tarball',
+        '--output', output,
+        '--json',
+      ])
+      expect(result.status).toBe(0)
+      const report = JSON.parse(result.stdout) as Record<string, unknown>
+      expect(report).toEqual({
+        schemaVersion: 'dsh-legion-dependency-preflight-v1',
+        status: 'not-applicable',
+        reason: 'source-tarball',
+        registryResolution: false,
+      })
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(report)
     })
   })
 
@@ -260,6 +301,7 @@ describe('dependency availability preflight', () => {
       const result = await preflightAsync([
         '--policy', fixture('host-line.policy.json'),
         '--registry', `http://127.0.0.1:${String(port)}`,
+        ...fixtureManifestArgs,
       ])
       expect(result.status).toBe(3)
       expect(result.stdout).toContain('dependency preflight: acquisition-failure')
@@ -310,6 +352,7 @@ describe('dependency availability preflight', () => {
           '--policy', fixture('host-line.policy.json'),
           '--registry', `http://127.0.0.1:${String(port)}`,
           '--record', recorded,
+          ...fixtureManifestArgs,
         ])
         // dsh-agent at the latest-tested line requires a sibling range that the
         // served registry cannot satisfy, exactly as the packed install found.
@@ -326,6 +369,7 @@ describe('dependency availability preflight', () => {
         const replayed = await preflightAsync([
           '--policy', fixture('host-line.policy.json'),
           '--snapshot', recorded,
+          ...fixtureManifestArgs,
         ])
         expect(replayed.status).toBe(1)
         expect(replayed.stdout).toContain('requires @deepseek-ai/dsh-brand@^0.1.1')
@@ -337,23 +381,175 @@ describe('dependency availability preflight', () => {
     }
   })
 
-  it('runs in the gate ahead of the packed profile install', () => {
-    const steps = (path: string, job: string) => {
-      const workflow = load(readFileSync(join(ROOT, path), 'utf8')) as {
-        jobs: Record<string, { steps: Array<{ run?: string }> }>
+  it('does not report drift when a common generation has incomplete manifest evidence', () => {
+    const result = fixturePreflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture('incomplete-common-generation.snapshot.json'),
+    ])
+    expect(result.status).toBe(3)
+    expect(result.stdout).toContain('dependency preflight: incomplete-evidence')
+    expect(result.stdout).toContain('LEGION_REGISTRY_COVERAGE_INCOMPLETE')
+    expect(result.stdout).not.toContain('LEGION_HOST_LINE_DRIFT')
+    expect(result.stdout).toContain('host line drift: unknown')
+  })
+
+  it('uses a successful full resolution walk to classify common generations', () => {
+    const behind = fixturePreflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture('satisfiable.snapshot.json'),
+    ])
+    expect(behind.status).toBe(0)
+    expect(behind.stdout).toContain('LEGION_HOST_LINE_DRIFT')
+    expect(behind.stdout).toContain('host line drift: behind')
+    expect(behind.stdout).toContain('highest resolvable 0.1.1-rc.2')
+
+    withTempDir('legion-preflight-current-', (dir) => {
+      const policy = {
+        ...JSON.parse(readFileSync(fixture('host-line.policy.json'), 'utf8')) as CompatibilityPolicy,
+        latestTestedDshVersion: '0.1.1-rc.2',
+        assessedDshVersions: ['0.1.0-rc.6', '0.1.1-rc.1', '0.1.1-rc.2'],
       }
-      return workflow.jobs[job]!.steps.map(step => step.run ?? '')
+      const policyPath = join(dir, 'policy.json')
+      writeFileSync(policyPath, JSON.stringify(policy))
+      const current = fixturePreflight([
+        '--policy', policyPath,
+        '--snapshot', fixture('satisfiable.snapshot.json'),
+      ])
+      expect(current.status).toBe(0)
+      expect(current.stdout).toContain('host line drift: current')
+      expect(current.stdout).not.toContain('LEGION_HOST_LINE_DRIFT')
+    })
+  })
+
+  it('does not call a shared version resolvable when its dependency walk fails', () => {
+    const result = fixturePreflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture('split-generation.snapshot.json'),
+      '--json',
+    ])
+    expect(result.status).toBe(1)
+    const report = JSON.parse(result.stdout) as {
+      drift: { highestResolvable: string | null }
+      findings: Array<{ code: string; range?: string }>
     }
-    const preflightStep = 'pnpm run verify:dependency-preflight'
-    const quality = steps('.github/workflows/quality-gates.yml', 'quality')
-    expect(quality.findIndex(step => step.includes(preflightStep))).toBeGreaterThan(-1)
-    expect(quality.findIndex(step => step.includes(preflightStep)))
-      .toBeLessThan(quality.findIndex(step => step.includes('pnpm run test:profile-install')))
-    // The rolling canary resolves the highest Host the peer range admits, so it
-    // is the gate where drift and a fresh publish gap show up first.
-    const canary = steps('.github/workflows/compatibility-canary.yml', 'rolling-compatible')
-    expect(canary.findIndex(step => step.includes(preflightStep))).toBeGreaterThan(-1)
-    expect(canary.findIndex(step => step.includes(preflightStep)))
-      .toBeLessThan(canary.findIndex(step => step.includes('pnpm run test:packed-delegation')))
+    expect(report.drift.highestResolvable).toBe('0.1.1-rc.1')
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: 'LEGION_REQUIRED_RANGE_UNSATISFIABLE',
+      range: '^0.1.2',
+    }))
+  })
+
+  it('rejects every direct DSH manifest field omitted from the registry-install closure', () => {
+    withTempDir('legion-preflight-manifests-', (dir) => {
+      const packages = {
+        dependencies: '@deepseek-ai/dsh-direct',
+        peerDependencies: '@deepseek-ai/dsh-peer',
+        peerDependenciesMeta: '@deepseek-ai/dsh-optional-peer',
+        devDependencies: '@deepseek-ai/dsh-dev',
+      } as const
+      const rootManifestPath = join(dir, 'root.package.json')
+      const companionManifestPath = join(dir, 'companion.package.json')
+      writeFileSync(rootManifestPath, JSON.stringify({
+        name: 'preflight-root-fixture',
+        dependencies: { [packages.dependencies]: '0.1.1-rc.1' },
+        peerDependencies: { [packages.peerDependenciesMeta]: '>=0.1.0-rc.6 <0.2.0' },
+        peerDependenciesMeta: { [packages.peerDependenciesMeta]: { optional: true } },
+      }))
+      writeFileSync(companionManifestPath, JSON.stringify({
+        name: 'preflight-companion-fixture',
+        peerDependencies: { [packages.peerDependencies]: '>=0.1.0-rc.6 <0.2.0' },
+        devDependencies: { [packages.devDependencies]: '0.1.1-rc.1' },
+      }))
+      const owners = {
+        dependencies: rootManifestPath,
+        peerDependencies: companionManifestPath,
+        peerDependenciesMeta: rootManifestPath,
+        devDependencies: companionManifestPath,
+      }
+      const all = Object.values(packages).map(name => name.slice('@deepseek-ai/'.length))
+      const policy = { ...POLICY, registryInstallPackageClosure: all, dshPackageClosure: all }
+      const snapshot = satisfyingSnapshot(policy)
+      const snapshotPath = join(dir, 'snapshot.json')
+      writeFileSync(snapshotPath, JSON.stringify(snapshot))
+      for (const [field, name] of Object.entries(packages)) {
+        const policyPath = join(dir, `${field}.policy.json`)
+        writeFileSync(policyPath, JSON.stringify({
+          ...policy,
+          registryInstallPackageClosure: all.filter(item => item !== name.slice('@deepseek-ai/'.length)),
+        }))
+        const result = preflight([
+          '--policy', policyPath,
+          '--snapshot', snapshotPath,
+          '--manifest', rootManifestPath,
+          '--manifest', companionManifestPath,
+          '--json',
+        ])
+        expect(result.status, field).toBe(2)
+        const report = JSON.parse(result.stdout) as {
+          findings: Array<{ code: string; importer?: string; manifestField?: string; package?: string }>
+        }
+        expect(report.findings, field).toContainEqual(expect.objectContaining({
+          code: 'LEGION_REGISTRY_INSTALL_CLOSURE_INCOMPLETE',
+          importer: owners[field as keyof typeof owners],
+          manifestField: field,
+          package: name,
+        }))
+      }
+    })
+  })
+
+  it('makes an install-free preflight job dominate every registry-backed workflow job', () => {
+    interface WorkflowJob {
+      needs?: string | string[]
+      steps?: Array<{ if?: string; run?: string; uses?: string; with?: { path?: string } }>
+    }
+    interface Workflow { jobs: Record<string, WorkflowJob> }
+    const workflow = (name: string) => load(
+      readFileSync(join(ROOT, '.github/workflows', name), 'utf8'),
+    ) as Workflow
+    const dependencies = (job: WorkflowJob) => job.needs === undefined
+      ? []
+      : Array.isArray(job.needs) ? job.needs : [job.needs]
+    const dependsOn = (jobs: Record<string, WorkflowJob>, jobName: string, target: string): boolean => {
+      const direct = dependencies(jobs[jobName]!)
+      return direct.includes(target) || direct.some(name => dependsOn(jobs, name, target))
+    }
+    const runs = (job: WorkflowJob) => (job.steps ?? []).map(step => step.run ?? '').join('\n')
+    const registryWork = /pnpm(?:\s+--dir\s+\S+)?\s+install|test:profile-install|test:packed-delegation/u
+
+    for (const [name, expectedJobs] of [
+      ['quality-gates.yml', ['quality', 'compatibility']],
+      ['compatibility-canary.yml', ['rolling-compatible']],
+      ['release.yml', ['pack']],
+    ] as const) {
+      const parsed = workflow(name)
+      const discovered = Object.entries(parsed.jobs)
+        .filter(([, job]) => registryWork.test(runs(job)))
+        .map(([jobName]) => jobName)
+      expect(discovered, name).toEqual(expectedJobs)
+      for (const jobName of discovered) {
+        expect(dependsOn(parsed.jobs, jobName, 'dependency-preflight'), `${name}:${jobName}`).toBe(true)
+      }
+      const preflight = parsed.jobs['dependency-preflight']!
+      expect(runs(preflight), name).toContain('node scripts/verify-dependency-preflight.mjs')
+      expect(runs(preflight), name).not.toMatch(/pnpm\s+install/u)
+      expect(preflight.steps?.some(step => step.uses?.startsWith('pnpm/action-setup@')), name).toBe(false)
+      expect(preflight.steps?.some(step =>
+        step.uses?.startsWith('actions/upload-artifact@')
+        && step.with?.path?.includes('dependency-preflight-report.json')), name).toBe(true)
+    }
+
+    const ci = workflow('ci.yml')
+    const sourcePreflight = ci.jobs['dependency-preflight']!
+    expect(dependsOn(ci.jobs, 'dsh-source', 'dependency-preflight')).toBe(true)
+    expect(runs(sourcePreflight)).toContain('--non-applicable source-tarball')
+    expect(runs(sourcePreflight)).not.toMatch(/pnpm\s+install/u)
+    expect(sourcePreflight.steps?.some(step =>
+      step.uses?.startsWith('actions/upload-artifact@')
+      && step.with?.path?.includes('dependency-preflight-report.json'))).toBe(true)
+    expect(runs(ci.jobs['dsh-source']!)).toContain('pnpm --dir deepseek-harness install')
+    const qualityPreflight = runs(workflow('quality-gates.yml').jobs['dependency-preflight']!)
+    expect(qualityPreflight).not.toContain('--non-applicable')
+    expect(qualityPreflight).toContain('--record dependency-preflight-snapshot.json')
   })
 })

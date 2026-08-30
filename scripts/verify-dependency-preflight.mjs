@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Dependency-availability preflight gate.
 //
-// Reads the declared Host package closure and version lines from the
-// compatibility policy contract, resolves each declared package against a
-// registry, and reports any gap by naming the package, the unsatisfiable
+// Reads the registry-install closure and version lines from the compatibility
+// policy contract, verifies it covers both workspace manifests, resolves it
+// against a registry, and reports any gap by naming the package, unsatisfied
 // range, and what the registry actually publishes. It classifies the outcome
 // as an upstream publish gap or as a local regression so a red branch cannot
 // misattribute blame, and it is meant to run ahead of the packed profile
@@ -16,6 +16,9 @@
 //     --snapshot <path>   evaluate a recorded registry snapshot instead of the network
 //     --registry <url>    registry to query live (default project .npmrc)
 //     --record <path>     write the queried snapshot for later offline replay
+//     --manifest <path>   workspace manifest evidence (repeatable; defaults to both importers)
+//     --output <path>     write the typed report as JSON
+//     --non-applicable <reason>  record that this path resolves no DSH from a registry
 //     --json              print the report as JSON instead of text
 //
 // Exit codes: 0 satisfied, 1 upstream publish gap, 2 local regression,
@@ -28,6 +31,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import {
+  DEPENDENCY_PREFLIGHT_SCHEMA_VERSION,
   DSH_SCOPE,
   REGISTRY_SNAPSHOT_SCHEMA_VERSION,
   evaluateDependencyPreflight,
@@ -36,17 +40,27 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
-const option = (name, fallback) => {
-  const index = argv.indexOf(`--${name}`)
-  if (index === -1) return fallback
-  const value = argv[index + 1]
-  if (value === undefined || value.startsWith('--')) throw new Error(`--${name} requires a value`)
-  return value
+const options = (name) => {
+  const values = []
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== `--${name}`) continue
+    const value = argv[index + 1]
+    if (value === undefined || value.startsWith('--')) throw new Error(`--${name} requires a value`)
+    values.push(value)
+  }
+  return values
 }
+const option = (name, fallback) => options(name)[0] ?? fallback
 const policyPath = resolve(option('policy', resolve(root, 'contracts/compatibility.json')))
 const snapshotPath = option('snapshot', undefined)
 const recordPath = option('record', undefined)
+const outputPath = option('output', undefined)
+const nonApplicable = option('non-applicable', undefined)
 const registryUrl = resolveNpmRegistry(root, option('registry', undefined))
+const manifestArguments = options('manifest')
+const manifestPaths = manifestArguments.length > 0
+  ? manifestArguments.map(path => resolve(path))
+  : [resolve(root, 'package.json'), resolve(root, 'packages/run-receipt-feed/package.json')]
 const asJson = argv.includes('--json')
 
 const scopedDependencies = (value) => Object.fromEntries(
@@ -130,39 +144,87 @@ const loadSnapshot = async (path) => {
   return value
 }
 
-// Reading the contract, reaching the registry, and writing the recording are
-// acquisition, not evidence. Failing any of them means the preflight reached no
-// verdict at all, which must not be reported as either a gap or a pass.
-let acquired
-try {
-  const policy = JSON.parse(await readFile(policyPath, 'utf8'))
-  const closure = Array.isArray(policy?.dshPackageClosure) ? policy.dshPackageClosure : []
-  const snapshot = snapshotPath === undefined
-    ? await recordLiveSnapshot(closure.map(name => `${DSH_SCOPE}/${name}`))
-    : await loadSnapshot(snapshotPath)
-  if (recordPath !== undefined) {
-    await writeFile(resolve(recordPath), `${JSON.stringify(snapshot, null, 2)}\n`)
+const writeOutput = async report => {
+  if (outputPath !== undefined) {
+    await writeFile(resolve(outputPath), `${JSON.stringify(report, null, 2)}\n`)
   }
-  acquired = { policy, snapshot }
-} catch (error) {
-  process.stdout.write([
-    'dependency preflight: acquisition-failure',
-    `  ${error instanceof Error ? error.message : String(error)}`,
-    'verdict: the preflight established no evidence, so it reports neither a publish gap'
-      + ' nor a passing line. Fix the input or the registry connection and run it again.',
-    '',
-  ].join('\n'))
-  process.exitCode = 3
 }
 
-if (acquired !== undefined) {
-  const report = evaluateDependencyPreflight(acquired)
+if (nonApplicable !== undefined) {
+  const report = {
+    schemaVersion: DEPENDENCY_PREFLIGHT_SCHEMA_VERSION,
+    status: 'not-applicable',
+    reason: nonApplicable,
+    registryResolution: false,
+  }
+  await writeOutput(report)
   process.stdout.write(asJson
     ? `${JSON.stringify(report, null, 2)}\n`
-    : renderDependencyPreflightReport(report))
-  process.exitCode = report.status === 'satisfied'
-    ? 0
-    : report.status === 'upstream-publish-gap'
-      ? 1
-      : report.status === 'local-regression' ? 2 : 3
+    : `dependency preflight: not-applicable\nreason: ${nonApplicable}\nverdict: this path performs no registry-backed DSH resolution.\n`)
+  process.exitCode = 0
+} else {
+  // Reading the contract and manifests, reaching the registry, and writing the
+  // recording are acquisition, not evidence. Failure establishes no verdict.
+  let acquired
+  try {
+    const policy = JSON.parse(await readFile(policyPath, 'utf8'))
+    const closure = Array.isArray(policy?.registryInstallPackageClosure)
+      ? policy.registryInstallPackageClosure
+      : []
+    const workspaceManifests = await Promise.all(manifestPaths.map(async (path, index) => ({
+      path: manifestArguments[index]
+        ?? (index === 0 ? 'package.json' : 'packages/run-receipt-feed/package.json'),
+      manifest: JSON.parse(await readFile(path, 'utf8')),
+    })))
+    const emptySnapshot = {
+      schemaVersion: REGISTRY_SNAPSHOT_SCHEMA_VERSION,
+      registry: registryUrl,
+      source: 'recorded',
+      recordedAt: null,
+      packages: {},
+    }
+    const localCheck = evaluateDependencyPreflight({ policy, snapshot: emptySnapshot, workspaceManifests })
+    if (localCheck.status === 'local-regression') {
+      acquired = { policy, snapshot: emptySnapshot, workspaceManifests }
+    } else {
+      const snapshot = snapshotPath === undefined
+        ? await recordLiveSnapshot(closure.map(name => `${DSH_SCOPE}/${name}`))
+        : await loadSnapshot(snapshotPath)
+      if (recordPath !== undefined) {
+        await writeFile(resolve(recordPath), `${JSON.stringify(snapshot, null, 2)}\n`)
+      }
+      acquired = { policy, snapshot, workspaceManifests }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const report = {
+      schemaVersion: DEPENDENCY_PREFLIGHT_SCHEMA_VERSION,
+      status: 'acquisition-failure',
+      error: message,
+    }
+    await writeOutput(report)
+    process.stdout.write(asJson
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : [
+          'dependency preflight: acquisition-failure',
+          `  ${message}`,
+          'verdict: the preflight established no evidence, so it reports neither a publish gap'
+            + ' nor a passing line. Fix the input or the registry connection and run it again.',
+          '',
+        ].join('\n'))
+    process.exitCode = 3
+  }
+
+  if (acquired !== undefined) {
+    const report = evaluateDependencyPreflight(acquired)
+    await writeOutput(report)
+    process.stdout.write(asJson
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : renderDependencyPreflightReport(report))
+    process.exitCode = report.status === 'satisfied'
+      ? 0
+      : report.status === 'upstream-publish-gap'
+        ? 1
+        : report.status === 'local-regression' ? 2 : 3
+  }
 }

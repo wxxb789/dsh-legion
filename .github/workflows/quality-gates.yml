@@ -22,7 +22,27 @@ env:
   PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'
 
 jobs:
+  dependency-preflight:
+    name: registry dependency preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - run: node scripts/verify-dependency-preflight.mjs --record dependency-preflight-snapshot.json --output dependency-preflight-report.json
+      - if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dependency-preflight-quality-${{ github.run_attempt }}
+          path: |
+            dependency-preflight-report.json
+            dependency-preflight-snapshot.json
+          if-no-files-found: warn
+
   quality:
+    needs: dependency-preflight
     name: quality (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -59,24 +79,11 @@ jobs:
       - run: pnpm run test:unit
       - run: pnpm run verify:reproducible-pack
       - run: pnpm run verify:pack
-      # A declared Host line that upstream never published fails here in
-      # seconds, naming the package and the range, instead of surfacing minutes
-      # later as a raw resolver error inside the packed install.
-      - if: inputs.dsh-source-artifact == ''
-        run: pnpm run verify:dependency-preflight -- --record dependency-preflight-snapshot.json
-      # The recorded registry answer is the gate's evidence: keeping it lets a
-      # live verdict be replayed offline instead of re-run against a registry
-      # that has already moved.
-      - if: inputs.dsh-source-artifact == '' && always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: dependency-preflight-${{ matrix.os }}-${{ matrix.node }}
-          path: dependency-preflight-snapshot.json
-          if-no-files-found: warn
       - if: inputs.dsh-source-artifact == ''
         run: pnpm run test:profile-install
 
   compatibility:
+    needs: dependency-preflight
     name: packed E2E (${{ matrix.platform.id }}, ${{ matrix.dsh.channel }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 25

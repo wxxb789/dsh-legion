@@ -81,7 +81,7 @@ describe('reproducible CI and release contracts', () => {
       if: "inputs.dsh-source-artifact != ''",
       run: 'pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"',
     }
-    for (const job of Object.values(parsedWorkflow.jobs)) {
+    for (const job of [parsedWorkflow.jobs.quality, parsedWorkflow.jobs.compatibility]) {
       expect(job.steps.filter(step => step.run?.includes('install-dsh-tarballs'))).toEqual([sourceInstall])
     }
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('minimum')

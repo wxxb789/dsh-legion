@@ -12,7 +12,24 @@ env:
   DSH_REGISTRY: https://registry.npmjs.org
 
 jobs:
+  dependency-preflight:
+    name: source DSH registry preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.19.0
+      - run: node scripts/verify-dependency-preflight.mjs --non-applicable source-tarball --output dependency-preflight-report.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dependency-preflight-source-${{ github.run_attempt }}
+          path: dependency-preflight-report.json
+          if-no-files-found: error
+
   dsh-source:
+    needs: dependency-preflight
     name: pack assessed DSH source
     runs-on: ubuntu-24.04
     timeout-minutes: 45
