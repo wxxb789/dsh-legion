@@ -116,6 +116,8 @@ describe('dsh-legion-receipts package contract', () => {
     for (const dependency of [
       '@deepseek-ai/cordis',
       '@deepseek-ai/dsh-api-remotes',
+      '@deepseek-ai/dsh-llm',
+      '@deepseek-ai/dsh-session',
       '@deepseek-ai/dsh-typert-protocol',
     ]) {
       expect(value.peerDependencies[dependency], dependency).toBe(
@@ -125,6 +127,12 @@ describe('dsh-legion-receipts package contract', () => {
         dependency === '@deepseek-ai/cordis' ? '^4.0.1' : '0.1.2-alpha.1',
       )
     }
+    for (const dependency of [
+      '@deepseek-ai/dsh-api-gateway',
+      '@deepseek-ai/dsh-client-connection',
+      '@deepseek-ai/dsh-host-webserver',
+      '@deepseek-ai/dsh-typert-registry',
+    ]) expect(value.devDependencies[dependency], dependency).toBe('0.1.2-alpha.1')
     expect(value.devDependencies['@deepseek-ai/dsh-typert-generator']).toBe('0.1.2-alpha.1')
     expect(value.devDependencies.tsdown).toBe('^0.22.2')
     expect(value.devDependencies.typescript).toBe('^6.0.3')
@@ -141,13 +149,14 @@ describe('dsh-legion-receipts package contract', () => {
       files: [],
       references: [{ path: './tsconfig.host-face.json' }, { path: './tsconfig.client.json' }],
     })
-    expect(JSON.parse(host).files).toEqual(['src/index.ts', 'src/types.ts'])
+    expect(JSON.parse(host).files).toEqual(['src/index.ts', 'src/feed.ts', 'src/types.ts'])
     expect(JSON.parse(client).files).toEqual(['src/client/index.ts', 'src/types.ts'])
 
     const value = await manifest()
     expect(value.scripts.build).toBe('pnpm run clean && pnpm run build:host && pnpm run build:client')
     expect(value.scripts['build:host']).toMatch(/^tsc -b tsconfig\.host-face\.json && /)
     expect(value.scripts['build:client']).toMatch(/^tsc -b tsconfig\.client\.json && /)
+    expect(value.scripts.test).toBe('vitest run tests')
   })
 
   it('uses package-mode Typert generation instead of handwritten descriptors', async () => {
@@ -174,21 +183,43 @@ describe('dsh-legion-receipts package contract', () => {
     expect(remoteArtifact).toContain("namespace: 'legionReceipts'")
     expect(remoteArtifact).toContain("method: 'follow'")
     expect(remoteArtifact).toContain("mode: 'stream'")
+    const { TYPERT } = await import(pathToFileURL(resolve(PACKAGE_ROOT, 'lib/typert.host.js')).href) as {
+      readonly TYPERT: {
+        readonly invocations: readonly [{
+          readonly parameters: readonly { readonly name: string; readonly wire: string; readonly source: string }[]
+        }]
+      }
+    }
+    expect(TYPERT.invocations[0].parameters).toMatchObject([
+      { name: 'sessionId', wire: 'sessionId', source: 'json' },
+    ])
   })
 
-  it('exposes one abortable empty baseline through the public Host face', async () => {
+  it('exposes one Session-scoped abortable empty baseline through the public Host face', async () => {
     const value = await manifest()
     const host = await import(pathToFileURL(resolve(PACKAGE_ROOT, exportTarget(value.exports['.']).default)).href)
     const { Context } = await import('@deepseek-ai/cordis')
+    const { default: SessionStore, SessionId } = await import('@deepseek-ai/dsh-session')
     const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create(SessionId('package-contract'))
     const service = new host.RunReceiptFeed(ctx) as {
-      follow(signal: AbortSignal): AsyncIterable<{ type: string; sessions: readonly unknown[] }>
+      follow(sessionId: string, signal: AbortSignal): AsyncIterable<{ type: string; value: unknown }>
     }
     const abort = new AbortController()
-    const iterator = service.follow(abort.signal)[Symbol.asyncIterator]()
+    const iterator = service.follow(String(session.id), abort.signal)[Symbol.asyncIterator]()
     await expect(iterator.next()).resolves.toEqual({
       done: false,
-      value: { type: 'baseline', sessions: [] },
+      value: {
+        type: 'baseline',
+        value: {
+          schemaVersion: 1,
+          sessionId: 'package-contract',
+          revision: 0,
+          feed: { status: 'available' },
+          receipts: [],
+        },
+      },
     })
     abort.abort()
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })

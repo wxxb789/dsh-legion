@@ -46,7 +46,8 @@
     "bundle:client": "tsdown --config tsdown.client.config.ts",
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "typecheck": "pnpm run clean && tsc -b tsconfig.host-face.json && pnpm run bundle:host && tsc -b tsconfig.client.json",
-    "test": "vitest run tests/package.spec.ts",
+    "test": "vitest run tests",
+    "benchmark:receipt-feed": "node ../../scripts/benchmark-receipt-feed.mjs",
     "verify:pack": "npm pack --dry-run --ignore-scripts"
   },
   "dsh": {
@@ -64,13 +65,21 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-api-remotes": ">=0.1.2-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-llm": ">=0.1.2-alpha.1 <0.2.0",
+    "@deepseek-ai/dsh-session": ">=0.1.2-alpha.1 <0.2.0",
     "@deepseek-ai/dsh-typert-protocol": ">=0.1.2-alpha.1 <0.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-gateway": "0.1.2-alpha.1",
     "@deepseek-ai/dsh-api-remotes": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-session": "0.1.2-alpha.1",
     "@deepseek-ai/dsh-typert-generator": "0.1.2-alpha.1",
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.1",
+    "@deepseek-ai/dsh-typert-registry": "0.1.2-alpha.1",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"

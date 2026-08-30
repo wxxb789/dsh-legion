@@ -1,42 +1,47 @@
 import { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { EMPTY_RECEIPT_FEED_BASELINE, type ReceiptFeedBaseline } from './types.ts'
+import { ReceiptFeedState } from './feed.ts'
+import type {
+  ReceiptFeedFrame,
+  ReceiptPublication,
+  ReceiptPublicationResult,
+} from './types.ts'
 
-export type * from './types.ts'
-export { EMPTY_RECEIPT_FEED_BASELINE, ReceiptFeedBaselineSchema } from './types.ts'
+export * from './types.ts'
+
+/** Host-only deep seam consumed optionally by Legion execution. */
+export interface RunReceiptPublisher {
+  publish(session: Session, publication: ReceiptPublication): ReceiptPublicationResult
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** Live-process Run Receipt Remote owner. */
+    /** Live-process Run Receipt Remote owner and optional Host publisher. */
     legionReceipts: RunReceiptFeed
   }
 }
 
-/** Resolve when one Remote generation is cancelled, without retaining listeners. */
-async function waitForAbort(signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return
-  await new Promise<void>((resolve) => {
-    const aborted = () => {
-      signal.removeEventListener('abort', aborted)
-      resolve()
-    }
-    signal.addEventListener('abort', aborted, { once: true })
-    if (signal.aborted) aborted()
-  })
-}
+/** Process-local full Receipt owner and read-only generated Remote namespace. */
+export class RunReceiptFeed extends TypertRemoteService implements RunReceiptPublisher {
+  static inject = ['sessions', 'typert']
 
-/** Baseline-only U2 Remote service; U3 will add the bounded read model. */
-export class RunReceiptFeed extends TypertRemoteService {
+  private readonly feed: ReceiptFeedState
+
   constructor(ctx: Context) {
     super(ctx, 'legionReceipts')
+    this.feed = new ReceiptFeedState(ctx)
   }
 
-  /** Emit one empty baseline, then remain alive only until carrier cancellation. */
+  /** Validate and synchronously replace one Receipt or clear only retained terminal presentation. */
+  publish(session: Session, publication: ReceiptPublication): ReceiptPublicationResult {
+    return this.feed.publish(session, publication)
+  }
+
+  /** Follow one live Session with a complete baseline and latest-only complete replacements. */
   @Remote({ mode: 'stream' })
-  async *follow(signal: AbortSignal): AsyncIterable<ReceiptFeedBaseline> {
-    signal.throwIfAborted()
-    yield EMPTY_RECEIPT_FEED_BASELINE
-    await waitForAbort(signal)
+  follow(sessionId: string, signal: AbortSignal): AsyncIterable<ReceiptFeedFrame> {
+    return this.feed.follow(sessionId, signal)
   }
 }
 

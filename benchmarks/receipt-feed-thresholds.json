@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "limits": {
+    "activeReceiptsPerSession": 16,
+    "participantsPerReceipt": 256,
+    "serializedSessionReplacementBytes": 1048576,
+    "processFollowers": 64
+  },
+  "benchmark": {
+    "warmupPublications": 20,
+    "measuredPublications": 100,
+    "minimumByteSaturation": 0.95,
+    "publicationP95Milliseconds": 100,
+    "shape": {
+      "activeReceipts": 16,
+      "followers": 64,
+      "participantsPerReceipt": "maximum-uniform-valid",
+      "note": "Sixteen 256-row Receipts exceed the 1 MiB replacement cap; use the largest uniform participant count accepted by the public publisher."
+    }
+  }
+}
