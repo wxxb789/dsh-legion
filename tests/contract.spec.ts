@@ -39,4 +39,41 @@ describe('public contract v1', () => {
       'kind', 'strategy', 'objective', 'limits', 'execution',
     ])
   })
+
+  it('records canonical aliases and the non-runtime Run Receipt observation contract', () => {
+    const contract = JSON.parse(readFileSync(join(ROOT, 'contracts/v1.json'), 'utf8')) as {
+      canonicalVocabulary?: unknown
+      runReceiptObservation?: unknown
+    }
+
+    expect(contract.canonicalVocabulary).toEqual({
+      cohort: {
+        retiredAlias: 'team',
+        compatibility: 'accepted-non-advertised-1.x',
+      },
+      specialist: {
+        retiredAlias: 'profile',
+        compatibility: 'accepted-non-advertised-1.x',
+      },
+    })
+    expect(contract.runReceiptObservation).toEqual({
+      accountingUnits: ['tokens', 'elapsed-time'],
+      companionPackage: 'dsh-legion-receipts',
+      consumer: 'standard-dsh-web',
+      executionAuthority: 'none',
+      fullFactLifetime: 'live-session-and-companion-instance',
+      fullFactStream: 'baseline-then-complete-replacements',
+      fullFactTransport: 'official-dsh-typert-gateway',
+      hostRestartBehavior: 'starts-empty',
+      remoteMissingFacts: 'explicit-unavailable',
+      sessionEventTransport: 'none',
+      storage: 'none',
+      terminalArtifact: 'bounded-tool-summary',
+      unchangedCompatibilitySurfaces: [
+        'contracts/journal-v1.json',
+        'historical-identifiers',
+        'src/durable-run/**',
+      ],
+    })
+  })
 })

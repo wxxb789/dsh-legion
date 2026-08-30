@@ -9,6 +9,7 @@ const DOCUMENT_EXTENSIONS = new Set(['.json', '.md', '.yaml', '.yml'])
 const HISTORICAL_DOC_PREFIXES = [
   'docs/design/',
   'docs/notes/',
+  'docs/plans/',
   'docs/research/',
 ]
 const HISTORICAL_DOCS = new Set([
@@ -46,7 +47,7 @@ const RENAMED_ADRS = [
   'docs/adr/0018-ordered-context-manifests-and-cache-stable-arenas.md',
   'docs/adr/0020-host-coordination-and-admission-authority.md',
   'docs/adr/0021-optional-host-settings-as-a-configuration-source.md',
-  'docs/adr/0022-host-plane-settings-row.md',
+  'docs/adr/0023-host-plane-settings-row.md',
 ]
 
 function nameOf(path: string): string {
@@ -109,6 +110,24 @@ function proseViolations(name: string, source: string): string[] {
   return violations
 }
 
+function contextDefinition(source: string, term: string): string {
+  const marker = `**${term}**:`
+  const start = source.indexOf(marker)
+  if (start === -1) throw new Error(`missing context term: ${term}`)
+  const following = source.slice(start + marker.length)
+  const end = following.search(/\r?\n\*\*[^\n]+\*\*:/)
+  return end === -1 ? following : following.slice(0, end)
+}
+
+function levelTwoSection(source: string, title: string): string {
+  const marker = `## ${title}`
+  const start = source.indexOf(marker)
+  if (start === -1) throw new Error(`missing level-two section: ${title}`)
+  const following = source.slice(start + marker.length)
+  const end = following.search(/\r?\n## /)
+  return end === -1 ? following : following.slice(0, end)
+}
+
 describe('repository vocabulary', () => {
   it('classifies every repository document as current prose or explicitly allowed machine/history data', async () => {
     const unclassified = (await repositoryDocuments(ROOT)).filter((path) => {
@@ -138,6 +157,90 @@ describe('repository vocabulary', () => {
       return source.includes('Terminology: ADR 0022') ? undefined : name
     }))
     expect(missing.filter(Boolean)).toEqual([])
+  })
+
+  it('keeps ADR numbers unique and reserves 0022 for the nouns decision', async () => {
+    const names = (await readdir(resolve(ROOT, 'docs/adr')))
+      .filter(name => /^\d{4}-.+\.md$/.test(name))
+      .sort()
+    const numbers = names.map(name => name.slice(0, 4))
+    const duplicates = [...new Set(numbers.filter((number, index) => numbers.indexOf(number) !== index))]
+
+    expect(duplicates).toEqual([])
+    expect(names.filter(name => name.startsWith('0022-'))).toEqual([
+      '0022-legion-nouns-do-not-reuse-host-vocabulary.md',
+    ])
+    expect(names).toContain('0023-host-plane-settings-row.md')
+    expect(names).toContain('0024-run-receipt-live-feed.md')
+  })
+
+  it('uses the renamed Settings ADR path and resolves every ADR 0023 link', async () => {
+    const files = (await repositoryDocuments(ROOT)).filter((path) => {
+      const name = nameOf(path)
+      return name.endsWith('.md') && !name.startsWith('docs/plans/')
+    })
+    const stale: string[] = []
+    const broken: string[] = []
+    let references = 0
+
+    await Promise.all(files.map(async (path) => {
+      const name = nameOf(path)
+      const source = await readFile(path, 'utf8')
+      if (source.includes('0022-host-plane-settings-row.md')) stale.push(name)
+      for (const match of source.matchAll(/\[ADR 0023\]\(([^)]+)\)/g)) {
+        references += 1
+        const target = match[1]?.split('#', 1)[0]
+        if (target === undefined || !target.endsWith('0023-host-plane-settings-row.md')) {
+          broken.push(`${name}: ${match[1]}`)
+          continue
+        }
+        try {
+          await readFile(resolve(dirname(path), target), 'utf8')
+        }
+        catch {
+          broken.push(`${name}: ${target}`)
+        }
+      }
+    }))
+
+    expect(stale.sort()).toEqual([])
+    expect(references).toBeGreaterThan(0)
+    expect(broken.sort()).toEqual([])
+  })
+
+  it('documents the live Receipt companion without durable, event, or monetary claims', async () => {
+    const [context, publicContract, decision] = await Promise.all([
+      readFile(resolve(ROOT, 'CONTEXT.md'), 'utf8'),
+      readFile(resolve(ROOT, 'docs/public-contract-v1.md'), 'utf8'),
+      readFile(resolve(ROOT, 'docs/adr/0024-run-receipt-live-feed.md'), 'utf8'),
+    ])
+    const runReceipt = contextDefinition(context, 'Run Receipt')
+    const companion = contextDefinition(context, 'Run Receipt Companion')
+    const publicVocabulary = levelTwoSection(publicContract, 'Stable authored data')
+    const publicReceipt = levelTwoSection(publicContract, 'Run Receipt observation')
+    const canonical = [runReceipt, companion, publicReceipt, decision].join('\n')
+
+    expect(runReceipt).toContain('live observation')
+    expect(runReceipt).not.toMatch(/\b(?:durable|persistent|persisted|restart-safe)\b/i)
+    expect(publicVocabulary).toContain('Specialist and Cohort are canonical')
+    expect(publicVocabulary).toContain('non-advertised compatibility exceptions')
+    expect(runReceipt).toContain('bounded terminal summary')
+    expect(publicReceipt).toContain('`dsh-legion-receipts`')
+    expect(publicReceipt).toContain('official DSH Typert/Gateway')
+    expect(publicReceipt).toContain('baseline followed by complete replacements')
+    expect(publicReceipt).toContain('Host restart')
+    expect(publicReceipt).toContain('explicitly unavailable')
+    expect(publicReceipt).toContain('no execution authority')
+    expect(publicReceipt).toContain('unchanged compatibility surfaces')
+    expect(decision).toContain('appends no custom Session event')
+    expect(decision).toContain('writes no Receipt facts to storage')
+    expect(decision).toContain('requires no DSH core change')
+    expect(decision).toContain('bounded tool summary remains')
+    expect(canonical).not.toContain('legion/run-receipt')
+    expect(canonical).not.toMatch(/\b(?:price|cost|money|currency|monetary)\b/i)
+    expect(canonical).not.toMatch(/\b(?:durable|persistent|persisted|restart-safe)\b[^\n.]{0,80}\b(?:full (?:Run )?Receipt facts?|Run Receipt|Receipt facts?)\b/i)
+    expect(canonical).not.toMatch(/\b(?:full (?:Run )?Receipt facts?|Run Receipt|Receipt facts?)\b[^\n.]{0,80}\b(?:durable|persistent|persisted|restart-safe)\b/i)
+    expect(canonical).not.toMatch(/\b(?:append(?:s|ed)?|publish(?:es|ed)?|deliver(?:s|ed)?|transport(?:s|ed)?|project(?:s|ed)?)\s+(?!no\b)[^\n.]{0,80}\bcustom Session event\b/i)
   })
 
   it('ships current Config Document namespace spellings', async () => {

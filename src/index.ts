@@ -1168,7 +1168,7 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
         // Owning the namespace, this refuses the write while the caller is
         // still there to read why. Consuming one, the same check runs on the
         // committed section instead: a catalog cross-reference is judged per
-        // row, so the owner cannot refuse it for everyone (see ADR 0022) and a
+        // row, so the owner cannot refuse it for everyone (see ADR 0023) and a
         // row that cannot materialize a section keeps its last generation.
         validate: (value) => { materializeConfig(value) },
         onError: (error) => {

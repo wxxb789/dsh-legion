@@ -427,7 +427,7 @@ describe('a delegation row beside a served namespace', () => {
   })
 
   it('accepts a catalog cross-reference the row beside it cannot act on', async () => {
-    // ADR 0022 records this deliberately: a Profile name is valid for the row
+    // ADR 0023 records this deliberately: a Profile name is valid for the row
     // that defines it and invalid for the row next to it, so the namespace
     // owner's validate is catalog-independent and cannot refuse on one
     // catalog's behalf. Both halves are asserted because they are one decision:

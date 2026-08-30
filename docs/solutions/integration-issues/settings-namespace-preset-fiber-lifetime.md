@@ -79,6 +79,6 @@ The consuming half works because layering is a pure function of *(this row's ent
 
 ## Related Issues
 
-- [ADR 0022](../../adr/0022-host-plane-settings-row.md) — the decision record for the split.
+- [ADR 0023](../../adr/0023-host-plane-settings-row.md) — the decision record for the split.
 - [Live reconfiguration](../../settings.md) and [the settings card](../../settings-card.md) — the behaviour and its two halves.
 - Upstream anchors in the DeepSeek Harness tree (another repository, verified at 0.1.1-rc.1): the provider's effect-scoped registration and duplicate refusal in `packages/settings/settings/src/index.ts`, the loader-entry scan in `packages/client/modules/src/index.ts`, and the directly-plugged preset subtree in `packages/preset/agent-presets/src/mount.ts`.

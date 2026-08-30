@@ -57,8 +57,12 @@ The user-owned outcome a Cohort Run is intended to achieve.
 _Avoid_: Prompt, Task message
 
 **Run Receipt**:
-The durable, structured account of one Cohort Run — its stages, children, live participation, consumed tokens, elapsed time, and outcome — derived from Host-owned facts rather than from what a model reported about itself. It accounts in tokens and time, never in money.
-_Avoid_: Transcript, Log line, Progress narration, Telemetry event, Invoice
+The bounded, structured account of one Cohort Run — its stages, children, live participation, consumed tokens, elapsed time, and outcome — grounded in Host-owned facts rather than model narration. Its full facts belong to live observation; a bounded terminal summary remains after that observation ends.
+_Avoid_: Transcript, Log line, Progress narration, Telemetry event, Historical record
+
+**Run Receipt Companion**:
+The observation boundary that holds full Run Receipt facts only for the lifetime shared by one live Session and one companion instance; it owns neither execution nor historical state.
+_Avoid_: Receipt store, Execution controller, Receipt archive
 
 **Endorsement**:
 The evidence-derived standing of a catalog entry, distinguishing what a deployment may run from what Legion is willing to recommend.

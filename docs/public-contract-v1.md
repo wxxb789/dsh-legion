@@ -7,6 +7,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 - Config Document version is 2. Legacy unversioned/v1 documents migrate with model Strategy exposure off.
 - Specialists, Catalog Layers, CohortSpec, StrategySpec, artifact contracts, and limits are readonly declarative data.
 - Catalog Layers add new names, replace complete same-name entries, disable by tombstone, and permit later revival.
+- Specialist and Cohort are canonical. Published 1.x `profile` and `team` spellings remain accepted only as non-advertised compatibility exceptions for their documented window and never lead new surfaces.
 - Strategy stages are exactly `delegate | fanout | synthesize`; every accepted stage is executable.
 - Strategy limits are exactly agents, per-Cohort-Run concurrency, deadline, and accepted artifact bytes.
 
@@ -17,6 +18,15 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 - Branch fields cannot be mixed and invocation limits can only narrow authored limits.
 - Cohort Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.
 - Opaque Plans and execution snapshots bind one branded Strategy generation (policy + runtime Specialist catalog + orchestration), Objective, and limits before child admission.
+
+## Run Receipt observation
+
+- Full Run Receipt facts belong to the separately packaged `dsh-legion-receipts` companion; the root package keeps the bounded tool summary and grants the companion no execution authority.
+- Standard DSH Web receives each live Session's baseline followed by complete replacements over official DSH Typert/Gateway. Client refresh and carrier reconnect recover that baseline only while the same parent Session and companion instance remain live.
+- The companion appends no custom Session event, writes no Receipt facts to storage, and requires no DSH core change. Session disposal, companion reload, or Host restart ends full-fact availability, and the next companion instance starts empty.
+- Remote facts that official Host observation cannot prove remain explicitly unavailable; known subtotals may report partial coverage. Receipt accounting units are token counts and elapsed time only.
+- The existing bounded tool summary remains the terminal artifact for headless, missing-companion, and degraded deployments.
+- Existing Durable Strategy source, journal contracts, and historical identifiers remain unchanged compatibility surfaces; this observation contract does not reinterpret them.
 
 ## Evidence receipt contracts
 
