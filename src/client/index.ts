@@ -1,5 +1,5 @@
 /**
- * Legion's browser half: the settings card and the Run Receipt overlay.
+ * Legion's browser half: the settings card only.
  *
  * DSH serves every registered settings namespace and keys the plugin
  * configuration tab's cards on the namespace they edit, so a plugin that
@@ -15,7 +15,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 // Module scope: the loader claims plugin styles as soon as this factory
@@ -23,25 +22,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import './styles.ts'
 import { LegionCard, type LegionCardFace, type LegionCardState } from './LegionCard.ts'
 import {
-  LEGION_RUN_RECEIPT_OVERLAY_ID,
-  LEGION_RUN_RECEIPT_OVERLAY_SLOT,
-  RunReceiptOverlay,
-  createRunReceiptOverlayStore,
-} from './RunReceiptOverlay.ts'
-import {
   SettingsForm, booleanField, numberField, textField,
 } from './settings-form.ts'
 import { en, zh } from './locales.ts'
 
 export type { LegionCardProps, LegionCardState } from './LegionCard.ts'
-export {
-  LEGION_RUN_RECEIPT_OVERLAY_ID,
-  LEGION_RUN_RECEIPT_OVERLAY_SLOT,
-  LEGION_RUN_RECEIPT_PROJECTION_KEY,
-  RunReceiptOverlay,
-  createRunReceiptOverlayStore,
-} from './RunReceiptOverlay.ts'
-export type { RunReceiptOverlayProps, RunReceiptOverlayState } from './RunReceiptOverlay.ts'
 export type { FieldSpec, FieldState, FormActions, FormShell } from './settings-form.ts'
 export { en, zh } from './locales.ts'
 
@@ -130,14 +115,13 @@ export class LegionCardController {
 }
 
 /** Required browser services. */
-export const inject = ['slots', 'locale', 'connection', 'remote', 'settingsScope']
+export const inject = ['slots', 'locale', 'settingsScope']
 
 /**
  * Mount Legion's settings card.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: Context): void {
-  const receiptStore = createRunReceiptOverlayStore()
   const controller = new LegionCardController(
     ctx.settingsScope.bind<LegionCardSection>({ namespace: LEGION_NAMESPACE }),
   )
@@ -150,11 +134,4 @@ export function apply(ctx: Context): void {
     locale: LEGION_LOCALE_NS,
     inject: () => controller.inject(),
   }, LegionCard))
-  ctx.slots.inject(LEGION_RUN_RECEIPT_OVERLAY_SLOT, () => ctx.slots.register({
-    name: LEGION_RUN_RECEIPT_OVERLAY_SLOT,
-    id: LEGION_RUN_RECEIPT_OVERLAY_ID,
-    order: 100,
-    locale: LEGION_LOCALE_NS,
-    store: receiptStore,
-  }, RunReceiptOverlay))
 }

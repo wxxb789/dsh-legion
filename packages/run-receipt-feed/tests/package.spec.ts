@@ -50,30 +50,51 @@ async function bundle(): Promise<string> {
   }
 }
 
+interface StyleTag {
+  readonly dataset: Record<string, string>
+  textContent: string
+}
+
 async function materialize(): Promise<{
   readonly id: string
   readonly exports: Record<string, unknown>
   readonly required: string[]
+  readonly styles: StyleTag[]
 }> {
   const required: string[] = []
+  const styles: StyleTag[] = []
   let handoff: {
     readonly id: string
     readonly factory: (require: (specifier: string) => unknown) => unknown
   } | undefined
+  const document = {
+    head: { appendChild(tag: StyleTag) { styles.push(tag) } },
+    querySelector: (selector: string) => styles.find(tag => selector.includes(tag.dataset.pluginCss ?? '\u0000')) ?? null,
+    createElement: (): StyleTag => ({ dataset: {}, textContent: '' }),
+    getElementById: () => null,
+  }
   runInNewContext(await bundle(), {
-    window: {
-      __ModuleLoader__: {
-        load(value: typeof handoff) { handoff = value },
-      },
-    },
+    window: { __ModuleLoader__: { load(value: typeof handoff) { handoff = value } } },
+    document,
     console,
   }, { filename: 'packages/run-receipt-feed/lib/client.js' })
   if (handoff === undefined) throw new Error('companion bundle did not register through __ModuleLoader__.load')
+  const table: Record<string, unknown> = {
+    '@deepseek-ai/dsh-api-gateway/client': {
+      RemoteSnapshotStream: class RemoteSnapshotStream {},
+      RemoteStreamCarrierError: class RemoteStreamCarrierError extends Error {},
+    },
+    '@deepseek-ai/dsh-client-store': { createSnapshotStore() {}, defineStore() {} },
+    react: { createElement() {}, Fragment: Symbol('Fragment'), useEffect() {}, useRef() {} },
+    '@deepseek-ai/dsh-client-ui-primitives': { Button() {}, Pill() {}, StateDot() {} },
+  }
   const exports = handoff.factory((specifier) => {
     required.push(specifier)
-    throw new Error(`unexpected companion module-table request: ${specifier}`)
+    const value = table[specifier]
+    if (value === undefined) throw new Error(`unexpected companion module-table request: ${specifier}`)
+    return value
   }) as Record<string, unknown>
-  return { id: handoff.id, exports, required }
+  return { id: handoff.id, exports, required, styles }
 }
 
 describe('dsh-legion-receipts package contract', () => {
@@ -106,8 +127,16 @@ describe('dsh-legion-receipts package contract', () => {
   it('declares the Web loader edges and every directly consumed official package', async () => {
     const value = await manifest()
     expect(value.dsh.client).toEqual({
-      external: [],
-      inject: ['@deepseek-ai/dsh-api-remotes'],
+      external: ['@deepseek-ai/dsh-api-gateway/client'],
+      inject: [
+        '@deepseek-ai/dsh-api-gateway',
+        '@deepseek-ai/dsh-api-remotes',
+        '@deepseek-ai/dsh-api-session-controller',
+        '@deepseek-ai/dsh-client-locale',
+        '@deepseek-ai/dsh-client-ui-layout',
+        '@deepseek-ai/dsh-client-ui-renderer',
+        '@deepseek-ai/dsh-client-ui-session',
+      ],
       platform: 'web',
     })
     expect(value.dependencies).toEqual({ zod: '^4.4.3' })
@@ -115,7 +144,16 @@ describe('dsh-legion-receipts package contract', () => {
     expect(value.devDependencies).not.toHaveProperty('dsh-legion')
     for (const dependency of [
       '@deepseek-ai/cordis',
+      '@deepseek-ai/dsh-api-gateway',
       '@deepseek-ai/dsh-api-remotes',
+      '@deepseek-ai/dsh-api-session-controller',
+      '@deepseek-ai/dsh-client-locale',
+      '@deepseek-ai/dsh-client-store',
+      '@deepseek-ai/dsh-client-ui-layout',
+      '@deepseek-ai/dsh-client-ui-primitives',
+      '@deepseek-ai/dsh-client-ui-renderer',
+      '@deepseek-ai/dsh-client-ui-session',
+      '@deepseek-ai/dsh-client-ui-slots',
       '@deepseek-ai/dsh-llm',
       '@deepseek-ai/dsh-session',
       '@deepseek-ai/dsh-typert-protocol',
@@ -127,13 +165,16 @@ describe('dsh-legion-receipts package contract', () => {
         dependency === '@deepseek-ai/cordis' ? '^4.0.1' : '0.1.2-alpha.1',
       )
     }
+    expect(value.peerDependencies.react).toBe('^18.2.0')
+    expect(value.devDependencies.react).toBe('^18.2.0')
     for (const dependency of [
-      '@deepseek-ai/dsh-api-gateway',
       '@deepseek-ai/dsh-client-connection',
+      '@deepseek-ai/dsh-client-test-runtime',
       '@deepseek-ai/dsh-host-webserver',
       '@deepseek-ai/dsh-typert-registry',
     ]) expect(value.devDependencies[dependency], dependency).toBe('0.1.2-alpha.1')
     expect(value.devDependencies['@deepseek-ai/dsh-typert-generator']).toBe('0.1.2-alpha.1')
+    expect(value.devDependencies['@types/react']).toBe('~18.3.1')
     expect(value.devDependencies.tsdown).toBe('^0.22.2')
     expect(value.devDependencies.typescript).toBe('^6.0.3')
     expect(value.devDependencies.vitest).toBe('^4.1.8')
@@ -150,13 +191,20 @@ describe('dsh-legion-receipts package contract', () => {
       references: [{ path: './tsconfig.host-face.json' }, { path: './tsconfig.client.json' }],
     })
     expect(JSON.parse(host).files).toEqual(['src/index.ts', 'src/feed.ts', 'src/types.ts'])
-    expect(JSON.parse(client).files).toEqual(['src/client/index.ts', 'src/types.ts'])
+    expect(JSON.parse(client).files).toEqual([
+      'src/client/index.ts',
+      'src/client/model.ts',
+      'src/client/RunReceiptOverlay.ts',
+      'src/client/locales.ts',
+      'src/client/styles.ts',
+      'src/types.ts',
+    ])
 
     const value = await manifest()
     expect(value.scripts.build).toBe('pnpm run clean && pnpm run build:host && pnpm run build:client')
     expect(value.scripts['build:host']).toMatch(/^tsc -b tsconfig\.host-face\.json && /)
     expect(value.scripts['build:client']).toMatch(/^tsc -b tsconfig\.client\.json && /)
-    expect(value.scripts.test).toBe('vitest run tests')
+    expect(value.scripts.test).toBe('vitest run --root ../.. --config vitest.config.ts packages/run-receipt-feed/tests --maxWorkers=1')
   })
 
   it('uses package-mode Typert generation instead of handwritten descriptors', async () => {
@@ -226,32 +274,31 @@ describe('dsh-legion-receipts package contract', () => {
     await ctx.fiber.dispose()
   })
 
-  it('registers under its own loader identity and inlines self Remote plus Zod', async () => {
+  it('registers under its own loader identity, declares exact externals, and inlines self Remote plus Zod', async () => {
     const value = await manifest()
     const client = await materialize()
     expect(client.id).toBe(value.name)
-    expect(client.required).toEqual([])
+    expect(client.required).toEqual([
+      '@deepseek-ai/dsh-api-gateway/client',
+      '@deepseek-ai/dsh-client-store',
+      'react',
+      '@deepseek-ai/dsh-client-ui-primitives',
+    ])
+    expect(client.exports.inject).toEqual(['remote'])
+    expect(client.styles).toHaveLength(1)
+    expect(client.styles[0]?.dataset).toMatchObject({
+      plugin: 'dsh-legion-receipts',
+      pluginCss: 'dsh-legion-receipts/run-receipt.css',
+    })
+    expect(client.styles[0]?.textContent).toContain('.dsh-legion-receipt')
+    expect(client.styles[0]?.textContent).toContain('@media (max-width: 639px), (pointer: coarse)')
+
     const source = await bundle()
+    expect(source).toContain('dsh-legion-receipts')
     expect(source).not.toContain('require("dsh-legion-receipts/remote")')
     expect(source).not.toContain("require('dsh-legion-receipts/remote')")
     expect(source).not.toContain('require("zod")')
     expect(source).not.toContain("require('zod')")
-
-    const mounts: unknown[] = []
-    let disposed = 0
-    const dispose = await (client.exports.apply as (ctx: unknown) => Promise<() => Promise<void>>)({
-      remote: {
-        async $mount(contribution: unknown) {
-          mounts.push(contribution)
-          return async () => { disposed += 1 }
-        },
-      },
-    })
-    expect(client.exports.inject).toEqual(['remote'])
-    expect(mounts).toHaveLength(1)
-    expect(mounts[0]).toMatchObject({ package: 'dsh-legion-receipts' })
-    await dispose()
-    expect(disposed).toBe(1)
   })
 })
 

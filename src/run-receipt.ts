@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type AgentRegistry from '@deepseek-ai/dsh-agent'
-import type { Agent, AgentStatus } from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-compaction'
 import type { TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
@@ -21,7 +21,6 @@ import {
   type RunReceiptEvidenceCoverage,
   type RunReceiptParticipant as PublishedRunReceiptParticipant,
   type RunReceiptPublisher,
-  type RunReceiptStage,
   type RunReceiptStageStatus,
   type RunReceiptTiming,
   type RunReceiptTimingEvidence,
@@ -38,43 +37,6 @@ import { deepFreeze } from './internal/value.ts'
 export type { RunReceiptStageStatus } from 'dsh-legion-receipts'
 export type RunReceiptOutcome = PublishedRunReceipt['outcome']
 export type LiveRunReceipt = PublishedRunReceipt
-
-/**
- * Type-only bridge for the root Client artifact until U5 moves that overlay to
- * the companion. No Host projection or custom Session event is registered.
- */
-export interface RunReceipt {
-  readonly runId: CohortRunId
-  readonly strategy: string
-  readonly cohort: string
-  readonly startedAt: number
-  readonly elapsedMs: number
-  readonly outcome: RunReceiptOutcome
-  readonly stages: readonly RunReceiptStage[]
-  readonly participation: readonly (
-    | {
-        readonly childId: SessionId
-        readonly stage: string
-        readonly member: string
-        readonly state: 'live'
-        readonly registryStatus: AgentStatus
-      }
-    | {
-        readonly childId: SessionId
-        readonly stage: string
-        readonly member: string
-        readonly state: 'ended'
-      }
-  )[]
-  readonly tokenAccount: {
-    readonly totals: Readonly<Record<RunReceiptTokenField, number>>
-  }
-}
-
-/** Type-only legacy Client projection shape; Legion no longer produces it. */
-export interface RunReceiptProjection {
-  readonly receipts: Readonly<Record<string, RunReceipt>>
-}
 
 export type RunReceiptFeedStatus =
   | { readonly status: 'available'; readonly failure: null }

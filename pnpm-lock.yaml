@@ -148,9 +148,36 @@ importers:
       '@deepseek-ai/dsh-api-remotes':
         specifier: 0.1.2-alpha.1
         version: 0.1.2-alpha.1(87775923ccdcfa6984b453f9c013b2ce)
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(533b99207ce5f721e6d7898bae74158f)
       '@deepseek-ai/dsh-client-connection':
         specifier: 0.1.2-alpha.1
         version: 0.1.2-alpha.1(25ee74fd6a7247b2b89b01dfce5327f4)
+      '@deepseek-ai/dsh-client-locale':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(632b6dcd1c768c2f0870407e72be2f1c)
+      '@deepseek-ai/dsh-client-store':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(@types/react@18.3.31)(react@18.3.1)
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-client-locale@0.1.2-alpha.1(632b6dcd1c768c2f0870407e72be2f1c))(@deepseek-ai/dsh-client-ui-renderer@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1))(@deepseek-ai/dsh-client-ui-session@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-api-session-controller@0.1.2-alpha.1(533b99207ce5f721e6d7898bae74158f))(@deepseek-ai/dsh-client-ui-renderer@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1))(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-session@0.1.2-alpha.1(e83e6cf5a6282e7383020e2879f02b77)))(@deepseek-ai/dsh-client-ui-theme@0.1.2-alpha.1(e69c8cf7b0607c344e04469bc3d7bb29))(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1)
+      '@deepseek-ai/dsh-client-ui-session':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-api-session-controller@0.1.2-alpha.1(533b99207ce5f721e6d7898bae74158f))(@deepseek-ai/dsh-client-ui-renderer@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1))(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-session@0.1.2-alpha.1(e83e6cf5a6282e7383020e2879f02b77))
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: 0.1.2-alpha.1
+        version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
       '@deepseek-ai/dsh-host-webserver':
         specifier: 0.1.2-alpha.1
         version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
@@ -169,6 +196,12 @@ importers:
       '@deepseek-ai/dsh-typert-registry':
         specifier: 0.1.2-alpha.1
         version: 0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
       tsdown:
         specifier: ^0.22.2
         version: 0.22.14(typescript@6.0.3)
@@ -180,6 +213,18 @@ importers:
         version: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1))
 
 packages:
+
+  '@babel/code-frame@7.29.7':
+    resolution: {integrity: sha1-8vu/6ofESiFZDsUVt3iywm2IZuc=}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/helper-validator-identifier@7.29.7':
+    resolution: {integrity: sha1-vYcITO0MeW7Ea9pJLeboPSnon8I=}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/runtime@7.29.7':
+    resolution: {integrity: sha1-EgIkUMRaTabY2Ch7GKT/Ldsj92g=}
+    engines: {node: '>=6.9.0'}
 
   '@deepseek-ai/cordis-plugin-include@1.0.6':
     resolution: {integrity: sha1-xArHNDKJ6uY8e3pSpEuaiFYHVN8=}
@@ -422,6 +467,27 @@ packages:
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.1
       '@deepseek-ai/dsh-invariants': ^0.1.2-alpha.1
+
+  '@deepseek-ai/dsh-client-test-runtime@0.1.2-alpha.1':
+    resolution: {integrity: sha512-WnQdvHObiKdeffUrCpdMJMM5xI/X0rHWrRSrCqZQBlGP1SHDOIrCu0jlQGg+zHNpHvaCgoVsBT0K+FErTvgr1g==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ^4.0.1
+      '@deepseek-ai/dsh-api-session-controller': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-api-workspace-controller': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-attachment': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-connection': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-store': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-chat': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-conversation': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-renderer': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-session': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-settings': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-client-ui-slots': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-invariants': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-session': ^0.1.2-alpha.1
+      '@deepseek-ai/dsh-subagent': ^0.1.2-alpha.1
+      react: ^18.2.0
+      react-dom: ^18.2.0
 
   '@deepseek-ai/dsh-client-ui-layout@0.1.2-alpha.1':
     resolution: {integrity: sha512-vLsFJl84yTqw4p7ep8qob68bwhqA80d2AzGQIET1fKYi3f3Pmn3ecTReM6DG6vgu8rNjXeRWWqtetUyZUOEh7g==}
@@ -1167,6 +1233,28 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha1-p5tV26+GBIEvUtFAssmrQbwVC7g=}
 
+  '@testing-library/dom@10.4.1':
+    resolution: {integrity: sha1-1ET4qInppG6aO087iOD8s++2z5U=}
+    engines: {node: '>=18'}
+
+  '@testing-library/react@16.3.2':
+    resolution: {integrity: sha1-ZyiDt6y453X8BJLZ6dJeBuiXhtA=}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@testing-library/dom': ^10.0.0
+      '@types/react': ^18.0.0 || ^19.0.0
+      '@types/react-dom': ^18.0.0 || ^19.0.0
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+
+  '@types/aria-query@5.0.4':
+    resolution: {integrity: sha1-GjHD03iFDSd42rtjdNA23LpLpwg=}
+
   '@types/chai@5.2.3':
     resolution: {integrity: sha1-jpzZ4cNYH6azQaWu1ViOsoW+C0o=}
 
@@ -1376,12 +1464,23 @@ packages:
   anser@2.3.5:
     resolution: {integrity: sha1-NDWJa2i5Pl50SEJJnQzj5vbQE+4=}
 
+  ansi-regex@5.0.1:
+    resolution: {integrity: sha1-CCyyyJyf6GWaMRpTvWpNxTAdswQ=}
+    engines: {node: '>=8'}
+
+  ansi-styles@5.2.0:
+    resolution: {integrity: sha1-B0SWkK1Fd30ZJKwquy/IiV26g2s=}
+    engines: {node: '>=10'}
+
   ansis@4.3.1:
     resolution: {integrity: sha1-KBXB70kK2vDWEq46aZ6Qy89wqRc=}
     engines: {node: '>=14'}
 
   argparse@2.0.1:
     resolution: {integrity: sha1-JG9Q88p4oyQPbJl+ipvR6sSeSzg=}
+
+  aria-query@5.3.0:
+    resolution: {integrity: sha1-ZQxWnkGtkLUbPX315e7Rx1ScED4=}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha1-9kGhlrM1aQsQcL8AtudZP+wZC/c=}
@@ -1473,6 +1572,9 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha1-TbfCyk3G4Og0wwvnDJS7yXbccBg=}
+
+  dom-accessibility-api@0.5.16:
+    resolution: {integrity: sha1-WnQp5gZus2ZNkR4z+w5F3o6whFM=}
 
   dts-resolver@3.0.0:
     resolution: {integrity: sha1-W4eHVp88p3J7aYnIhNazYVeHph4=}
@@ -1631,6 +1733,10 @@ packages:
 
   loose-envify@1.4.0:
     resolution: {integrity: sha1-ce5R+nvkyuwaY4OffmgtgTLTDK8=}
+    hasBin: true
+
+  lz-string@1.5.0:
+    resolution: {integrity: sha1-watQ93iHtxJiEgG6n9Tjpu0JmUE=}
     hasBin: true
 
   magic-string@0.30.21:
@@ -1868,6 +1974,10 @@ packages:
     resolution: {integrity: sha1-bnUTV4DH4Q3zQzvyJmxVLTXIxiA=}
     engines: {node: ^10 || ^12 || >=14}
 
+  pretty-format@27.5.1:
+    resolution: {integrity: sha1-IYGHn96lGnpYUfs52SD6pj8B2I4=}
+    engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
+
   property-information@7.2.0:
     resolution: {integrity: sha1-CAmzQmTplcC/zTInAooeNSEK+Ao=}
 
@@ -1878,6 +1988,9 @@ packages:
     resolution: {integrity: sha1-wiZdeVEbV9R5s90/36UVNklMXLQ=}
     peerDependencies:
       react: ^18.3.1
+
+  react-is@17.0.2:
+    resolution: {integrity: sha1-5pHUqOnHiTZWVVOas3J2Kw77VPA=}
 
   react@18.3.1:
     resolution: {integrity: sha1-SauJIAnFOTNiW9FrJTP8dUyrKJE=}
@@ -2185,6 +2298,16 @@ packages:
 
 snapshots:
 
+  '@babel/code-frame@7.29.7':
+    dependencies:
+      '@babel/helper-validator-identifier': 7.29.7
+      js-tokens: 4.0.0
+      picocolors: 1.1.1
+
+  '@babel/helper-validator-identifier@7.29.7': {}
+
+  '@babel/runtime@7.29.7': {}
+
   '@deepseek-ai/cordis-plugin-include@1.0.6(@deepseek-ai/cordis-plugin-loader@1.0.2)(@deepseek-ai/cordis@4.0.1)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
@@ -2423,6 +2546,37 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - react
+
+  '@deepseek-ai/dsh-client-test-runtime@0.1.2-alpha.1':
+    dependencies:
+      '@testing-library/dom': 10.4.1
+      '@testing-library/react': 16.3.2(@testing-library/dom@10.4.1)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      vitest: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1))
+    transitivePeerDependencies:
+      - '@edge-runtime/vm'
+      - '@opentelemetry/api'
+      - '@types/node'
+      - '@types/react-dom'
+      - '@vitejs/devtools'
+      - '@vitest/browser-playwright'
+      - '@vitest/browser-preview'
+      - '@vitest/browser-webdriverio'
+      - '@vitest/coverage-istanbul'
+      - '@vitest/coverage-v8'
+      - '@vitest/ui'
+      - esbuild
+      - happy-dom
+      - jiti
+      - jsdom
+      - less
+      - msw
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - terser
+      - tsx
+      - yaml
 
   '@deepseek-ai/dsh-client-ui-layout@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-client-locale@0.1.2-alpha.1(632b6dcd1c768c2f0870407e72be2f1c))(@deepseek-ai/dsh-client-ui-renderer@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1))(@deepseek-ai/dsh-client-ui-session@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-api-session-controller@0.1.2-alpha.1(533b99207ce5f721e6d7898bae74158f))(@deepseek-ai/dsh-client-ui-renderer@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(react@18.3.1))(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-session@0.1.2-alpha.1(e83e6cf5a6282e7383020e2879f02b77)))(@deepseek-ai/dsh-client-ui-theme@0.1.2-alpha.1(e69c8cf7b0607c344e04469bc3d7bb29))(@deepseek-ai/dsh-invariants@0.1.2-alpha.1(@deepseek-ai/cordis@4.0.1))':
     dependencies:
@@ -3070,6 +3224,27 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@testing-library/dom@10.4.1':
+    dependencies:
+      '@babel/code-frame': 7.29.7
+      '@babel/runtime': 7.29.7
+      '@types/aria-query': 5.0.4
+      aria-query: 5.3.0
+      dom-accessibility-api: 0.5.16
+      lz-string: 1.5.0
+      picocolors: 1.1.1
+      pretty-format: 27.5.1
+
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@testing-library/dom': 10.4.1
+      '@types/react': 18.3.31
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@types/aria-query@5.0.4': {}
+
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -3229,9 +3404,17 @@ snapshots:
 
   anser@2.3.5: {}
 
+  ansi-regex@5.0.1: {}
+
+  ansi-styles@5.2.0: {}
+
   ansis@4.3.1: {}
 
   argparse@2.0.1: {}
+
+  aria-query@5.3.0:
+    dependencies:
+      dequal: 2.0.3
 
   assertion-error@2.0.1: {}
 
@@ -3298,6 +3481,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  dom-accessibility-api@0.5.16: {}
 
   dts-resolver@3.0.0: {}
 
@@ -3432,6 +3617,8 @@ snapshots:
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
+
+  lz-string@1.5.0: {}
 
   magic-string@0.30.21:
     dependencies:
@@ -3853,6 +4040,12 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
+  pretty-format@27.5.1:
+    dependencies:
+      ansi-regex: 5.0.1
+      ansi-styles: 5.2.0
+      react-is: 17.0.2
+
   property-information@7.2.0: {}
 
   quansync@1.0.0: {}
@@ -3862,6 +4055,8 @@ snapshots:
       loose-envify: 1.4.0
       react: 18.3.1
       scheduler: 0.23.2
+
+  react-is@17.0.2: {}
 
   react@18.3.1:
     dependencies:

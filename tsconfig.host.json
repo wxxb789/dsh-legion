@@ -21,7 +21,8 @@
   ],
   "exclude": [
     "src/client/**",
-    "packages/*/src/**"
+    "packages/*/src/**",
+    "packages/run-receipt-feed/tests/client-overlay.spec.ts"
   ],
   "references": [
     { "path": "./packages/run-receipt-feed/typert-protocol" },

@@ -19,7 +19,8 @@
     "src/resources.ts",
     "src/result-contract.ts",
     "src/route.ts",
-    "src/run-receipt.ts"
+    "packages/run-receipt-feed/tests/client-overlay.spec.ts",
+    "packages/run-receipt-feed/tests/fixtures.ts"
   ],
   "references": [
     { "path": "./packages/run-receipt-feed/tsconfig.client.json" }

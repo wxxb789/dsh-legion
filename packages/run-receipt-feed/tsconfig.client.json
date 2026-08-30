@@ -9,6 +9,10 @@
   },
   "files": [
     "src/client/index.ts",
+    "src/client/model.ts",
+    "src/client/RunReceiptOverlay.ts",
+    "src/client/locales.ts",
+    "src/client/styles.ts",
     "src/types.ts"
   ]
 }

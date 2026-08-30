@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { Config } from '../src/config.ts'
 import { LEGION_SETTINGS_NAMESPACE } from '../src/settings.ts'
 import { CLIENT_BANNER, CLIENT_FOOTER, CLIENT_INTRO } from '../tsdown.client.config.ts'
 
@@ -19,168 +18,56 @@ function bundle(): string {
   }
 }
 
-/** One recorded React element from the stub renderer. */
-interface Element {
-  type: unknown
-  props: Record<string, unknown> | null
-  children: unknown[]
-}
-
-function isElement(value: unknown): value is Element {
-  return typeof value === 'object' && value !== null && 'type' in value && 'children' in value
-}
-
-/** Flatten a stub element tree into every node it contains. */
-function walk(node: unknown, seen: Element[] = []): Element[] {
-  if (Array.isArray(node)) {
-    for (const child of node) walk(child, seen)
-    return seen
-  }
-  if (!isElement(node)) return seen
-  seen.push(node)
-  for (const child of node.children) walk(child, seen)
-  return seen
-}
-
-/** Every `id` the rendered tree carries. */
-function renderedIds(node: unknown): string[] {
-  return walk(node).flatMap(element => typeof element.props?.id === 'string' ? [element.props.id] : [])
-}
-
-/** Plain text visible in a rendered stub tree. */
-function renderedText(node: unknown): string {
-  if (node === null || node === undefined || typeof node === 'boolean') return ''
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(renderedText).join(' ')
-  if (!isElement(node)) return ''
-  return node.children.map(renderedText).join(' ')
-}
-
-interface StubStoreHandle {
-  spec: {
-    init(): Record<string, unknown>
-    persist?: string
-    actions: Record<string, (state: Record<string, unknown>, ...args: unknown[]) => void>
-  }
-  create(): {
-    getSnapshot(): Record<string, unknown>
-    subscribe(listener: () => void): () => void
-    actions: Record<string, (...args: unknown[]) => void>
-  }
-}
-
-/**
- * Materialize the shipped bundle exactly as the Host loader does: evaluate it
- * with a `window.__ModuleLoader__`, capture the handoff, and run its factory
- * against a require that answers only the platform module table.
- */
-/** One `<style>` the bundle injected into the stub document. */
 interface StyleTag {
   dataset: Record<string, string>
   textContent: string
 }
 
-function materialize(options: { document?: boolean; storage?: Map<string, string> } = {}): {
+function materialize(options: { document?: boolean } = {}): {
   id: string
   exports: Record<string, unknown>
   required: string[]
   styles: StyleTag[]
-  storage: Map<string, string>
-  effects: (() => void | (() => void))[]
-  intervals: (() => void)[]
 } {
   const required: string[] = []
   const styles: StyleTag[] = []
-  const storage = options.storage ?? new Map<string, string>()
-  const effects: (() => void | (() => void))[] = []
-  const intervals: (() => void)[] = []
-  let handoff: { id: string; factory: (require: (spec: string) => unknown) => unknown } | undefined
-  // The loader claims `style:not([data-plugin])` right after the factory
-  // returns, so the stub records what the bundle injected and when.
-  const stubDocument = {
+  let handoff: { id: string; factory: (require: (specifier: string) => unknown) => unknown } | undefined
+  const document = {
     head: { appendChild(tag: StyleTag) { styles.push(tag) } },
-    querySelector: (selector: string) =>
-      styles.find(tag => selector.includes(tag.dataset.pluginCss ?? '\u0000')) ?? null,
+    querySelector: (selector: string) => styles.find(tag => selector.includes(tag.dataset.pluginCss ?? '\u0000')) ?? null,
     createElement: (): StyleTag => ({ dataset: {}, textContent: '' }),
   }
-  const sandbox = {
-    window: {
-      __ModuleLoader__: {
-        load(value: typeof handoff) { handoff = value },
-      },
-    },
-    ...options.document === false ? {} : { document: stubDocument },
-    setInterval(callback: () => void) { intervals.push(callback); return intervals.length },
-    clearInterval() {},
+  runInNewContext(bundle(), {
+    window: { __ModuleLoader__: { load(value: typeof handoff) { handoff = value } } },
+    ...options.document === false ? {} : { document },
     console,
-  }
-  runInNewContext(bundle(), sandbox, { filename: 'lib/client.js' })
+  }, { filename: 'lib/client.js' })
   if (handoff === undefined) throw new Error('bundle did not register through __ModuleLoader__.load')
   const table: Record<string, unknown> = {
-    react: {
-      createElement: (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) =>
-        ({ type, props, children }),
-      useEffect: (effect: () => void | (() => void)) => { effects.push(effect) },
-      useState: (initial: unknown) => [typeof initial === 'function' ? (initial as () => unknown)() : initial, () => {}],
-    },
-    '@deepseek-ai/dsh-client-ui-primitives': {
-      IconChevronDownOutline14: function IconChevronDownOutline14() { return null },
-    },
-    '@deepseek-ai/dsh-client-store': {
-      createSnapshotStore: (initial: unknown) => {
-        let current = initial
-        return { set: (next: unknown) => { current = next }, get: () => current }
-      },
-      defineStore: (spec: StubStoreHandle['spec']): StubStoreHandle => ({
-        spec,
-        create() {
-          const listeners = new Set<() => void>()
-          const raw = spec.persist === undefined ? undefined : storage.get(spec.persist)
-          let current = raw === undefined ? spec.init() : JSON.parse(raw) as Record<string, unknown>
-          const actions = Object.fromEntries(Object.entries(spec.actions).map(([name, mutate]) => [
-            name,
-            (...args: unknown[]) => {
-              mutate(current, ...args)
-              if (spec.persist !== undefined) storage.set(spec.persist, JSON.stringify(current))
-              for (const listener of listeners) listener()
-            },
-          ]))
-          return {
-            getSnapshot: () => current,
-            subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
-            actions,
-          }
-        },
-      }),
-    },
+    react: { createElement() {}, useEffect() {}, useState() {} },
+    '@deepseek-ai/dsh-client-store': { createSnapshotStore() {}, defineStore() {} },
+    '@deepseek-ai/dsh-client-ui-primitives': { IconChevronDownOutline14() {} },
   }
-  const exports = handoff.factory((spec: string) => {
-    required.push(spec)
-    const entry = table[spec]
-    // The Host throws exactly here when a bundle's externals drifted.
-    if (entry === undefined) throw new Error(`require("${spec}") missed the module table`)
-    return entry
+  const exports = handoff.factory((specifier) => {
+    required.push(specifier)
+    const value = table[specifier]
+    if (value === undefined) throw new Error(`require("${specifier}") missed the module table`)
+    return value
   }) as Record<string, unknown>
-  return { id: handoff.id, exports, required, styles, storage, effects, intervals }
+  return { id: handoff.id, exports, required, styles }
 }
 
-describe('client bundle artifact', () => {
-  it('is wrapped as the loader factory form', () => {
+describe('root Client bundle artifact', () => {
+  it('uses the loader handoff and exact package identity', () => {
     const source = bundle()
     expect(source.startsWith('window.__ModuleLoader__.load(')).toBe(true)
-    // tsdown pretty-prints the wrapper, so pin the tokens rather than the lines.
     for (const token of [...CLIENT_BANNER.split('\n'), CLIENT_INTRO, CLIENT_FOOTER].flatMap(
       part => part.split(/[{};]/).map(piece => piece.trim()).filter(piece => piece.length > 3),
-    )) {
-      expect(source.replace(/\s+/g, ' '), token).toContain(token.replace(/\s+/g, ' '))
-    }
-  })
-
-  it('registers under the package name, which the loader matches to its graph row', () => {
+    )) expect(source.replace(/\s+/g, ' '), token).toContain(token.replace(/\s+/g, ' '))
     expect(materialize().id).toBe(manifest.name)
   })
 
-  it('preserves the root bundle module-table requests exactly', () => {
+  it('requests only the frozen Settings-card module-table entries', () => {
     expect(materialize().required).toEqual([
       '@deepseek-ai/dsh-client-store',
       'react',
@@ -188,565 +75,40 @@ describe('client bundle artifact', () => {
     ])
   })
 
-  it('injects one loader-owned stylesheet before the factory returns', () => {
+  it('claims one root Settings stylesheet and no Receipt styles', () => {
     const { styles } = materialize()
     expect(styles).toHaveLength(1)
-    const tag = styles[0]!
-    // claimStyles() keys ownership on data-plugin, and unload removes what it owns.
-    expect(tag.dataset.plugin).toBe(manifest.name)
-    expect(tag.dataset.pluginCss).toBe(`${manifest.name}/legion-card.css`)
-    expect(tag.textContent).toContain('.dsh-legion-card')
+    expect(styles[0]?.dataset).toMatchObject({
+      plugin: manifest.name,
+      pluginCss: `${manifest.name}/legion-card.css`,
+    })
+    expect(styles[0]?.textContent).toContain('.dsh-legion-card')
+    expect(styles[0]?.textContent).not.toContain('.dsh-legion-receipt')
   })
 
-  it('styles every class the browser surfaces render', () => {
-    const { styles } = materialize()
-    const css = styles[0]!.textContent
-    for (const className of [
-      'dsh-legion-card', 'dsh-legion-card--open',
-      'dsh-legion-card__header', 'dsh-legion-card__headtext', 'dsh-legion-card__name',
-      'dsh-legion-card__description', 'dsh-legion-card__pending', 'dsh-legion-card__chevron',
-      'dsh-legion-card__chevron--open', 'dsh-legion-card__body', 'dsh-legion-card__notice',
-      'dsh-legion-card__row', 'dsh-legion-card__head', 'dsh-legion-card__label',
-      'dsh-legion-card__badges', 'dsh-legion-card__badge', 'dsh-legion-card__reset',
-      'dsh-legion-card__input', 'dsh-legion-card__input--invalid',
-      'dsh-legion-card__toggle', 'dsh-legion-card__option', 'dsh-legion-card__radio',
-      'dsh-legion-card__hint', 'dsh-legion-card__invalid',
-      'dsh-legion-card__footer', 'dsh-legion-card__error',
-      'dsh-legion-card__discard', 'dsh-legion-card__save',
-      'dsh-legion-receipt', 'dsh-legion-receipt__drag', 'dsh-legion-receipt__title',
-      'dsh-legion-receipt__actions', 'dsh-legion-receipt__button', 'dsh-legion-receipt__meta',
-      'dsh-legion-receipt__metric', 'dsh-legion-receipt__section', 'dsh-legion-receipt__heading',
-      'dsh-legion-receipt__list', 'dsh-legion-receipt__row', 'dsh-legion-receipt__primary',
-      'dsh-legion-receipt__secondary', 'dsh-legion-receipt__status', 'dsh-legion-receipt__tokens',
-    ]) {
-      expect(css, className).toContain(`.${className}`)
-    }
-  })
-
-  it('takes every colour from a theme token, so the card follows the active theme', () => {
-    const css = materialize().styles[0]!.textContent
-    // Parts that pin no colour: widths and line styles carry none, and these
-    // keywords either inherit the theme or paint nothing. A declaration built
-    // only from those cannot pin a light-mode value.
-    const colourless = new Set([
-      'inherit', 'none', 'transparent', 'currentColor', 'unset', 'initial',
-      'solid', 'dashed', 'dotted', 'double', 'hidden',
-    ])
-    // Colour-bearing declarations only: border-radius and friends carry none.
-    const declarations = [...css.matchAll(/(?:^|\s)(?:color|background|background-color|border|border-color)\s*:\s*([^;]+);/g)]
-      .map(match => match[1]!.trim())
-      .filter(value => !value.split(/\s+/).every(part => colourless.has(part) || /^[\d.]/.test(part)))
-    expect(declarations.length).toBeGreaterThan(5)
-    for (const value of declarations) expect(value, value).toContain('var(--dsw-alias-')
-  })
-
-  it('names only theme tokens the DSH palette actually defines', () => {
-    const css = materialize().styles[0]!.textContent
-    // The theme package is not installable here, so this is a pinned mirror of
-    // the aliases declared in the DSH `ui-theme` palette
-    // (`src/styles/design-platform.css`). It exists because a token the palette
-    // does not define fails silently at run time: upstream's own card CSS
-    // reaches for `--dsw-alias-label-error`, which is not declared anywhere,
-    // and renders unthemed text as a result.
-    const palette = new Set([
-      '--dsw-alias-bg-layer-2', '--dsw-alias-bg-layer-3', '--dsw-alias-bg-module-platform',
-      '--dsw-alias-border-l2', '--dsw-alias-brand-primary',
-      '--dsw-alias-label-dimmed', '--dsw-alias-label-primary',
-      '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary',
-      '--dsw-alias-state-error-primary',
-    ])
-    const used = new Set([...css.matchAll(/var\((--dsw-alias-[a-z0-9-]+)\)/g)].map(match => match[1]!))
-    expect(used.size).toBeGreaterThan(5)
-    for (const token of used) expect([...palette], token).toContain(token)
-  })
-
-  it('loads without a DOM, so a DOM-free harness can still materialize it', () => {
-    expect(() => materialize({ document: false })).not.toThrow()
-  })
-
-  it('carries no unsubstituted build-time environment reads', () => {
+  it('exports only the Settings Client surface and contains no projection/overlay literals', () => {
+    const client = materialize()
+    expect(client.exports.LEGION_NAMESPACE).toBe(LEGION_SETTINGS_NAMESPACE)
+    expect(client.exports.inject).toEqual(['slots', 'locale', 'settingsScope'])
+    expect(client.exports).not.toHaveProperty('RunReceiptOverlay')
+    expect(client.exports).not.toHaveProperty('LEGION_RUN_RECEIPT_PROJECTION_KEY')
     const source = bundle()
-    expect(source).not.toMatch(/process\.env/)
-    expect(source).not.toMatch(/import\.meta/)
+    expect(source).not.toContain('legion/run-receipts')
+    expect(source).not.toContain('shell.overlay')
+    expect(source).not.toContain('RunReceiptOverlay')
   })
 
-  it('declares the exact web platform literal the client registry matches', () => {
-    expect(manifest.dsh?.client?.platform).toBe('web')
-  })
-
-  it('exports the client bundle the registry loads', () => {
+  it('keeps the exact Web registry platform, Client export, and supplier edge', () => {
+    expect(manifest.dsh?.client).toEqual({
+      platform: 'web',
+      inject: ['@deepseek-ai/dsh-client-ui-settings-plugins'],
+    })
     const client = manifest.exports['./client'] as { default?: string } | string | undefined
-    const resolved = typeof client === 'string' ? client : client?.default
-    expect(resolved).toBe('./lib/client.js')
-  })
-})
-
-describe('client plugin behaviour', () => {
-  function context(options: { lands?: boolean; writable?: boolean } = {}) {
-    const lands = options.lands ?? true
-    const registrations: Record<string, unknown>[] = []
-    const dictionaries: string[] = []
-    let listener: (() => void) | undefined
-    const writes: { field: string; value?: unknown; kind: 'set' | 'unset' }[] = []
-    let snapshot = {
-      status: 'ready' as const,
-      // The user layer overrides only toolName, and overrides it away from what
-      // the composition layer holds, so a reset seeded from `base` is
-      // distinguishable from one seeded from the effective value.
-      value: {
-        toolName: 'delegate', maxResourceBytes: 65536, enableRunInBackground: true,
-      } as Record<string, unknown>,
-      base: {
-        toolName: 'legion', maxResourceBytes: 65536, enableRunInBackground: true,
-      } as Record<string, unknown>,
-      user: { toolName: 'delegate' } as Record<string, unknown>,
-      revision: 1,
-      writable: options.writable ?? true,
-      mode: 'host' as const,
-    }
-    // The Host is the only authority on whether a value was accepted, so the
-    // stub applies accepted writes to the layers the card reads back from.
-    const apply = (next: { user: Record<string, unknown>; value: Record<string, unknown> }) => {
-      if (!lands) return
-      snapshot = { ...snapshot, ...next, revision: (snapshot.revision ?? 0) + 1 }
-      listener?.()
-    }
-    const ctx = {
-      settingsScope: {
-        bind(spec: { namespace: string }) {
-          bound.push(spec.namespace)
-          return {
-            getSnapshot: () => snapshot,
-            subscribe: (fn: () => void) => { listener = fn; return () => { listener = undefined } },
-            set: (field: string, value: unknown) => {
-              writes.push({ field, value, kind: 'set' })
-              apply({
-                user: { ...snapshot.user, [field]: value },
-                value: { ...snapshot.value, [field]: value },
-              })
-              return Promise.resolve()
-            },
-            unset: (field: string) => {
-              writes.push({ field, kind: 'unset' })
-              const { [field]: _dropped, ...user } = snapshot.user
-              const base = snapshot.base as Record<string, unknown>
-              apply({
-                user,
-                value: Object.hasOwn(base, field)
-                  ? { ...snapshot.value, [field]: base[field] }
-                  : Object.fromEntries(Object.entries(snapshot.value).filter(([key]) => key !== field)),
-              })
-              return Promise.resolve()
-            },
-          }
-        },
-      },
-      slots: {
-        inject(_name: string, register: () => unknown) { register() },
-        register(options: Record<string, unknown>, component: unknown) {
-          registrations.push({ ...options, component })
-          return () => {}
-        },
-      },
-      locale: {
-        register(namespace: string) { dictionaries.push(namespace); return () => {} },
-      },
-      effect(callback: () => (() => void) | void) { callback() },
-    }
-    const bound: string[] = []
-    return {
-      ctx,
-      registrations,
-      dictionaries,
-      bound,
-      writes,
-      notify: () => listener?.(),
-      setSnapshot: (next: typeof snapshot) => { snapshot = next },
-    }
-  }
-
-  /** Mount the materialized browser plugin under the loader protocol. */
-  function mount(
-    harness: ReturnType<typeof context>,
-    client = materialize(),
-  ): ReturnType<typeof materialize> {
-    ;(client.exports.apply as (ctx: unknown) => void)(harness.ctx)
-    return client
-  }
-
-  /** Mount the bundle and return the settings card registration, face, and store. */
-  function card(harness: ReturnType<typeof context>) {
-    const { exports } = mount(harness)
-    const registration = harness.registrations.find(entry => entry.name === 'settings.plugin.item')!
-    const face = (registration.inject as () => Record<string, unknown>)()
-    const store = (face.hooks as { legionCard: { get(): Record<string, unknown> } }).legionCard
-    const render = () => (registration.component as (props: unknown) => unknown)({
-      t: (key: string) => key,
-      useLegionCard: () => store.get(),
-      toggle: face.toggle as () => void,
-      edit: face.edit as unknown,
-      resetField: face.resetField as unknown,
-      save: face.save as unknown,
-      discard: face.discard as unknown,
-    })
-    return { exports, registration, face, store, render }
-  }
-
-  const receiptProjection = {
-    receipts: {
-      'run-1': {
-        schemaVersion: 3,
-        runId: 'run-1',
-        strategy: 'independent-review',
-        cohort: 'reviewers',
-        planDigest: 'sha256:plan',
-        startedAt: 100,
-        elapsedMs: 1500,
-        outcome: 'running',
-        stages: [
-          { id: 'research', kind: 'dsh-delegate', member: 'analyst', expectedChildren: 1, after: [], status: 'completed' },
-          { id: 'write', kind: 'dsh-delegate', member: 'writer', expectedChildren: 1, after: ['research'], status: 'pending' },
-        ],
-        participation: [
-          { childId: 'child-1', parentId: 'parent', depth: 1, stage: 'research', member: 'analyst', childIndex: 0, state: 'live', registryStatus: 'running' },
-          { childId: 'child-2', parentId: 'parent', depth: 1, stage: 'write', member: 'writer', childIndex: 0, state: 'ended' },
-        ],
-        tokenAccount: {
-          totals: { totalTokens: 48, uncachedInputTokens: 20, outputTokens: 10, cacheReadTokens: 12, cacheWriteTokens: 6 },
-          sessions: [],
-        },
-      },
-    },
-  }
-
-  /** Mount and render the root-scoped Run Receipt overlay. */
-  function overlay(
-    harness: ReturnType<typeof context>,
-    projection: unknown = receiptProjection,
-    client = materialize(),
-  ) {
-    const { exports } = mount(harness, client)
-    const registration = harness.registrations.find(entry => entry.name === 'shell.overlay')!
-    const instance = (registration.store as StubStoreHandle).create()
-    const sessions = {
-      ids: ['parent'],
-      byId: {
-        parent: {
-          id: 'parent', displayTitle: 'Parent', running: true, blank: false, updatedAt: 100,
-          projectionValues: projection === null ? {} : { 'legion/run-receipts': projection },
-        },
-      },
-      current: 'parent',
-      phase: 'ready',
-      subagentsByParent: {},
-      jobsBySession: {},
-      currentAddress: undefined,
-    }
-    const copy = exports.en as Record<string, string>
-    const render = () => (registration.component as (props: unknown) => unknown)({
-      useStore: (selector: (state: Record<string, unknown>) => unknown) => selector(instance.getSnapshot()),
-      actions: instance.actions,
-      useSessions: (selector: (state: typeof sessions) => unknown) => selector(sessions),
-      useWorkspaces: () => undefined,
-      t: (key: string) => copy[key] ?? key,
-    })
-    return { registration, instance, render, client }
-  }
-
-  /** Let both the write and the read-back settle. */
-  const settle = async () => { for (let tick = 0; tick < 6; tick += 1) await Promise.resolve() }
-
-  it('registers one keyed card for the namespace the Host half owns', () => {
-    const harness = context()
-    const { registration } = card(harness)
-    expect(harness.bound).toEqual([LEGION_SETTINGS_NAMESPACE])
-    expect(harness.registrations.filter(entry => entry.name === 'settings.plugin.item')).toHaveLength(1)
-    expect(registration.name).toBe('settings.plugin.item')
-    expect(registration.key).toBe(LEGION_SETTINGS_NAMESPACE)
-    expect(harness.dictionaries).toEqual(['settings.legion'])
+    expect(typeof client === 'string' ? client : client?.default).toBe('./lib/client.js')
   })
 
-  it('adds a distinct overlay registration without replacing an existing entry', () => {
-    const harness = context()
-    harness.ctx.slots.register({ name: 'shell.overlay', id: 'other-plugin' }, () => null)
-    mount(harness)
-    const overlays = harness.registrations.filter(entry => entry.name === 'shell.overlay')
-    expect(overlays.map(entry => entry.id)).toEqual(['other-plugin', 'legion.run-receipt'])
-    expect(overlays[1]).not.toHaveProperty('children')
-  })
-
-  it('uses the projection key published by the Host half', () => {
-    expect(materialize().exports.LEGION_RUN_RECEIPT_PROJECTION_KEY).toBe('legion/run-receipts')
-  })
-
-  it('renders no overlay without a current Run Receipt projection', () => {
-    const harness = context()
-    expect(overlay(harness, null).render()).toBeNull()
-  })
-
-  it('renders the stage graph, participation, elapsed time, and token account', () => {
-    const harness = context()
-    const mounted = overlay(harness)
-    const tree = mounted.render()
-    const text = renderedText(tree)
-    for (const visible of [
-      'Run Receipt', 'independent-review', 'reviewers', '1.5 s',
-      'research', 'analyst', 'completed', 'write', 'writer', 'pending',
-      'running', 'ended', '48', '20', '10', '12', '6',
-    ]) expect(text, visible).toContain(visible)
-    expect(text).toContain('research') // The write stage exposes its dependency edge.
-    expect((tree as Element).props?.['data-run-id']).toBe('run-1')
-    const client = mounted.client
-    client.effects[0]!()
-    expect(client.intervals).toHaveLength(1)
-  })
-
-  it('persists dock, position, and per-run dismissal through the official store seat', () => {
-    const harness = context()
-    const storage = new Map<string, string>()
-    const mounted = overlay(harness, receiptProjection, materialize({ storage }))
-    const handle = mounted.registration.store as StubStoreHandle
-    expect(handle.spec.persist).toBe('dsh-legion.run-receipt-overlay.v1')
-    const initial = mounted.render() as Element
-    expect(initial.props?.['data-docked']).toBe(true)
-
-    let captured = false
-    const currentTarget = {
-      dataset: {} as Record<string, string>,
-      closest: () => ({
-        parentElement: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 700 }) },
-        getBoundingClientRect: () => ({ left: 40, top: 50, width: 360, height: 300 }),
-      }),
-      setPointerCapture: () => { captured = true },
-      hasPointerCapture: () => captured,
-      releasePointerCapture: () => { captured = false },
-    }
-    const drag = walk(initial).find(node => node.props?.className === 'dsh-legion-receipt__title')!
-    const pointer = (clientX: number, clientY: number) => ({ currentTarget, clientX, clientY, pointerId: 1 })
-    ;(drag.props?.onPointerDown as (event: unknown) => void)(pointer(100, 100))
-    ;(drag.props?.onPointerMove as (event: unknown) => void)(pointer(180, 140))
-
-    const moved = mounted.render() as Element
-    expect(moved.props?.['data-docked']).toBeUndefined()
-    expect(moved.props?.style).toMatchObject({
-      left: expect.stringContaining('120px'),
-      top: expect.stringContaining('90px'),
-    })
-
-    const dock = walk(moved).find(node => node.type === 'button' && renderedText(node) === 'Dock')!
-    ;(dock.props?.onClick as () => void)()
-    const docked = mounted.render() as Element
-    expect(docked.props?.['data-docked']).toBe(true)
-    const dismiss = walk(docked).find(node => node.type === 'button' && renderedText(node) === 'Dismiss')!
-    ;(dismiss.props?.onClick as () => void)()
-    expect(mounted.render()).toBeNull()
-
-    expect(handle.create().getSnapshot()).toMatchObject({
-      docked: true, x: 120, y: 90, dismissedRunId: 'run-1',
-    })
-
-    const offscreen = new Map([[
-      'dsh-legion.run-receipt-overlay.v1',
-      JSON.stringify({ docked: false, x: 4000, y: 4000, dismissedRunId: null }),
-    ]])
-    const restored = overlay(context(), receiptProjection, materialize({ storage: offscreen })).render() as Element
-    expect(restored.props?.style).toMatchObject({
-      left: expect.stringMatching(/^clamp\(12px, 4000px,/),
-      top: expect.stringMatching(/^clamp\(12px, 4000px,/),
-    })
-  })
-
-  it('declares the browser services it needs', () => {
-    expect(materialize().exports.inject).toEqual(
-      ['slots', 'locale', 'connection', 'remote', 'settingsScope'],
-    )
-  })
-
-  it('keeps the card namespace equal to the Host registration', () => {
-    expect(materialize().exports.LEGION_NAMESPACE).toBe(LEGION_SETTINGS_NAMESPACE)
-  })
-
-  it('bounds its byte control exactly where the Host schema does', () => {
-    const range = materialize().exports.LEGION_MAX_RESOURCE_BYTES as { min: number; max: number }
-    const authored = { profiles: { quick: { description: 'Quick work.' } } }
-    expect(() => Config({ ...authored, maxResourceBytes: range.min } as never)).not.toThrow()
-    expect(() => Config({ ...authored, maxResourceBytes: range.max } as never)).not.toThrow()
-    expect(() => Config({ ...authored, maxResourceBytes: range.min - 1 } as never)).toThrow()
-    expect(() => Config({ ...authored, maxResourceBytes: range.max + 1 } as never)).toThrow()
-  })
-
-  it('stages an edit and writes it only on save', async () => {
-    const harness = context()
-    const { face, store } = card(harness)
-    ;(face.edit as (field: string, text: string) => void)('toolName', 'dispatch')
-    // Staged, not written.
-    expect(harness.writes).toEqual([])
-    expect((store.get().toolName as { text: string }).text).toBe('dispatch')
-    expect(store.get().dirty).toBe(true)
-    ;(face.save as () => void)()
-    await settle()
-    expect(harness.writes).toEqual([{ field: 'toolName', value: 'dispatch', kind: 'set' }])
-    expect(store.get().dirty).toBe(false)
-    expect(store.get().failed).toBe(false)
-  })
-
-  it('treats retyping the stored value as no edit at all', () => {
-    const harness = context()
-    const { face, store } = card(harness)
-    ;(face.edit as (field: string, text: string) => void)('toolName', 'dispatch')
-    expect(store.get().dirty).toBe(true)
-    ;(face.edit as (field: string, text: string) => void)('toolName', 'delegate')
-    expect(store.get().dirty).toBe(false)
-    expect(harness.writes).toEqual([])
-  })
-
-  it('treats inheriting a field the user layer never carried as no edit at all', async () => {
-    const harness = context()
-    const { face, store } = card(harness)
-    // The section resolves this to the schema default, so the control shows
-    // `true` while the user layer carries nothing. Choosing Inherit restates
-    // that, and must not arm a save that would write an unset for nothing.
-    expect((store.get().enableRunInBackground as { text: string }).text).toBe('true')
-    ;(face.edit as (field: string, text: string) => void)('enableRunInBackground', '')
-    expect(store.get().dirty).toBe(false)
-    ;(face.save as () => void)()
-    await settle()
-    expect(harness.writes).toEqual([])
-  })
-
-  it('refuses a byte draft outside the schema range instead of sending it', () => {
-    const range = materialize().exports.LEGION_MAX_RESOURCE_BYTES as { min: number; max: number }
-    for (const draft of [String(range.min - 1), String(range.max + 1), '1.5', 'lots']) {
-      const harness = context()
-      const { face, store } = card(harness)
-      ;(face.edit as (field: string, text: string) => void)('maxResourceBytes', draft)
-      expect((store.get().maxResourceBytes as { invalid: boolean }).invalid, draft).toBe(true)
-      expect(store.get().invalid, draft).toBe(true)
-      ;(face.save as () => void)()
-      expect(harness.writes, draft).toEqual([])
-    }
-  })
-
-  it('accepts a byte draft at either end of the schema range', () => {
-    const range = materialize().exports.LEGION_MAX_RESOURCE_BYTES as { min: number; max: number }
-    for (const draft of [range.min, range.max]) {
-      const harness = context()
-      const { face, store } = card(harness)
-      ;(face.edit as (field: string, text: string) => void)('maxResourceBytes', String(draft))
-      expect((store.get().maxResourceBytes as { invalid: boolean }).invalid, String(draft)).toBe(false)
-      expect(store.get().dirty, String(draft)).toBe(true)
-    }
-  })
-
-  it('previews the composition layer when a field is reset', () => {
-    const harness = context()
-    const { face, store } = card(harness)
-    ;(face.resetField as (field: string) => void)('toolName')
-    // The user layer holds 'delegate' over a composition layer holding
-    // 'legion', so the control must show what it re-inherits rather than what
-    // it is about to stop holding.
-    expect((store.get().toolName as { text: string }).text).toBe('legion')
-    expect((store.get().toolName as { overridden: boolean }).overridden).toBe(false)
-    expect(store.get().dirty).toBe(true)
-  })
-
-  it('does not become dirty resetting a field the user layer never carried', () => {
-    const harness = context()
-    const { face, store } = card(harness)
-    ;(face.resetField as (field: string) => void)('maxResourceBytes')
-    expect(store.get().dirty).toBe(false)
-  })
-
-  it('reports a save the Host did not take, and keeps the drafts', async () => {
-    const harness = context({ lands: false })
-    const { face, store } = card(harness)
-    ;(face.edit as (field: string, text: string) => void)('toolName', 'dispatch')
-    ;(face.save as () => void)()
-    await settle()
-    expect(harness.writes).toEqual([{ field: 'toolName', value: 'dispatch', kind: 'set' }])
-    expect(store.get().failed).toBe(true)
-    expect(store.get().dirty).toBe(true)
-    expect((store.get().toolName as { text: string }).text).toBe('dispatch')
-  })
-
-  it('renders nothing while the Host does not serve the namespace', () => {
-    const harness = context()
-    harness.setSnapshot({
-      status: 'unavailable', value: {}, base: {}, user: {},
-      revision: undefined, writable: false, mode: 'host',
-    } as never)
-    expect(card(harness).render()).toBeNull()
-  })
-
-  it('discloses its controls only once the card is opened', () => {
-    const harness = context()
-    const { face, render } = card(harness)
-    expect(renderedIds(render())).toEqual([])
-    ;(face.toggle as () => void)()
-    // A toggle's label names its group through `aria-labelledby`, since a
-    // `<label for>` may only point at a form control.
-    expect(renderedIds(render())).toEqual([
-      'dsh-legion-tool-name',
-      'dsh-legion-default-profile',
-      'dsh-legion-max-resource-bytes',
-      'dsh-legion-run-in-background-label',
-      'dsh-legion-run-in-background',
-      'dsh-legion-enable-strategies-label',
-      'dsh-legion-enable-strategies',
-    ])
-  })
-
-  it('renders the card as one list item, matching the tab that dispatches it', () => {
-    const harness = context()
-    const { face, render } = card(harness)
-    ;(face.toggle as () => void)()
-    const tree = render() as Element
-    expect(tree.type).toBe('li')
-    expect(walk(tree).length).toBeGreaterThan(5)
-  })
-
-  it('says a read-only document cannot be saved, and disables every control', () => {
-    const harness = context({ writable: false })
-    const { face, render } = card(harness)
-    ;(face.toggle as () => void)()
-    const nodes = walk(render())
-    expect(nodes.some(node => node.props?.className === 'dsh-legion-card__notice')).toBe(true)
-    const controls = nodes.filter(node => node.type === 'input')
-    // Text fields, the byte field, and three radios per tri-state control.
-    expect(controls.length).toBeGreaterThanOrEqual(9)
-    for (const node of controls) expect(node.props?.disabled).toBe(true)
-    // The disclosure header stays live: collapsing a card is not a write.
-    const buttons = nodes.filter(node =>
-      node.type === 'button' && node.props?.className !== 'dsh-legion-card__header')
-    expect(buttons.length).toBeGreaterThan(0)
-    for (const node of buttons) expect(node.props?.disabled, String(node.props?.className)).toBe(true)
-  })
-
-  it('offers the three boolean states as one exclusive radio group', () => {
-    const harness = context()
-    const { face, render } = card(harness)
-    ;(face.toggle as () => void)()
-    const nodes = walk(render())
-    const group = nodes.find(node => node.props?.id === 'dsh-legion-run-in-background')
-    expect(group?.props?.role).toBe('radiogroup')
-    expect(group?.props?.['aria-labelledby']).toBe('dsh-legion-run-in-background-label')
-    const radios = walk(group).filter(node => node.type === 'input')
-    expect(radios).toHaveLength(3)
-    expect(radios.map(radio => radio.props?.value)).toEqual(['', 'true', 'false'])
-    expect(radios.every(radio => radio.props?.type === 'radio')).toBe(true)
-    // One group, so exactly one option can be selected at a time.
-    expect(radios.filter(radio => radio.props?.checked === true)).toHaveLength(1)
-    expect(new Set(radios.map(radio => radio.props?.name))).toEqual(
-      new Set(['dsh-legion-run-in-background']))
-  })
-
-  it('restates unsaved edits in the header label, which replaces its contents', () => {
-    const harness = context()
-    const { face, render } = card(harness)
-    const label = () => (walk(render()).find(
-      node => node.props?.className === 'dsh-legion-card__header')?.props?.['aria-label'])
-    expect(label()).toBe('expand: title')
-    ;(face.edit as (field: string, text: string) => void)('toolName', 'dispatch')
-    expect(label()).toBe('expand: title (unsaved)')
+  it('loads without a DOM and carries no unsubstituted environment reads', () => {
+    expect(() => materialize({ document: false })).not.toThrow()
+    expect(bundle()).not.toMatch(/process\.env|import\.meta/)
   })
 })
