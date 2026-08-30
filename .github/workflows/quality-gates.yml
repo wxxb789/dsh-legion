@@ -92,7 +92,7 @@ jobs:
       - if: inputs.dsh-source-artifact != ''
         run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - if: inputs.dsh-source-artifact != ''
-        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output dependency-preflight-report.json
+        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output "${{ runner.temp }}/dependency-preflight-report.json"
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run test:composition:built
@@ -141,7 +141,7 @@ jobs:
       - if: inputs.dsh-source-artifact != ''
         run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
       - if: inputs.dsh-source-artifact != ''
-        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output dependency-preflight-report.json
+        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output "${{ runner.temp }}/dependency-preflight-report.json"
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract

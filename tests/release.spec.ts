@@ -151,6 +151,8 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).toContain('pnpm exec node scripts/install-dsh-tarballs.mjs')
     expect((workflow.match(/--non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs"/g) ?? []))
       .toHaveLength(2)
+    expect((workflow.match(/--output "\$\{\{ runner\.temp \}\}\/dependency-preflight-report\.json"/g) ?? []))
+      .toHaveLength(2)
     expect(workflow).toContain("if: inputs.dsh-source-artifact == ''")
     expect(workflow).toContain('DSH_REGISTRY: https://registry.npmjs.org')
     expect(workflow).toContain("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'")
