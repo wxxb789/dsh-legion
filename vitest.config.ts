@@ -40,6 +40,10 @@ export default defineConfig({
         resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'react-dom'),
         'client.js',
       ),
+      'react-dom': resolve(
+        resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'react-dom'),
+        'index.js',
+      ),
       'use-sync-external-store/shim/with-selector': resolve(
         resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'use-sync-external-store'),
         'shim/with-selector.js',
