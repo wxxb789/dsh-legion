@@ -166,6 +166,7 @@ describe('dsh-legion-receipts package contract', () => {
       )
     }
     expect(value.peerDependencies.react).toBe('^18.2.0')
+    expect(value.devDependencies.jsdom).toBe('29.1.1')
     expect(value.devDependencies.react).toBe('^18.2.0')
     for (const dependency of [
       '@deepseek-ai/dsh-client-connection',

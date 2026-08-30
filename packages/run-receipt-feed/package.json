@@ -116,6 +116,7 @@
     "@deepseek-ai/dsh-typert-protocol": "0.1.2-alpha.1",
     "@deepseek-ai/dsh-typert-registry": "0.1.2-alpha.1",
     "@types/react": "~18.3.1",
+    "jsdom": "29.1.1",
     "react": "^18.2.0",
     "tsdown": "^0.22.2",
     "typescript": "^6.0.3",
