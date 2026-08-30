@@ -128,6 +128,8 @@ export type RoutePlan = SelectedRoutePlan | UnroutableRoutePlan
 export type RoutableSpecialist = EffectiveSpecialist & {
   readonly routes: NonNullable<EffectiveSpecialist['routes']>
 }
+/** @deprecated Use RoutableSpecialist. */
+export type RoutableProfile = RoutableSpecialist
 
 export class RoutePlanError extends Error {
   readonly plan: UnroutableRoutePlan

@@ -13,7 +13,7 @@ Five scalar policies, the ones worth changing while the harness runs:
 | Control | Field | Effect |
 |---|---|---|
 | Tool name | `toolName` | Renames the delegation tool; the tool is republished under the new name. |
-| Default specialist | `defaultProfile` | Specialist used when a call omits one. |
+| Default Specialist | `defaultSpecialist` | Specialist used when a call omits one. Stored 1.x `defaultProfile` loads with a deprecation diagnostic; the next edited save removes it atomically. |
 | Prompt fragment budget | `maxResourceBytes` | Maximum combined prompt-fragment bytes loaded for one specialist. |
 | Background delegation | `enableRunInBackground` | Whether the tool accepts `run_in_background`. |
 | Model-callable Strategies | `enableStrategies` | The explicit authority gate; off by default. |

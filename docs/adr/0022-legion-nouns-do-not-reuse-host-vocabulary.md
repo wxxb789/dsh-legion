@@ -23,8 +23,8 @@ Verified against the DeepSeek Harness checkout at version 0.1.1-rc.2 (227 packag
 ## Consequences
 
 - Legion's positioning moves one layer up. Legion owns cohort and dispatch policy — which Specialist is sent, under which route, within which limits, and on what evidence a run is complete — while execution mechanics (roster, mailbox, task DAG) stay with the Host. Today those mechanics are reached through `ctx.subagents`; if `ctx.agentTeams` is published, the backend changes and the vocabulary does not.
-- The rename touches the authored configuration schema, the model-facing tool parameter, branded identities, compiled IR, public contract documents, and the settings namespace. It ships as a dual-name window: `profiles`/`specialists` and `teams`/`cohorts` are both accepted for one minor version, the old name emits a deprecation diagnostic, and migration is a pure function that never overwrites a user preset.
-- This rule cannot be satisfied once and forgotten. The Host is a lockstep monorepo of 227 packages under active development and does not accept external pull requests, so its vocabulary will keep growing into space Legion may already occupy. Checking a noun against the Host tree becomes part of adding a term.
+- The rename touches the authored configuration schema, the model-facing tool parameter, branded identities, compiled IR, public contract documents, and the settings namespace. It ships as a dual-name 1.x window: retired spellings remain accepted but non-advertised, every authored occurrence emits a replacement diagnostic with removal no earlier than 2.0.0, and migration is a pure function that never overwrites a user preset.
+- This rule cannot be satisfied once and forgotten. The Host is an independently evolving lockstep monorepo, so its public vocabulary may grow into space Legion already occupies. Checking a noun against the current Host package tree and documenting any required Host-owned future seam are part of adding a term; neither an assumed upstream contribution path nor a permanent-gap claim substitutes for current source evidence.
 
 ## Considered options
 

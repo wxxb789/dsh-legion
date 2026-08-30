@@ -39,7 +39,7 @@
     "journalContractAndPureReplay": "supported",
     "liveSettingsReconfiguration": "capability-detected-optional",
     "durableMutation": "unavailable-fail-closed",
-    "reason": "DSH 0.1.2-alpha.1 still provides no atomic run coordination Host service for durable mutation, and its persisted-event vocabulary has no registration seam for out-of-repository legion/* events. Journal activation therefore remains fail-closed. Ephemeral Profiles and Strategies remain supported; Run Receipt events are published only when no persistence backend can later reopen the Session, or when the Host vocabulary explicitly recognizes the event."
+    "reason": "DSH 0.1.2-alpha.1 still provides no atomic run coordination Host service for durable mutation, and its persisted-event vocabulary has no registration seam for out-of-repository legion/* events. Journal activation therefore remains fail-closed. Ephemeral Specialists and Strategies remain supported; full Run Receipt facts use the optional process-local companion feed, append no custom Session event, and keep the bounded tool summary when the companion is absent."
   },
   "previousMinorCompatibility": [
     "config-v2-with-durable-fields-omitted",

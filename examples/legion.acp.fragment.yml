@@ -5,7 +5,7 @@
 # config: registering a ctx.subagents provider is DSH's job, not Legion's.
 #
 # legionCatalogLayer gives each registered provider a Specialist. Append it to
-# Legion's catalogLayers; it requires configVersion 2. A Specialist whose provider
+# Legion's catalogLayers; it requires configVersion 3. A Specialist whose provider
 # is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,
 # never a hard failure, so you can adopt these one at a time.
 #

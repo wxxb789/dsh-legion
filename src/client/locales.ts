@@ -5,7 +5,7 @@ export type LegionCardKey =
   | 'title' | 'description'
   | 'expand' | 'collapse' | 'unsaved' | 'readOnly'
   | 'toolName' | 'toolNameHint'
-  | 'defaultProfile' | 'defaultProfileHint'
+  | 'defaultSpecialist' | 'defaultSpecialistHint'
   | 'maxResourceBytes' | 'maxResourceBytesHint'
   | 'enableRunInBackground' | 'enableRunInBackgroundHint'
   | 'enableStrategies' | 'enableStrategiesHint'
@@ -24,17 +24,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** English copy. */
 export const en: Record<LegionCardKey, string> = {
   title: 'Legion',
-  description: 'Delegation policy. Profiles, Teams, and Strategies stay in the configuration document.',
+  description: 'Delegation policy. Specialists, Cohorts, and Strategies stay in the configuration document.',
   expand: 'Expand',
   collapse: 'Collapse',
   unsaved: 'Unsaved',
   readOnly: 'This configuration document is read-only, so these controls cannot be saved.',
   toolName: 'Tool name',
   toolNameHint: 'The single model-facing delegation tool. Renaming it republishes the tool.',
-  defaultProfile: 'Default profile',
-  defaultProfileHint: 'Profile used when a call omits one. Leave empty to require an explicit choice.',
+  defaultSpecialist: 'Default Specialist',
+  defaultSpecialistHint: 'Specialist used when a call omits one. Leave empty to require an explicit choice.',
   maxResourceBytes: 'Prompt fragment budget',
-  maxResourceBytesHint: 'Maximum combined prompt-fragment bytes loaded for one profile, from 1 to 4194304.',
+  maxResourceBytesHint: 'Maximum combined prompt-fragment bytes loaded for one Specialist, from 1 to 4194304.',
   enableRunInBackground: 'Background delegation',
   enableRunInBackgroundHint: 'Whether the tool accepts run_in_background and returns a durable child id.',
   enableStrategies: 'Model-callable Strategies',
@@ -55,17 +55,17 @@ export const en: Record<LegionCardKey, string> = {
 /** Simplified Chinese copy. */
 export const zh: Record<LegionCardKey, string> = {
   title: 'Legion',
-  description: '委派策略。Profile、Team 与 Strategy 仍由配置文档管理。',
+  description: '委派策略。Specialist、Cohort 与 Strategy 仍由配置文档管理。',
   expand: '展开',
   collapse: '收起',
   unsaved: '未保存',
   readOnly: '当前配置文档为只读，这些设置无法保存。',
   toolName: '工具名称',
   toolNameHint: '面向模型的唯一委派工具。重命名后会重新发布该工具。',
-  defaultProfile: '默认 Profile',
-  defaultProfileHint: '调用未指定 Profile 时使用。留空则要求显式选择。',
+  defaultSpecialist: '默认 Specialist',
+  defaultSpecialistHint: '调用未指定 Specialist 时使用。留空则要求显式选择。',
   maxResourceBytes: 'Prompt 片段预算',
-  maxResourceBytesHint: '单个 Profile 载入的 prompt 片段字节上限，取值 1 至 4194304。',
+  maxResourceBytesHint: '单个 Specialist 载入的 prompt 片段字节上限，取值 1 至 4194304。',
   enableRunInBackground: '后台委派',
   enableRunInBackgroundHint: '是否接受 run_in_background 并立即返回持久子代理 id。',
   enableStrategies: '模型可调用的 Strategy',

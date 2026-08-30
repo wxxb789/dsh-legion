@@ -90,9 +90,9 @@ export function StrategyPlanDigest(value: string): StrategyPlanDigest {
   return value as StrategyPlanDigest
 }
 
-/** @deprecated Use SpecialistName internally. */
+/** @deprecated Use SpecialistName. */
 export type ProfileName = SpecialistName
-/** @deprecated Use SpecialistName internally. */
+/** @deprecated Use SpecialistName. */
 export function ProfileName(value: string): ProfileName {
   if (!PROFILE_NAME.test(value)) {
     throw new Error(`dsh-legion: profile name "${value}" must match ${String(PROFILE_NAME)}`)
@@ -100,17 +100,17 @@ export function ProfileName(value: string): ProfileName {
   return value as ProfileName
 }
 
-/** @deprecated Use CohortName internally. */
+/** @deprecated Use CohortName. */
 export type TeamName = CohortName
-/** @deprecated Use CohortName internally. */
+/** @deprecated Use CohortName. */
 export function TeamName(value: string): TeamName {
   if (!PROFILE_NAME.test(value)) throw new Error(`dsh-legion: invalid TeamName "${value}"`)
   return value as TeamName
 }
 
-/** @deprecated Use CohortRunId internally. */
+/** @deprecated Use CohortRunId. */
 export type TeamRunId = CohortRunId
-/** @deprecated Use CohortRunId internally. */
+/** @deprecated Use CohortRunId. */
 export function TeamRunId(value: string): TeamRunId {
   if (!COHORT_RUN_ID.test(value)) throw new Error('dsh-legion: invalid Team Run identity')
   return value as TeamRunId

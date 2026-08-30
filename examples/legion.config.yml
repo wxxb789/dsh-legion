@@ -1,8 +1,8 @@
-configVersion: 2
+configVersion: 3
 # Durable mutation is opt-in and requires Host projection + atomic coordination.
 enableDurableRuns: false
 toolName: legion
-defaultProfile: quick
+defaultSpecialist: quick
 enableRunInBackground: true
 resourceRoots:
   bundled: resources

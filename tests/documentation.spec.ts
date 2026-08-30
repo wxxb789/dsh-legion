@@ -6,30 +6,79 @@ import { fileURLToPath } from 'node:url'
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const RETIRED_NOUN = /\b(?:profile|profiles|team|teams)\b/gi
 const DOCUMENT_EXTENSIONS = new Set(['.json', '.md', '.yaml', '.yml'])
-const HISTORICAL_DOC_PREFIXES = [
-  'docs/design/',
-  'docs/notes/',
-  'docs/plans/',
-  'docs/research/',
-]
-const HISTORICAL_DOCS = new Set([
-  'CHANGELOG.md',
-  'docs/adr/0022-legion-nouns-do-not-reuse-host-vocabulary.md',
-  'docs/legion-v2-plan.md',
+const HISTORICAL_DOC_ALLOWLIST = [
+  { prefix: 'docs/design/', reason: 'Superseded design records retain the vocabulary they evaluated.' },
+  { prefix: 'docs/notes/', reason: 'Versioned source audits quote historical Host and Legion contracts.' },
+  { prefix: 'docs/plans/', reason: 'Accepted implementation plans are immutable decision history.' },
+  { prefix: 'docs/research/', reason: 'Research records quote compared projects and pre-ADR terminology.' },
+] as const
+const HISTORICAL_DOCS = new Map([
+  ['docs/adr/0022-legion-nouns-do-not-reuse-host-vocabulary.md', 'The naming ADR must quote the retired nouns it replaces.'],
+  ['docs/legion-v2-plan.md', 'The accepted comparison plan quotes retired Legion and Host competitor vocabulary.'],
 ])
-const MACHINE_DOC_PREFIXES = [
-  '.github/',
-  'benchmarks/',
-  'contracts/',
-  'tests/fixtures/',
-]
-const MACHINE_DOCS = new Set([
-  'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'tsconfig.json',
+const MACHINE_DOC_ALLOWLIST = [
+  { prefix: '.github/', reason: 'Workflow and issue metadata are machine contracts, not current product prose.' },
+  { prefix: 'benchmarks/', reason: 'Frozen evidence fixtures retain versioned field names.' },
+  { prefix: 'contracts/', reason: 'Published machine contracts retain explicit compatibility fields.' },
+  { prefix: 'tests/fixtures/', reason: 'Frozen compatibility fixtures preserve historical wire bytes.' },
+] as const
+const MACHINE_DOCS = new Map([
+  ['pnpm-lock.yaml', 'Package-manager state is generated machine data.'],
+  ['pnpm-workspace.yaml', 'Workspace composition is machine data.'],
+  ['tsconfig.json', 'TypeScript project metadata is machine data.'],
 ])
 const CURRENT_YAML_PREFIXES = ['examples/', 'presets/']
 const CURRENT_YAML_DOCS = new Set(['cordis.patch.yml'])
+const PUBLIC_VOCABULARY_SOURCE = [
+  'src/index.ts',
+  'src/compiler.ts',
+  'src/orchestration.ts',
+  'src/explain.ts',
+  'src/execution.ts',
+  'src/prompt.ts',
+  'src/client/index.ts',
+  'src/client/LegionCard.ts',
+  'src/client/locales.ts',
+] as const
+const PROSE_COMPATIBILITY_ALLOWLIST = [
+  {
+    path: 'CHANGELOG.md',
+    match: /packed profile install/u,
+    reason: 'This names the DSH launcher-profile installation gate, not a Legion domain concept.',
+  },
+  {
+    path: 'CHANGELOG.md',
+    match: /Agent Teams packages/u,
+    reason: 'This names the Host-owned Agent Teams package family assessed in that release note.',
+  },
+] as const
+const SOURCE_COMPATIBILITY_ALLOWLIST = [
+  {
+    path: 'src/index.ts',
+    match: /input\.profile|deprecated profile|profile must be|value\.profile|profile: plan\.specialist|['"]profile['"]/u,
+    reason: 'The hidden 1.x request parser and published direct-result field remain compatible.',
+  },
+  {
+    path: 'src/compiler.ts',
+    match: /Legacy|deprecated profile|source\.profile|invocation\.profile|['"]profile['"]/u,
+    reason: 'The public compiler accepts the non-advertised 1.x invocation alias and preserves V1 diagnostics.',
+  },
+  {
+    path: 'src/orchestration.ts',
+    match: /defineProperty\([^\n]*['"](?:profile|team)['"]/u,
+    reason: 'Non-enumerable and digest-only fields preserve durable V1 compiled-plan bytes.',
+  },
+  {
+    path: 'src/explain.ts',
+    match: /ProfileExplainView|active-profile|inactive-profile|configuredDefaultProfile|activeDefaultProfile|profiles|diagnostic\.profile|['"]profile['"]/u,
+    reason: 'ExplainViewV1 is a versioned wire contract and cannot be renamed in place.',
+  },
+  {
+    path: 'src/execution.ts',
+    match: /team-run-/u,
+    reason: 'CohortRunId retains the published 1.x identity prefix.',
+  },
+] as const
 const RENAMED_ADRS = [
   'docs/adr/0001-semantic-profile-router.md',
   'docs/adr/0002-effective-profile-compiler.md',
@@ -69,7 +118,7 @@ async function repositoryDocuments(directory: string): Promise<string[]> {
 
 function historicalMarkdown(name: string): boolean {
   return HISTORICAL_DOCS.has(name)
-    || HISTORICAL_DOC_PREFIXES.some(prefix => name.startsWith(prefix))
+    || HISTORICAL_DOC_ALLOWLIST.some(entry => name.startsWith(entry.prefix))
 }
 
 function currentMarkdown(path: string): boolean {
@@ -85,19 +134,29 @@ function currentYaml(path: string): boolean {
 
 function machineDocument(name: string): boolean {
   return MACHINE_DOCS.has(name)
-    || MACHINE_DOC_PREFIXES.some(prefix => name.startsWith(prefix))
+    || MACHINE_DOC_ALLOWLIST.some(entry => name.startsWith(entry.prefix))
+    || /(?:^|\/)tsconfig(?:\.[^/]+)?\.json$/u.test(name)
+    || /(?:^|\/)package\.json$/u.test(name)
+    || /(?:^|\/)pnpm-lock\.yaml$/u.test(name)
 }
 
 function proseViolations(name: string, source: string): string[] {
   let fenced = false
   const violations: string[] = []
-  for (const [index, rawLine] of source.split(/\r?\n/).entries()) {
+  const lines = source.split(/\r?\n/)
+  const historicalRelease = name === 'CHANGELOG.md'
+    ? lines.findIndex(line => /^## \[\d/u.test(line))
+    : -1
+  const currentLines = historicalRelease === -1 ? lines : lines.slice(0, historicalRelease)
+  for (const [index, rawLine] of currentLines.entries()) {
     if (/^\s*(?:~~~|\x60{3})/.test(rawLine)) {
       fenced = !fenced
       continue
     }
     if (fenced) continue
     if (name === 'CONTEXT.md' && rawLine.startsWith('_Avoid_:')) continue
+    if (PROSE_COMPATIBILITY_ALLOWLIST.some(entry =>
+      entry.path === name && entry.match.test(rawLine))) continue
     const line = rawLine
       .replace(/\]\([^)]*\)/g, ']')
       .replace(/(?:href|src)="[^"]*"/g, '')
@@ -142,6 +201,26 @@ describe('repository vocabulary', () => {
     expect(unclassified).toEqual([])
   })
 
+  it('keeps every compatibility/history classifier explicit and reasoned', () => {
+    const reasons = [
+      ...HISTORICAL_DOC_ALLOWLIST.map(entry => entry.reason),
+      ...HISTORICAL_DOCS.values(),
+      ...MACHINE_DOC_ALLOWLIST.map(entry => entry.reason),
+      ...MACHINE_DOCS.values(),
+      ...PROSE_COMPATIBILITY_ALLOWLIST.map(entry => entry.reason),
+      ...SOURCE_COMPATIBILITY_ALLOWLIST.map(entry => entry.reason),
+    ]
+    expect(reasons.every(reason => reason.trim().length > 20)).toBe(true)
+  })
+
+  it('rejects stale prose compatibility allowances', async () => {
+    const stale = await Promise.all(PROSE_COMPATIBILITY_ALLOWLIST.map(async (entry) => {
+      const source = await readFile(resolve(ROOT, entry.path), 'utf8')
+      return entry.match.test(source) ? undefined : entry.path + ': ' + entry.reason
+    }))
+    expect(stale.filter(Boolean)).toEqual([])
+  })
+
   it('uses Specialist and Cohort in current prose', async () => {
     const files = (await repositoryDocuments(ROOT)).filter(currentMarkdown)
     const violations = (await Promise.all(files.map(async (path) => {
@@ -149,6 +228,32 @@ describe('repository vocabulary', () => {
     }))).flat()
 
     expect(violations).toEqual([])
+  })
+
+  it('allows retired nouns in public source only for explicit compatibility contracts', async () => {
+    const used = new Set<number>()
+    const violations: string[] = []
+    for (const name of PUBLIC_VOCABULARY_SOURCE) {
+      const source = await readFile(resolve(ROOT, name), 'utf8')
+      for (const [index, rawLine] of source.split(/\r?\n/).entries()) {
+        const literals = [
+          ...rawLine.matchAll(/'(?:\\.|[^'\\])*'/gu),
+          ...rawLine.matchAll(/"(?:\\.|[^"\\])*"/gu),
+          ...rawLine.matchAll(/`(?:\\.|[^`\\])*`/gu),
+        ].map(match => match[0]?.slice(1, -1) ?? '')
+        const comment = /^\s*(?:\/[/\*]|\*)/u.test(rawLine) ? rawLine : ''
+        const surfaceLine = [...literals, comment].join(' ').replace(/\$\{[^}]*\}/gu, '')
+        RETIRED_NOUN.lastIndex = 0
+        if (!RETIRED_NOUN.test(surfaceLine)) continue
+        const allowance = SOURCE_COMPATIBILITY_ALLOWLIST.findIndex(entry =>
+          entry.path === name && entry.match.test(rawLine))
+        if (allowance === -1) violations.push(`${name}:${String(index + 1)}: ${rawLine.trim()}`)
+        else used.add(allowance)
+      }
+    }
+
+    expect(violations).toEqual([])
+    expect(SOURCE_COMPATIBILITY_ALLOWLIST.filter((_entry, index) => !used.has(index))).toEqual([])
   })
 
   it('marks decision records whose original vocabulary was renamed', async () => {
@@ -243,15 +348,16 @@ describe('repository vocabulary', () => {
     expect(canonical).not.toMatch(/\b(?:append(?:s|ed)?|publish(?:es|ed)?|deliver(?:s|ed)?|transport(?:s|ed)?|project(?:s|ed)?)\s+(?!no\b)[^\n.]{0,80}\bcustom Session event\b/i)
   })
 
-  it('ships current Config Document namespace spellings', async () => {
+  it('ships only the canonical Config v3 dialect in current README and YAML examples', async () => {
     const yaml = (await repositoryDocuments(ROOT)).filter(currentYaml)
     const files = [resolve(ROOT, 'README.md'), resolve(ROOT, 'README.zh-cn.md'), ...yaml]
+    const retiredKey = /(?:^|[{,\s])(?:profiles|defaultProfile|teams|profile|team):(?:\s|$)/u
     const violations = (await Promise.all(files.map(async (path) => {
       const name = nameOf(path)
       const source = await readFile(path, 'utf8')
       return source.split(/\r?\n/)
         .map((line, index) => ({ line, index }))
-        .filter(({ line }) => /^\s*(?:profiles|teams):/.test(line))
+        .filter(({ line }) => retiredKey.test(line) || /^\s*configVersion:\s*[12]\s*$/u.test(line))
         .map(({ line, index }) => name + ':' + (index + 1) + ':' + line.trim())
     }))).flat()
     expect(violations).toEqual([])

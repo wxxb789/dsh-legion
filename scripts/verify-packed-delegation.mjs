@@ -216,6 +216,28 @@ try {
   ], consumerDir)
 
   await copyFile(
+    join(projectRoot, 'tests', 'fixtures', 'packed-legacy-consumer.ts'),
+    join(consumerDir, 'packed-legacy-consumer.ts'),
+  )
+  await writeFile(join(consumerDir, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: {
+      target: 'ES2024',
+      lib: ['ES2024', 'DOM', 'ESNext.Disposable'],
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
+      strict: true,
+      skipLibCheck: false,
+      outDir: 'compiled',
+    },
+    include: ['packed-legacy-consumer.ts'],
+  }, null, 2) + '\n')
+  run(process.execPath, [
+    join(projectRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
+    '--project', 'tsconfig.json',
+  ], consumerDir)
+  runNode([join('compiled', 'packed-legacy-consumer.js')], consumerDir)
+
+  await copyFile(
     join(projectRoot, 'scripts', 'packed-delegation-consumer.mjs'),
     join(consumerDir, 'packed-delegation-consumer.mjs'),
   )

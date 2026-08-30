@@ -99,12 +99,12 @@ describe('dsh-legion CLI', () => {
     expect(code).toBe(EXIT_OK)
     expect(state.stdout.join('')).toContain('dsh-legion doctor')
     expect(state.stdout.join('')).toContain('Provider evidence: fixture')
-    expect(state.stdout.join('')).toContain('Profiles: 1 configured, 1 active, 0 inactive')
+    expect(state.stdout.join('')).toContain('Specialists: 1 configured, 1 active, 0 inactive')
     expect(state.stdout.join('')).toContain('Result: ok')
     expect(state.stderr).toEqual([])
   })
 
-  it('renders profile detail for explain and one clean JSON document for --json', async () => {
+  it('renders Specialist detail for explain and one clean versioned JSON document for --json', async () => {
     const human = io({ 'legion.yml': config, 'providers.yml': providers })
     expect(await runCli(['explain', 'legion.yml', '--providers', 'providers.yml'], human.io))
       .toBe(EXIT_OK)

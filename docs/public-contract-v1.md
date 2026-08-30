@@ -4,8 +4,8 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 
 ## Stable authored data
 
-- Config Document version is 2. Legacy unversioned/v1 documents migrate with model Strategy exposure off.
-- Specialists, Catalog Layers, CohortSpec, StrategySpec, artifact contracts, and limits are readonly declarative data.
+- Canonical current Config Documents use version 3 and current nested spellings. Published 1.x materialize/export calls with no explicit target remain v2 until 2.0; legacy unversioned/v1/v2 documents migrate purely with model Strategy exposure off where the old contract requires it.
+- Specialists, Catalog Layers, CohortSpec, StrategySpec, artifact contracts, and limits are readonly declarative data. The package root exports their canonical schemas, brands, helpers, compiled types, outcomes, Config v3 materializers, diagnostics, and ACP helpers.
 - Catalog Layers add new names, replace complete same-name entries, disable by tombstone, and permit later revival.
 - Specialist and Cohort are canonical. Published 1.x `profile` and `team` spellings remain accepted only as non-advertised compatibility exceptions for their documented window and never lead new surfaces.
 - Strategy stages are exactly `delegate | fanout | synthesize`; every accepted stage is executable.
@@ -13,7 +13,7 @@ This document freezes the dsh-legion 1.x compatibility surface. The machine-read
 
 ## Stable invocation and results
 
-- Specialist requests allow only `kind?, specialist?, description, prompt, run_in_background?`; `description` and `prompt` are required, while calls may omit the explicit `kind: specialist` discriminator. The retired `profile` field remains an accepted, non-advertised compatibility alias for one minor version and cannot be combined with `specialist`.
+- Specialist requests allow only `kind?, specialist?, description, prompt, run_in_background?`; `description` and `prompt` are required, while calls may omit the explicit `kind: specialist` discriminator. The retired `profile` field remains an accepted, non-advertised 1.x compatibility alias with removal no earlier than 2.0.0 and cannot be combined with `specialist`.
 - Strategy tool calls require `{ kind: strategy, strategy, objective, limits? }` and deployment `enableStrategies: true`.
 - Branch fields cannot be mixed and invocation limits can only narrow authored limits.
 - Cohort Runs have a branded identity and exactly four terminal outcomes: completed, degraded, cancelled, failed.

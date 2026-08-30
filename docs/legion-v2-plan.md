@@ -90,9 +90,9 @@ Recorded in [ADR 0022](adr/0022-legion-nouns-do-not-reuse-host-vocabulary.md) an
 Two terms were added: **Run Receipt** (accounted in tokens and time, never in money) and
 **Endorsement** (what a deployment may run vs what Legion will recommend).
 
-Migration is non-breaking: `profiles`/`specialists` and `teams`/`cohorts` are both accepted for one
-minor version, the old name emits a deprecation diagnostic, and the migration is a pure function that
-never overwrites a user preset.
+Migration is non-breaking across 1.x: current interfaces use Specialist/Cohort spellings, retired
+spellings remain accepted but non-advertised with replacement diagnostics and removal no earlier than
+2.0.0, and the pure migration never overwrites a user preset.
 
 ---
 
@@ -104,12 +104,12 @@ never overwrites a user preset.
 |---|---|---|
 | M1.1 ✅ | Track the latest Host | **Done.** devDependencies `0.1.0-rc.6` → `0.1.1-rc.2` with the lockfile regenerated, and the declared window moved with them to minimum `0.1.1-rc.1` / latest-tested `0.1.1-rc.2` / peer range `>=0.1.1-rc.1 <0.2.0`. Policy from here: always follow the latest DSH. See `docs/notes/dsh-0.1.1-rc.2-upgrade.md`. |
 | M1.2 ✅ | Depend on published client contracts | **Done.** Removed `src/client/dsh-client.d.ts`; the card now compiles against the published slot, runtime, locale, settings, React, and UI-primitives contracts. `dsh-client-ui-schema-form` and `dsh-client-web-react` remain absent because neither has a package manifest or source. `dsh-client-ui-renderer` remains unimported because it is boot-once shell machinery whose `install()` throws on a second call. |
-| M1.3 | Apply the renames | Config contract v3, dual-name window, deprecation diagnostics, pure migration, branded identity and compiled-IR updates, public contract documents. |
-| M1.4 | Wire `ctx.agents` | Subscribe-then-backfill: register `agent/status`, `agent/created`, `agent/disposed`, then backfill with `ctx.agents.list()`. Map a child by `ctx.agents.get(childId)` — `enter()` enforces `childId === agent.session.id`. Use `listChildren`/`listDescendants` for the cold tree. |
-| M1.5 | Run Receipt v0 | Three ingredients, three different truth sources: **stages** from the compiled Strategy IR (known before start), **participation** from `ctx.agents`, **tokens** from `ctx.tokenMeter.measure(childSession)`. Published as a session projection. |
-| M1.6 | Overlay panel v0 | Register into `shell.overlay` — the only `shell.*` slot, and unclaimed inside the harness. Progress bar, member tree, and the stage DAG rendered from compiled IR. |
-| M1.7 | Kill the upstream death list | Delete the "Upstream DSH proposals" section from `docs/roadmap.md` and redistribute it per §8. |
-| M1.8 | Stop the preset lying | `presets/legion/preset.yml` blames the deployment for durable unavailability. The real cause is an in-package constant no deployment can change. Correct the text. |
+| M1.3 ✅ | Apply the renames | **Done.** Config v3 and package-root discovery use Specialist/Cohort names; published 1.x aliases remain deprecated through the documented compatibility window. |
+| M1.4 ✅ | Observe Host participation | **Done.** Local participation uses official Agent/Subagent identities with subscribe-before-backfill; remote and cold facts report explicit availability. |
+| M1.5 ✅ | Run Receipt | **Done.** Frozen stages and Host-owned lifecycle, timing, and usage facts produce an honest bounded summary without model narration. |
+| M1.6 ✅ | Overlay panel | **Done.** The separate `dsh-legion-receipts` companion streams live-Session complete replacements through official Typert/Gateway and renders them in `shell.overlay`. |
+| M1.7 ✅ | Record Host gap dispositions | **Done.** The roadmap states current limitations by capability owner rather than treating every future Host seam as one blocked list. |
+| M1.8 ✅ | Correct durable diagnostics | **Done.** Preset and docs attribute unavailable journal activation to the exact missing Host capability and adapter facts. |
 
 **Acceptance:** a delegation runs and the DSH Web GUI shows, live, how many members exist, which are
 running, how long each has run, and how many tokens each consumed — with no model cooperation required.
@@ -171,7 +171,7 @@ The same mechanism serves `/legion-setup`. It is implemented once.
 
 | # | Task | Detail |
 |---|---|---|
-| M3.1 | Persist receipts | `ctx.storageDomain`, unit name `legion_receipts` (**hyphens are rejected**: `/^[a-z][a-z0-9_]*$/`). Scoping is process-global, so encode the SessionId into the key. Schema validates at the **read** boundary, not on write. `update` is atomic RMW **in-process only**; two live processes are uncoordinated and last-writer-wins. |
+| M3.1 ✅ | Live Receipt companion | **Superseded by the approved live-only contract.** `dsh-legion-receipts` keeps full facts only for one live Session and companion instance, writes no storage, and leaves historical query/export as explicit follow-up work. |
 | M3.2 | Historical baseline extractor | Per-task totals need a three-way join on SessionId: `sessionQuery` for the corpus, the `tokenUsage` projection for the four token buckets, and the separate `sessionStats` projection for `turns`/`steps`/`llmMs`/`toolMs`/`ttftMs`/`decodeMs`. **`SessionQueryEngine` is an abstract Service requiring a live Context** — the extractor runs inside a booted composition, not as a standalone script. |
 | M3.3 | Endorsement promotion | `unproven` → `observed` automatically once N receipts exist. `measured` requires a paired campaign that is **not** in this plan and therefore stays unreachable. The vocabulary states our ceiling instead of hiding it. |
 | M3.4 | `dsh-legion-coordination` | A separate package adding lease, expiry, fencing token, and an fsync barrier over `@deepseek-ai/dsh-atomic-write`. `withFileLock` is genuine cross-process writer exclusion, but has no lease, no expiry, and no fence, and its own source states that orphan recovery is an operator action — a crashed holder blocks every future writer permanently. `writeFileAtomic` excludes crash durability by design. Shipped with Legion through a DSH profile bundle so installation stays one command. Deletable in full if the Host ever publishes the capability. |
@@ -190,23 +190,24 @@ if it were an experiment is exactly the failure Legion criticises OMO for.
 
 ---
 
-## 8. Roadmap cleanup: the upstream proposals are dead
+## 8. Host seam dispositions
 
-The Host does not accept external pull requests. Every "waiting for DSH" item is therefore permanent.
-Delete the section and redistribute:
+These are capability-owner facts from the assessed Host source, not a blanket statement about an
+upstream contribution path or permanence. Legion fails closed or reports unknown while a required
+public Host seam is absent and re-evaluates each item when the assessed Host line changes.
 
-| Former proposal | Disposition |
+| Capability | Current disposition |
 |---|---|
-| Unified recovery seam | **Permanent limitation.** Cross-route recovery stays disabled; the README states that Legion starts only the selected child. |
-| Host-owned budget admission | **Companion backlog.** Aggregate admission belongs in a successor to the M3.4 coordination package, not in Legion. |
-| Generation-bound LLM resolve/reserve/start lease | **Partly satisfied upstream, with a permanent limit.** DSH binds one prepared adapter generation to one dispatch; Legion's pre-start Route observations remain best-effort and never claim atomic adapter topology. |
-| Child reasoning-effort override | **Permanent limitation.** A Specialist cannot set a child's reasoning effort. |
-| Per-child named preset composition | **Permanent limitation.** In-process children inherit the parent's named preset. |
-| Unified child-setup contributions | **Permanent limitation.** Legion cannot add Specialist-local DSH Skill registrations to one-shot, continuable, and cold-resume paths. |
-| Published `clientBundle` preset | **Permanent limitation.** DSH does not publish the build preset, so Legion mirrors the loader artifact format under a protocol test. |
-| Published `settings.plugin.item` slot declaration | **Already satisfied upstream.** The public `@deepseek-ai/dsh-client-ui-settings-plugins` package declares the slot. |
-| Client packages on the Host's line | **Already satisfied upstream.** The assessed 0.1.1-rc.2 client contracts are public and drive Legion's client typecheck. |
-| Redacted provider health | **Permanent limitation.** Legion does not inspect live provider health and reports it as unknown; no health capability is planned. |
+| Unified recovery seam | **Current Host gap.** Cross-route recovery stays disabled; Legion starts only the selected child. |
+| Host-owned budget admission | **Future Host-owned capability.** It is not part of the observation-only Run Receipt companion. |
+| Generation-bound LLM resolve/reserve/start lease | **Partly supplied by the Host.** One prepared adapter generation binds one dispatch; Legion's earlier Route observations remain best-effort. |
+| Child reasoning-effort override | **Current Host gap.** A Specialist cannot set a child's reasoning effort. |
+| Per-child named preset composition | **Current Host gap.** In-process children inherit the parent's named preset. |
+| Unified child-setup contributions | **Current Host gap.** Specialist-local DSH Skill registration is unavailable across all child paths. |
+| Published `clientBundle` preset | **Current Host gap.** Legion mirrors the loader artifact format under a protocol test. |
+| Published `settings.plugin.item` slot declaration | **Supplied by the Host.** The public settings-plugin package owns the slot. |
+| Client packages on the Host's line | **Supplied by the Host.** Assessed-line client contracts drive Legion typecheck. |
+| Redacted provider health | **Not requested by current policy.** Legion reports health as unknown and plans no private probe. |
 
 ## 9. What Legion may and may not say
 

@@ -107,6 +107,7 @@ Legion 面向已经使用 DSH、希望获得可配置多智能体委派能力，
 | 可解释策略 | 提供稳定 Digest、确定性诊断、路由证据和 JSON Explain 输出。 |
 | 运行时重配置 | 可选：Host 挂载 Settings Provider 后，可通过 `legion` 命名空间修改同一份配置并即时重新发布，无需重启。参见[运行时重配置](docs/settings.md)。 |
 | Web 设置卡片 | DSH「设置 → 插件」页中的插件卡片，支持暂存编辑与覆盖标记。参见[设置卡片](docs/settings-card.md)。 |
+| Live Run Receipt | 独立的 `dsh-legion-receipts` companion 为当前 Session 显示 Cohort Run 成员事实；headless 执行仍返回有界 terminal summary。 |
 | ACP 委派 | 可选 Specialist，通过 DSH 的 ACP 后端委派给 Codex、Claude Code、oh-my-pi、Kimi Code、Grok Build、Pi、GitHub Copilot CLI、Hermes 与 ZCode。参见 [ACP 委派](docs/acp-delegation.md)。 |
 | 原生 DSH 生命周期 | Continuation、取消、结算通知、Provider 生命周期和 HMR 注册仍由 DSH 管理。 |
 
@@ -154,7 +155,7 @@ Legion 不接管 Agent Loop、Session、持久化、模型适配器、凭据、�
 
 **单次委派**，即从协调 Agent 发起工具调用到拿到结果之间：
 
-8. 参数完成校验，并解析为**恰好一个** Specialist：调用中指定的那个，或配置的 `defaultProfile`。
+8. 参数完成校验，并解析为**恰好一个** Specialist：调用中指定的那个，或配置的 `defaultSpecialist`。
 9. 如果该 Specialist 声明了 `routes`，Legion 会读取每个候选的精确模型元数据，并选中你所写顺序中第一个不与静态事实冲突的候选。
 10. 参与判断的只有静态事实，例如上下文窗口与输出预算。元数据读不到的候选仍然可选；只有当所有候选都被明确排除时，调用才会失败。
 11. Legion 通过 Host 的 Subagent API **只启动一个**子智能体，并施加该 Specialist 的固定策略；当该子智能体或其 Provider 失败时，绝不重试、也不切换路由。
@@ -213,7 +214,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-本地 Checkout 必须先生成 `lib/` 构建产物，而跳过构建的后果已经变了：Bundle Patch 使 `dsh-legion` 成为 Host Loader 条目，Host 的客户端模块注册表会扫描它，缺失 `lib/client.js` 不再只是没有卡片，而会让整个 Host 激活失败。安装本地 Checkout 前请先执行 `pnpm run build`。安装操作仍然不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。Bundle Patch 现在会挂载一行 Host 平面配置行（`id: legion-settings`，`role: settings`），使 `legion` 设置命名空间及其 Web 卡片归属于整个进程，而不再只在使用该 Preset 的 Session 存活期间存在。
+本地 Checkout 必须先生成两个 Package 的 `lib/` 构建产物。Root Package 会安装精确版本的 `dsh-legion-receipts` companion dependency；Bundle Patch 挂载两行 Host 配置：`legion-settings` 提供 `legion` namespace 与 Settings card，`legion-receipts` 提供 live Run Receipt feed 与 Web UI。缺少任一 Client artifact 都会让 Host 激活失败。安装操作仍不会向整个进程自动注入模型工具——委派工具留在 Agent 平面，由 Preset 显式声明。
 
 ## 创建 Legion Agent Preset
 
@@ -298,7 +299,7 @@ dsh plugin --profile web add .
 }
 ~~~
 
-如果配置了 `defaultProfile`，调用时可以省略 `specialist`。并行的同级调用使用 DSH 原生并行工具执行能力。
+如果配置了 `defaultSpecialist`，调用时可以省略 `specialist`。并行的同级调用使用 DSH 原生并行工具执行能力。
 
 ### 运行 Strategy
 
@@ -323,9 +324,9 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 - id: tool-legion
   name: dsh-legion
   config:
-    configVersion: 2
+    configVersion: 3
     toolName: legion
-    defaultProfile: quick
+    defaultSpecialist: quick
     specialists:
       quick:
         description: Fast exploration, extraction, and summaries.
@@ -361,10 +362,10 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `role` | `delegation` | 该配置行的组合角色，只从配置行自身的 Entry 读取，绝不取自设置层。`settings` 行只注册 `legion` 命名空间，不提供其他任何内容——没有工具、没有 Prompt Section、没有 Projection、没有 Service。 |
-| `configVersion` | `2` | 当前配置契约。省略该字段或写 `1` 都会被接受并归一化为 `2`；但 v1 文档一旦使用 `catalogLayers`、`cohorts`、`strategies`、`enableStrategies` 或 Durable Run，会在激活时被拒绝，而不是自动升级。 |
+| `configVersion` | `3` | 当前 canonical 契约。1.x 中未指定 target 的 materialize/export 调用在 2.0 前仍输出 v2；旧 v1/v2 key 会生成 replacement diagnostic，且不会原地改写用户文件。 |
 | `toolName` | `legion` | 暴露给模型的工具名称。 |
 | `specialists` | 必填 | 语义化 Specialist Map。 |
-| `defaultProfile` | 无 | 调用未指定 `specialist` 时使用的 Specialist。 |
+| `defaultSpecialist` | 无 | 调用未指定 `specialist` 时使用的 Specialist。 |
 | `enableRunInBackground` | `true` | 是否暴露后台委派。 |
 | `enableStrategies` | `false` | 是否显式向模型暴露生效的 Strategy。 |
 | `guidance` | 无 | 追加给协调 Agent 的说明。 |
@@ -374,7 +375,7 @@ Strategy 默认不会暴露给模型。部署者必须显式设置 `enableStrate
 | `cohorts` | `{}` | 最终部署层的 Cohort。 |
 | `strategies` | `{}` | 最终部署层的 Strategy。 |
 
-Specialist 名称必须匹配 `^[a-z][a-z0-9-]*$`。
+Specialist 名称必须匹配 `^[a-z][a-z0-9-]*$`。Package root 会导出当前 `Specialist*`、`Cohort*`、`CohortRun*`、Config v3 materializer、diagnostic 与 ACP helper；已发布的 1.x `Profile*`/`Team*` 名称继续作为显式 deprecated compatibility alias，最早在 2.0.0 移除。
 
 ### Specialist 字段
 
@@ -419,20 +420,20 @@ Legion 最多启动一个子智能体；如果已选子智能体因 Provider、�
 
 ### Catalog Layer、Cohort 与 Strategy
 
-Config v2 可以对 Specialist、Cohort、Strategy 进行分层。后出现的同名定义会替换前者；Tombstone 可以禁用条目；更后面的定义可以重新启用它。Root Map 是最终部署层。
+Config v3 可以对 Specialist、Cohort、Strategy 进行分层。后出现的同名定义会替换前者；Tombstone 可以禁用条目；更后面的定义可以重新启用它。Root Map 是最终部署层。
 
 ~~~yaml
-configVersion: 2
+configVersion: 3
 cohorts:
   coding:
     description: One executor and one reviewer.
     members:
-      executor: { profile: deep }
-      reviewer: { profile: review }
+      executor: { specialist: deep }
+      reviewer: { specialist: review }
 strategies:
   reviewed:
     description: Execute and review.
-    team: coding
+    cohort: coding
     stages:
       - kind: delegate
         id: execute
@@ -505,7 +506,7 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 
 ## 状态与限制
 
-当前源码声明版本为 `1.2.0`，配置契约为 v2。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
+当前源码声明版本为 `1.2.0`；canonical 配置为 v3，而 1.x 中未指定 target 的 materialize/export 仍为 v2，以保持兼容。选择或升级安装版本前，请查看 [CHANGELOG.md](CHANGELOG.md)、[Roadmap](docs/roadmap.md) 和 [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases)。
 
 已知限制：
 
@@ -515,8 +516,8 @@ Fixture 只能证明文件中明确提供的静态事实。CLI 不会检查实�
 - Specialist 不能覆盖子智能体的 Reasoning Effort。
 - 进程内子智能体继承父级命名 DSH Agent Preset；One-shot、Continuable 和 Cold-resume 路径均不支持 Per-child Named Preset 或 Specialist-local DSH Skill Setup。Specialist 仍可改变 Model、Persona、Tool、Backend 和限制。
 - Legion 不检查实时 Provider Health、凭据、授权、Quota、可达性或延迟；Route Plan 会把这些事实报告为 unknown。
-- 总 Token 或货币成本的准入控制仍属于 [Companion Package Backlog](docs/legion-v2-plan.md)；当前限制只覆盖成员、并发、截止时间、接收输出、工具和可用路由。
-- GUI 设置卡片只编辑四个标量策略；Specialist、Cohort、Strategy 与 Catalog Layer 仍由配置文档管理。
+- 总 Token 或货币成本准入仍是未来的 Host-owned capability，与仅负责观察的 Run Receipt companion 无关；当前限制只覆盖成员、并发、截止时间、接收输出、工具和可用路由。
+- GUI 设置卡片只编辑五个标量策略；Specialist、Cohort、Strategy 与 Catalog Layer 仍由配置文档管理。
 - DSH 现已发布与评估 Host 版本线一致的 Client Contract，包括 `settings.plugin.item` Slot 声明，但仍未发布 `clientBundle` Build Preset。因此 Legion 使用公开 Package 做 Typecheck，同时手工复刻 Loader Artifact 格式；Host 格式变更会在加载期而不是构建期失败。
 - Specialist 的 `result` Schema 目前仍接受 `plan-delta-v1`，但该契约是为 Durable Run 的 Plan 提案设计的，并非普通委派用途。在它被显式收口或正式公开之前，请视为 Specialist 不支持该取值。
 - 不支持在缺少兼容 DSH Peer 的环境中直接运行裸 Package。
@@ -583,7 +584,7 @@ pnpm run check
 
 Durable Run 默认关闭，v1.0 ephemeral 行为保持不变。Deployment 显式启用后，Strategy caller 通过 `execution: { durability: 'journal' }` 选择 journal mode；省略该字段仍走 ephemeral executor。它把八类 typed event 写入调用方 DSH Session journal，并使用 projection key `legion-run`、state version 7。Run control 提供只读且有界的 `inspect`、单次 activation 的 `resume`、持久化后返回的 `cancel`，以及只能提交 validated proposal 的 `steer`。Task delivery 为 at-least-once；只有匹配 fence 与 generation 的逻辑结果能被接受一次，但不承诺 external effect exactly-once。Mail 在 acknowledge 前必须完成 reserve、context incorporation 与必要的 flush，过期 reservation 可 reclaim。
 
-本 package 不提供 DSH persistence、projection、Session Query、atomic coordination、global admission 或 child-receipt Host service。DSH 0.1.2-alpha.1 仍未提供原子 run coordination service，并且其 persistence reader 没有注册仓库外 `legion/*` event 的 seam，因此 production durable mutation 会在 append 前 fail closed。目前也没有构建绑定 durable Strategy activation adapter，所以 `execution` 不会出现在模型可见 Schema 中；编程方式发起 journal 请求时会返回缺失的 Host capability 诊断码或 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Pure contract、validation、replay 与 inspect 仍可使用。Ephemeral Strategy Run Receipt 通过 `ctx.sessionQuery` 完整发现 child；当 Host 挂载 persistence backend 时，Legion 不会 append Host 无法重新打开的 `legion/run-receipt` event，从而避免写出不可恢复的 Session。参见 [Durable Strategy Runs](docs/durable-runs.md)、[Journal Contract v1](docs/journal-contract-v1.md) 与 [DSH 0.1.2-alpha.1 审计](docs/notes/dsh-0.1.2-alpha.1-upgrade.md)。
+本 package 不提供 DSH persistence、projection、Session Query、atomic coordination、global admission 或 child-receipt Host service。DSH 0.1.2-alpha.1 仍未提供原子 run coordination service，并且其 persistence reader 没有注册仓库外 `legion/*` event 的 seam，因此 production durable mutation 会在 append 前 fail closed。目前也没有构建绑定 durable Strategy activation adapter，所以 `execution` 不会出现在模型可见 Schema 中；编程方式发起 journal 请求时会返回缺失的 Host capability 诊断码或 `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`。Pure contract、validation、replay 与 inspect 仍可使用。Ephemeral Cohort Run 的 full Receipt 事实只通过可选 `dsh-legion-receipts` companion 发布：同一个 live Session 与 companion instance 可跨 Client refresh/reconnect 保留，而 Session dispose、companion reload 或 Host restart 后从空状态开始。Headless 或缺少 companion 时仍返回有界 terminal tool summary，并且不会写入 custom Session event 或 Receipt storage。参见 [Durable Strategy Runs](docs/durable-runs.md)、[Journal Contract v1](docs/journal-contract-v1.md) 与 [DSH 0.1.2-alpha.1 审计](docs/notes/dsh-0.1.2-alpha.1-upgrade.md)。
 
 ## 相关项目
 

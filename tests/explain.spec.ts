@@ -102,8 +102,11 @@ describe('explainCatalog', () => {
       name: 'quick',
       route: { provider: 'models', model: 'strong', maxTokens: 8192 },
     })
-    expect(renderExplainHuman(routed, { command: 'explain', detail: 'profiles' }))
-      .toContain('model route: models/strong')
+    const human = renderExplainHuman(routed, { command: 'explain', detail: 'specialists' })
+    expect(human).toContain('model route: models/strong')
+    expect(human).toContain('Specialists: 1 configured')
+    expect(human).toContain('Default Specialist: quick')
+    expect(human).not.toMatch(/\b(?:profile|profiles|team|teams)\b/i)
   })
 
   it('keeps configured and active defaults distinct for an empty fixture', () => {

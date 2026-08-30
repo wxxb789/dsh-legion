@@ -71,14 +71,14 @@
 - id: tool-legion
   name: dsh-legion
   config:
-    configVersion: 2
+    configVersion: 3
     # No activation adapter is bound, and the assessed DSH line lacks atomic run coordination.
     enableDurableRuns: false
     durableRunPolicy:
       maxStartsPerActivation: 8
       maxConcurrentTasks: 2
     toolName: legion
-    defaultProfile: quick
+    defaultSpecialist: quick
     enableRunInBackground: true
     resourceRoots:
       bundled: resources
@@ -163,33 +163,33 @@
       independent-review:
         description: One executor and one independent reviewer.
         members:
-          executor: { profile: deep }
-          reviewer: { profile: review }
+          executor: { specialist: deep }
+          reviewer: { specialist: review }
         limits: { maxMembers: 2, maxConcurrentMembers: 1 }
 
       research-panel:
         description: Three independent researchers and one evidence synthesizer.
         members:
           researchers:
-            profile: quick
+            specialist: quick
             minParticipants: 2
             maxParticipants: 3
             tags: [research]
-          synthesizer: { profile: deep }
+          synthesizer: { specialist: deep }
         limits: { maxMembers: 4, maxConcurrentMembers: 3 }
 
       plan-execute-review:
         description: A planner/executor, independent reviewer, and bounded repair activation.
         members:
-          planner: { profile: deep }
-          executor: { profile: deep }
-          reviewer: { profile: review }
+          planner: { specialist: deep }
+          executor: { specialist: deep }
+          reviewer: { specialist: review }
         limits: { maxMembers: 3, maxConcurrentMembers: 1 }
 
     strategies:
       independent-review:
         description: Execute once and independently review the produced evidence.
-        team: independent-review
+        cohort: independent-review
         stages:
           - kind: delegate
             id: execute
@@ -215,7 +215,7 @@
 
       research-panel:
         description: Run independent research in parallel and deterministically synthesize the panel.
-        team: research-panel
+        cohort: research-panel
         stages:
           - kind: fanout
             id: research
@@ -242,7 +242,7 @@
 
       plan-execute-review:
         description: Plan, execute, review, then perform one bounded evidence-aware repair.
-        team: plan-execute-review
+        cohort: plan-execute-review
         stages:
           - kind: delegate
             id: plan

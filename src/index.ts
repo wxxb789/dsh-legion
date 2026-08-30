@@ -56,26 +56,41 @@ import {
 } from './settings.ts'
 
 export {
+  CANONICAL_CONFIG_VERSION,
   CURRENT_CONFIG_VERSION,
   Config,
-  SpecialistSpecSchema as LegionProfileSchema,
+  LegionProfileSchema,
+  SpecialistSpecSchema,
+  SPECIALIST_NAME,
   PROFILE_NAME,
   RESULT_CONTRACTS,
   exportConfigDocument,
+  exportCurrentConfigDocument,
   materializeConfig,
+  materializeConfigWithDiagnostics,
+  materializeCurrentConfig,
+  materializeCurrentConfigWithDiagnostics,
   validateConfig,
 } from './config.ts'
 export type {
+  CompiledConfig,
+  CompiledConfigResult,
+  ConfigDeprecationDiagnostic,
+  CurrentConfig,
   LegionConfig,
+  LegionProfile,
   ConfigExportTarget,
   ConfigVersion,
   DurableRunPolicySpec,
-  SpecialistSpec as LegionProfile,
   MaterializedConfig,
+  MaterializedConfigResult,
+  MaterializedCurrentConfig,
+  MaterializedCurrentConfigResult,
   PromptFileReference,
   ResultContract,
   RouteCandidate,
   RouteConstraints,
+  SpecialistSpec,
 } from './config.ts'
 export {
   CatalogCompileError,
@@ -85,20 +100,27 @@ export {
   assertCatalogUsable,
   compileCatalog,
   compileDelegationPlan,
+  compileSpecialistCatalog,
 } from './compiler.ts'
 export type {
-  CompiledSpecialistCatalog as CompiledCatalog,
+  CompiledCatalog,
+  CompiledSpecialistCatalog,
   DelegationInvocation,
   DelegationPlan,
-  LegacyDiagnostic as Diagnostic,
-  SpecialistDiagnosticCode as DiagnosticCode,
-  SpecialistDiagnosticSeverity as DiagnosticSeverity,
-  LegacyErrorDiagnostic as ErrorDiagnostic,
+  Diagnostic,
+  DiagnosticCode,
+  DiagnosticSeverity,
+  EffectiveProfile,
+  EffectiveSpecialist,
+  ErrorDiagnostic,
   ErrorDiagnosticCode,
-  WarningDiagnosticCode,
-  EffectiveSpecialist as EffectiveProfile,
   ProviderFacts,
   RuntimeSnapshot,
+  SpecialistDiagnostic,
+  SpecialistDiagnosticCode,
+  SpecialistDiagnosticSeverity,
+  SpecialistErrorDiagnostic,
+  WarningDiagnosticCode,
 } from './compiler.ts'
 export {
   FINDINGS_V1_SCHEMA,
@@ -108,10 +130,12 @@ export {
 } from './result-contract.ts'
 export {
   EMPTY_RESOURCE_SNAPSHOT,
-  SpecialistResourceError as ProfileResourceError,
+  SpecialistResourceError,
+  ProfileResourceError,
   assertResourceSnapshot,
   createResourceSnapshot,
-  loadSpecialistResources as loadProfileResources,
+  loadProfileResources,
+  loadSpecialistResources,
   promptContentDigest,
   renderPromptFragments,
 } from './resources.ts'
@@ -138,7 +162,8 @@ export type {
   RoutePlan,
   RouteRejectCode,
   RouteUnknownCode,
-  RoutableSpecialist as RoutableProfile,
+  RoutableProfile,
+  RoutableSpecialist,
   SelectedRoutePlan,
   UnroutableRoutePlan,
 } from './route.ts'
@@ -146,6 +171,7 @@ export {
   CatalogDigest,
   PolicyDigest,
   ProfileName,
+  SpecialistName,
   ResourceDigest,
   RoutePlanDigest,
   ArtifactName,
@@ -153,6 +179,8 @@ export {
   StrategyGenerationId,
   StrategyName,
   StrategyPlanDigest,
+  CohortName,
+  CohortRunId,
   TeamName,
   TeamRunId,
 } from './identity.ts'
@@ -181,10 +209,12 @@ export {
   STRATEGY_STAGE_KINDS,
   StairStepPolicySpecSchema,
   StrategySpecSchema,
-  CohortSpecSchema as TeamSpecSchema,
+  CohortSpecSchema,
+  TeamSpecSchema,
   defineStrategy,
   defineStrategyFor,
-  defineCohort as defineTeam,
+  defineCohort,
+  defineTeam,
 } from './orchestration-contract.ts'
 export type {
   ArtifactContract,
@@ -192,7 +222,10 @@ export type {
   ArtifactOutputSpec,
   CatalogDisableSpec,
   CatalogLayer,
-  DefinedCohort as DefinedTeam,
+  CohortLimits,
+  CohortSpec,
+  DefinedCohort,
+  DefinedTeam,
   DelegateStageSpec,
   FanoutStageSpec,
   MemberSlotSpec,
@@ -202,8 +235,8 @@ export type {
   StrategySpec,
   StrategyStageSpec,
   SynthesizeStageSpec,
-  CohortLimits as TeamLimits,
-  CohortSpec as TeamSpec,
+  TeamLimits,
+  TeamSpec,
 } from './orchestration-contract.ts'
 export {
   OrchestrationCompileError,
@@ -220,7 +253,8 @@ export type {
   CompiledOrchestrationCatalog,
   CompiledStrategyPlan,
   CompiledStrategyTemplate,
-  CompiledCohort as CompiledTeam,
+  CompiledCohort,
+  CompiledTeam,
   DelegatePrimitive,
   DshPrimitive,
   FanoutPrimitive,
@@ -236,16 +270,23 @@ export {
   ACP_ENTRYPOINT_PROVENANCE,
   ACP_PROVIDER_PLUGIN,
   AcpCatalogError,
-  acpCatalogLayer,
   acpMountRows,
-  acpProfile,
-  assertAcpProfileCompatible,
+  acpSpecialist,
+  acpSpecialistCatalogLayer,
+  assertAcpSpecialistCompatible,
   defineAcpAgent,
   renderAcpFragment,
 } from './acp-catalog.ts'
+/** @deprecated Use acpSpecialistCatalogLayer. */
+export { acpCatalogLayer } from './acp-catalog.ts'
+/** @deprecated Use acpSpecialist. */
+export { acpProfile } from './acp-catalog.ts'
+/** @deprecated Use assertAcpSpecialistCompatible. */
+export { assertAcpProfileCompatible } from './acp-catalog.ts'
 export type {
   AcpAgentSpec,
   AcpCatalogOptions,
+  AcpSpecialistCatalogLayer,
   AcpEntrypointProvenance,
   AcpMountRow,
 } from './acp-catalog.ts'
@@ -266,15 +307,17 @@ export type {
   SettingsSectionHooks,
 } from './settings.ts'
 export {
-  COHORT_RUN_OUTCOMES as TEAM_RUN_OUTCOMES,
+  COHORT_RUN_OUTCOMES,
+  TEAM_RUN_OUTCOMES,
   createStrategyExecutionSnapshot,
   executeStrategyPlan,
 } from './execution.ts'
 export type {
+  CohortRunOutcome,
   MaterializedStrategyArtifact,
   StrategyExecutionSnapshot,
   StrategyMemberFailure,
-  CohortRunOutcome as TeamRunOutcome,
+  TeamRunOutcome,
 } from './execution.ts'
 
 export * from './durable-run/contract.ts'
@@ -500,40 +543,40 @@ function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
   const provider = ctx.subagents.getProvider(plan.subagentProvider)
   if (provider === undefined) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" requires unavailable subagent provider "${plan.subagentProvider}"`,
+      `dsh-legion: Specialist "${plan.specialist}" requires unavailable subagent provider "${plan.subagentProvider}"`,
     )
   }
   if (plan.mode === 'continuable') {
     if (provider.prepareContinuable === undefined) {
       throw new Error(
-        `dsh-legion: profile "${plan.specialist}" cannot run in the background because provider "${provider.name}" is not continuable`,
+        `dsh-legion: Specialist "${plan.specialist}" cannot run in the background because provider "${provider.name}" is not continuable`,
       )
     }
     return provider
   }
   if (plan.agentOptions !== undefined && !provider.capabilities.agentOptions) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" requires Agent option overrides but provider "${provider.name}" does not support them`,
+      `dsh-legion: Specialist "${plan.specialist}" requires Agent option overrides but provider "${provider.name}" does not support them`,
     )
   }
   if (plan.maxDepth !== undefined && !provider.capabilities.depthLimit) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
+      `dsh-legion: Specialist "${plan.specialist}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
     )
   }
   if (plan.persona !== undefined && !provider.capabilities.persona) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" sets persona but provider "${provider.name}" does not support it`,
+      `dsh-legion: Specialist "${plan.specialist}" sets persona but provider "${provider.name}" does not support it`,
     )
   }
   if (plan.toolFilter !== undefined && !provider.capabilities.toolFilter) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" sets toolFilter but provider "${provider.name}" does not support it`,
+      `dsh-legion: Specialist "${plan.specialist}" sets toolFilter but provider "${provider.name}" does not support it`,
     )
   }
   if (plan.outputSchema !== undefined && !provider.capabilities.outputSchema) {
     throw new Error(
-      `dsh-legion: profile "${plan.specialist}" requires structured output but provider "${provider.name}" does not support it`,
+      `dsh-legion: Specialist "${plan.specialist}" requires structured output but provider "${provider.name}" does not support it`,
     )
   }
   return provider
@@ -630,7 +673,7 @@ function createToolDefinition(
       ...hasStrategySurface ? {
         kind: {
           type: 'string' as const,
-          enum: ['specialist', 'profile', 'strategy'],
+          enum: ['specialist', 'strategy'],
           description: 'Request discriminator. Strategy calls must set strategy; Specialist calls may omit it.',
         },
       } : {},
@@ -638,11 +681,6 @@ function createToolDefinition(
         type: 'string',
         enum: specialistNames,
         description: specialistDescription,
-      },
-      profile: {
-        type: 'string',
-        enum: specialistNames,
-        description: 'Deprecated compatibility alias for specialist.',
       },
       description: {
         type: 'string',
@@ -881,7 +919,7 @@ function createToolDefinition(
       }
 
       let plan = compileDelegationPlan(catalog, {
-        ...args.specialist === undefined ? {} : { profile: args.specialist },
+        ...args.specialist === undefined ? {} : { specialist: args.specialist },
         description: args.description,
         prompt: args.prompt,
         ...args.run_in_background === undefined ? {} : { runInBackground: args.run_in_background },
@@ -1036,8 +1074,8 @@ function profileResourceBase(ctx: Context, config: CompiledConfig): string | und
 
 /**
  * One fully materialized configuration input to a published Tool generation.
- * Config and prompt-fragment resources move together because a Profile's
- * fragments are named by the same document that names the Profile: publishing
+ * Config and prompt-fragment resources move together because a Specialist's
+ * fragments are named by the same document that names the Specialist: publishing
  * one without the other would show a catalog whose prompts belong to a
  * different revision.
  */
@@ -1050,7 +1088,7 @@ interface ConfigGeneration {
  * Serve the Legion settings namespace for the lifetime of this composition and
  * contribute nothing else.
  *
- * A settings namespace is process-wide, but a Profile catalog belongs to the
+ * A settings namespace is process-wide, but a Specialist catalog belongs to the
  * row that composed it, so this row registers the namespace and publishes no
  * tool, no prompt section, no projection, and no service. Mounting it from the
  * Host composition is what keeps the configuration surface offering Legion
@@ -1071,7 +1109,7 @@ async function applySettingsRow(ctx: Context, config: LegionConfig): Promise<voi
     // the kind of quiet misconfiguration a coordinator must not keep to itself.
     ctx.logger.warn(
       'dsh-legion: a role: settings row publishes no delegation surface, so the '
-      + `${String(declared)} Profile, Team, and Strategy entries it declares are ignored; `
+      + `${String(declared)} Specialist, Cohort, and Strategy entries it declares are ignored; `
       + 'move them to the delegation row that publishes the tool',
     )
   }

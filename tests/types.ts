@@ -1,16 +1,36 @@
 import {
   ArtifactName,
+  CANONICAL_CONFIG_VERSION,
+  CohortName,
+  CohortRunId,
   MemberSlotName,
   ProfileName,
+  SpecialistName,
   StrategyName,
   TeamName,
   TeamRunId,
+  acpSpecialist,
+  assertAcpSpecialistCompatible,
+  defineCohort,
   defineStrategy,
   defineStrategyFor,
   defineTeam,
+  exportCurrentConfigDocument,
+  materializeCurrentConfigWithDiagnostics,
   type ArtifactName as ArtifactNameType,
   type CatalogDigest,
+  type CatalogLayer,
+  type CohortName as CohortNameType,
+  type CohortRunId as CohortRunIdType,
+  type CohortRunOutcome,
   type CompiledCatalog,
+  type CompiledCohort,
+  type CompiledSpecialistCatalog,
+  type CompiledTeam,
+  type ConfigDeprecationDiagnostic,
+  type ConfigExportTarget,
+  type ConfigVersion,
+  type CurrentConfig,
   type DelegationInvocation,
   type DelegationPlan,
   type Diagnostic,
@@ -23,6 +43,8 @@ import {
   type ResourceDigest,
   type RoutePlan,
   type RoutePlanDigest,
+  type SpecialistName as SpecialistNameType,
+  type SpecialistSpec,
   type StairStepPolicySpec,
   type StrategyName as StrategyNameType,
   type TeamName as TeamNameType,
@@ -30,13 +52,6 @@ import {
   type TeamRunOutcome,
   type WarningDiagnosticCode,
 } from '../src/index.ts'
-import type {
-  ConfigDeprecationDiagnostic,
-  ConfigExportTarget,
-  ConfigVersion,
-  CurrentConfig,
-} from '../src/config.ts'
-import type { CatalogLayer } from '../src/orchestration-contract.ts'
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
@@ -132,6 +147,9 @@ const invocation: DelegationInvocation = {
   prompt: 'Work.',
 }
 
+const specialist: SpecialistNameType = SpecialistName('quick')
+const cohort: CohortNameType = CohortName('coding')
+const cohortRun: CohortRunIdType = CohortRunId('team-run-123e4567-e89b-42d3-a456-426614174000')
 const profile: ProfileNameType = ProfileName('quick')
 const team: TeamNameType = TeamName('coding')
 const strategy: StrategyNameType = StrategyName('independent-review')
@@ -139,6 +157,20 @@ const artifact: ArtifactNameType = ArtifactName('evidence')
 const member = MemberSlotName('executor')
 const teamRun: TeamRunIdType = TeamRunId('team-run-123e4567-e89b-42d3-a456-426614174000')
 const profileAsString: string = profile
+const currentMaterialized = materializeCurrentConfigWithDiagnostics(currentNounConfig)
+const currentExport = exportCurrentConfigDocument(currentNounConfig)
+const acpSpecialistConfig: SpecialistSpec = acpSpecialist({
+  id: 'codex',
+  title: 'Codex',
+  description: 'Delegate to Codex.',
+  command: 'codex-acp',
+  entrypoint: 'verified',
+})
+assertAcpSpecialistCompatible('codex', acpSpecialistConfig)
+const canonicalVersion: typeof CANONICAL_CONFIG_VERSION = currentExport.configVersion
+export type CompiledCatalogAliasContract = Assert<Equal<CompiledCatalog, CompiledSpecialistCatalog>>
+export type CompiledCohortAliasContract = Assert<Equal<CompiledTeam, CompiledCohort>>
+export type CohortRunAliasContract = Assert<Equal<TeamRunOutcome, CohortRunOutcome>>
 void config
 void routedConfig
 void currentNounConfig
@@ -150,6 +182,14 @@ void currentTarget
 void migrationDiagnostic
 void invocation
 void profileAsString
+void specialist
+void cohort
+void cohortRun
+void currentMaterialized
+void currentExport
+void acpSpecialistConfig
+void canonicalVersion
+void defineCohort
 void team
 void strategy
 void artifact

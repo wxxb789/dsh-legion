@@ -41,6 +41,11 @@ export class SpecialistResourceError extends Error {
   }
 }
 
+/** @deprecated Use SpecialistResourceError. */
+export const ProfileResourceError = SpecialistResourceError
+/** @deprecated Use SpecialistResourceError. */
+export type ProfileResourceError = SpecialistResourceError
+
 export interface LoadedPromptFragment {
   readonly reference: string
   /** Raw source bytes, including an optional UTF-8 BOM. */
@@ -461,7 +466,10 @@ export async function loadSpecialistResources(
   return createResourceSnapshot(specialists)
 }
 
-/** Render profile fragments as one deterministic child system-instruction append. */
+/** @deprecated Use loadSpecialistResources. */
+export const loadProfileResources = loadSpecialistResources
+
+/** Render Specialist fragments as one deterministic child system-instruction append. */
 export function renderPromptFragments(fragments: readonly LoadedPromptFragment[]): string {
   return fragments.map(fragment => [
     `## Legion profile instruction: ${fragment.reference}`,

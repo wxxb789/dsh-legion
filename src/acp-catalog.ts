@@ -169,7 +169,7 @@ export function defineAcpAgent(spec: AcpAgentSpec): AcpAgentSpec {
  * @param spec - the agent descriptor.
  * @returns the Specialist, ready for a catalog layer.
  */
-export function acpProfile(spec: AcpAgentSpec): SpecialistSpec {
+export function acpSpecialist(spec: AcpAgentSpec): SpecialistSpec {
   const agent = defineAcpAgent(spec)
   return {
     description: agent.description,
@@ -186,56 +186,74 @@ export function acpProfile(spec: AcpAgentSpec): SpecialistSpec {
   }
 }
 
+/** @deprecated Use acpSpecialist. */
+export const acpProfile = acpSpecialist
+
 /**
  * Refuse an authored Specialist that an ACP provider could never satisfy, naming
  * the field and the reason at the authoring site.
  * @param name - the Specialist name, for the diagnostic.
- * @param profile - the authored Specialist.
+ * @param specialist - the authored Specialist.
  */
-export function assertAcpProfileCompatible(name: string, profile: SpecialistSpec): void {
-  const fields = profile as unknown as Record<string, unknown>
+export function assertAcpSpecialistCompatible(name: string, specialist: SpecialistSpec): void {
+  const fields = specialist as unknown as Record<string, unknown>
   for (const [field, reason] of Object.entries(ACP_FORBIDDEN_FIELDS)) {
     if (fields[field] !== undefined) {
       throw new AcpCatalogError(`ACP Specialist "${name}" must not set ${field}: ${reason}`)
     }
   }
-  if (typeof profile.maxDepth === 'number') {
+  if (typeof specialist.maxDepth === 'number') {
     throw new AcpCatalogError(
       `ACP Specialist "${name}" must use maxDepth "provider-managed": an out-of-process child cannot enforce a numeric depth`,
     )
   }
-  if (profile.defaultRunInBackground) {
+  if (specialist.defaultRunInBackground) {
     throw new AcpCatalogError(
       `ACP Specialist "${name}" must set defaultRunInBackground false: the ACP backend registers no continuable activation`,
     )
   }
-  if (profile.result !== undefined && profile.result !== 'text') {
+  if (specialist.result !== undefined && specialist.result !== 'text') {
     throw new AcpCatalogError(
       `ACP Specialist "${name}" must use the "text" result contract: ACP advertises no structured output`,
     )
   }
 }
 
-/**
- * Build an opt-in catalog layer of ACP Specialists.
- * @param agents - the agents to expose.
- * @param options - layer id and permission policy.
- * @returns the frozen catalog layer, ready for `catalogLayers`.
- */
+/** @deprecated Use assertAcpSpecialistCompatible. */
+export const assertAcpProfileCompatible = assertAcpSpecialistCompatible
+
+/** One current ACP Catalog Layer. */
+export interface AcpSpecialistCatalogLayer extends CatalogLayer<SpecialistSpec> {
+  readonly specialists: Readonly<Record<string, SpecialistSpec>>
+}
+
+function compileAcpSpecialists(agents: readonly AcpAgentSpec[]): Record<string, SpecialistSpec> {
+  const specialists: Record<string, SpecialistSpec> = {}
+  for (const agent of agents) {
+    if (specialists[agent.id] !== undefined) {
+      throw new AcpCatalogError(`duplicate ACP agent id "${agent.id}"`)
+    }
+    const specialist = acpSpecialist(agent)
+    assertAcpSpecialistCompatible(agent.id, specialist)
+    specialists[agent.id] = specialist
+  }
+  return specialists
+}
+
+/** Build a current opt-in Catalog Layer of ACP Specialists. */
+export function acpSpecialistCatalogLayer(
+  agents: readonly AcpAgentSpec[],
+  options: AcpCatalogOptions = {},
+): AcpSpecialistCatalogLayer {
+  return { id: options.layerId ?? ACP_CATALOG_LAYER_ID, specialists: compileAcpSpecialists(agents) }
+}
+
+/** @deprecated Use acpSpecialistCatalogLayer. */
 export function acpCatalogLayer(
   agents: readonly AcpAgentSpec[],
   options: AcpCatalogOptions = {},
-): CatalogLayer<SpecialistSpec> & { readonly profiles: Readonly<Record<string, SpecialistSpec>> } {
-  const profiles: Record<string, SpecialistSpec> = {}
-  for (const agent of agents) {
-    if (profiles[agent.id] !== undefined) {
-      throw new AcpCatalogError(`duplicate ACP agent id "${agent.id}"`)
-    }
-    const profile = acpProfile(agent)
-    assertAcpProfileCompatible(agent.id, profile)
-    profiles[agent.id] = profile
-  }
-  return { id: options.layerId ?? ACP_CATALOG_LAYER_ID, profiles }
+): { readonly id: string; readonly profiles: Readonly<Record<string, SpecialistSpec>> } {
+  return { id: options.layerId ?? ACP_CATALOG_LAYER_ID, profiles: compileAcpSpecialists(agents) }
 }
 
 /**
@@ -251,8 +269,8 @@ export function renderAcpFragment(
   options: AcpCatalogOptions = {},
 ): string {
   const rows = acpMountRows(agents, options)
-  const layer = acpCatalogLayer(agents, options)
-  const authoredLayer = { id: layer.id, specialists: layer.profiles ?? {} }
+  const layer = acpSpecialistCatalogLayer(agents, options)
+  const authoredLayer = { id: layer.id, specialists: layer.specialists }
   const incomplete = agents.filter(agent => agent.entrypoint !== 'verified')
   const header = [
     '# Optional ACP delegation. Generated from the ACP agent catalog — do not edit by hand.',
@@ -262,7 +280,7 @@ export function renderAcpFragment(
     '# config: registering a ctx.subagents provider is DSH\'s job, not Legion\'s.',
     '#',
     '# legionCatalogLayer gives each registered provider a Specialist. Append it to',
-    '# Legion\'s catalogLayers; it requires configVersion 2. A Specialist whose provider',
+    '# Legion\'s catalogLayers; it requires configVersion 3. A Specialist whose provider',
     '# is not mounted stays inactive with a PROFILE_PROVIDER_UNAVAILABLE warning,',
     '# never a hard failure, so you can adopt these one at a time.',
     '#',

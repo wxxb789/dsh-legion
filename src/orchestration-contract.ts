@@ -39,6 +39,11 @@ export interface CohortSpec {
   readonly limits?: CohortLimits
 }
 
+/** @deprecated Use CohortLimits. */
+export type TeamLimits = CohortLimits
+/** @deprecated Use CohortSpec. */
+export type TeamSpec = CohortSpec
+
 export interface ArtifactInputRef {
   readonly artifact: string
   readonly contract: ArtifactContract
@@ -165,6 +170,9 @@ export const CohortSpecSchema = z.object({
   members: z.dict(MemberSlotSchema).required(),
   limits: CohortLimitsSchema,
 }) as unknown as z<CohortSpec>
+
+/** @deprecated Use CohortSpecSchema. */
+export const TeamSpecSchema = CohortSpecSchema
 
 const ArtifactInputSchema: z<ArtifactInputRef> = z.object({
   artifact: z.string().pattern(ORCHESTRATION_NAME).required(),
@@ -468,6 +476,8 @@ export interface DefinedCohort<Name extends string, Spec extends CohortSpec> {
   readonly name: Name
   readonly spec: Spec
 }
+/** @deprecated Use DefinedCohort. */
+export type DefinedTeam<Name extends string, Spec extends CohortSpec> = DefinedCohort<Name, Spec>
 
 export function defineCohort<const Name extends string, const Spec extends CohortSpec>(
   name: Name,
@@ -475,6 +485,9 @@ export function defineCohort<const Name extends string, const Spec extends Cohor
 ): DefinedCohort<Name, Spec> {
   return { name, spec }
 }
+
+/** @deprecated Use defineCohort. */
+export const defineTeam = defineCohort
 
 type StageMembers<Stages extends readonly StrategyStageSpec[]> = Stages[number]['member']
 type MemberMinimum<Member> = Member extends { readonly minParticipants: infer Value extends number }

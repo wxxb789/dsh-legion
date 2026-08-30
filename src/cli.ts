@@ -143,7 +143,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     } else {
       io.stdout.write(renderExplainHuman(view, {
         command: command.kind,
-        detail: command.kind === 'explain' ? 'profiles' : 'summary',
+        detail: command.kind === 'explain' ? 'specialists' : 'summary',
       }) + renderConfigDiagnostics(materialized.diagnostics))
     }
     return exitCode(view)

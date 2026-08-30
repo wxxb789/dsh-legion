@@ -69,6 +69,12 @@ const checks = [
     exports: manifest.exports,
   }],
   ['configVersion', contract.configVersion, legion.CURRENT_CONFIG_VERSION],
+  ['canonicalConfigVersion', contract.canonicalConfigVersion, legion.CANONICAL_CONFIG_VERSION],
+  ['cohortRunIdPrefix', contract.cohortRunIdPrefix, 'team-run-'],
+  ['canonicalVocabulary', contract.canonicalVocabulary, {
+    cohort: { retiredAlias: 'team', compatibility: 'accepted-non-advertised-1.x' },
+    specialist: { retiredAlias: 'profile', compatibility: 'accepted-non-advertised-1.x' },
+  }],
   ['durableRunPolicyFields', contract.durableRunPolicyFields, ['maxStartsPerActivation', 'maxConcurrentTasks']],
   ['strategyStageOptionalFields', contract.strategyStageOptionalFields, ['after']],
   ['journalEventSchemaVersion', contract.journalEventSchemaVersion, 1],
@@ -140,7 +146,7 @@ const checks = [
   ['artifactContracts', contract.artifactContracts, legion.ARTIFACT_CONTRACTS],
   ['strategyStageKinds', contract.strategyStageKinds, legion.STRATEGY_STAGE_KINDS],
   ['strategyLimitFields', contract.strategyLimitFields, legion.STRATEGY_LIMIT_FIELDS],
-  ['cohortRunOutcomes', contract.cohortRunOutcomes, legion.TEAM_RUN_OUTCOMES],
+  ['cohortRunOutcomes', contract.cohortRunOutcomes, legion.COHORT_RUN_OUTCOMES],
   ['teamRunOutcomes', contract.teamRunOutcomes, legion.TEAM_RUN_OUTCOMES],
   ['specialistRequestFields', contract.specialistRequestFields, ['kind', 'specialist', 'description', 'prompt', 'run_in_background']],
   ['specialistRequiredFields', contract.specialistRequiredFields, ['description', 'prompt']],
@@ -182,6 +188,53 @@ for (const [name, expected, actual] of checks) {
     throw new Error(`public contract ${name} drifted: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
   }
 }
+for (const runtimeExport of Object.keys(legion)) {
+  if (!declarationExports.has(runtimeExport)) {
+    throw new Error(`runtime export ${runtimeExport} has no declaration export`)
+  }
+}
+for (const [alias, replacement] of Object.entries(contract.deprecatedExportAliases)) {
+  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const escapedReplacement = replacement.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const declaration = new RegExp(
+    `\\/\\*\\* @deprecated Use ${escapedReplacement}\\. \\*\\/[\\s\\S]{0,240}\\b${escapedAlias}\\b`,
+    'u',
+  )
+  if (!declaration.test(declarationSource)) {
+    throw new Error(`deprecated export ${alias} lacks an emitted @deprecated replacement for ${replacement}`)
+  }
+}
+for (const [alias, replacement] of [
+  ['PROFILE_NAME', 'SPECIALIST_NAME'],
+  ['LegionProfileSchema', 'SpecialistSpecSchema'],
+  ['ProfileResourceError', 'SpecialistResourceError'],
+  ['loadProfileResources', 'loadSpecialistResources'],
+  ['TeamSpecSchema', 'CohortSpecSchema'],
+  ['defineTeam', 'defineCohort'],
+  ['TEAM_RUN_OUTCOMES', 'COHORT_RUN_OUTCOMES'],
+  ['acpProfile', 'acpSpecialist'],
+  ['assertAcpProfileCompatible', 'assertAcpSpecialistCompatible'],
+]) {
+  if (legion[alias] !== legion[replacement]) {
+    throw new Error(`deprecated runtime alias ${alias} no longer shares ${replacement}'s binding`)
+  }
+}
+const legacyAcpLayer = legion.acpCatalogLayer([{
+  id: 'contract', title: 'Contract', description: 'Contract verification.',
+  command: 'contract-acp', entrypoint: 'verified',
+}])
+const currentAcpLayer = legion.acpSpecialistCatalogLayer([{
+  id: 'contract', title: 'Contract', description: 'Contract verification.',
+  command: 'contract-acp', entrypoint: 'verified',
+}])
+if (!('profiles' in legacyAcpLayer) || 'specialists' in legacyAcpLayer
+  || !('specialists' in currentAcpLayer) || 'profiles' in currentAcpLayer) {
+  throw new Error('ACP Catalog Layer compatibility adapter no longer preserves one dialect per surface')
+}
+if (legion.CohortRunId('team-run-123e4567-e89b-42d3-a456-426614174000')
+  !== 'team-run-123e4567-e89b-42d3-a456-426614174000') {
+  throw new Error('canonical CohortRunId no longer preserves the published team-run- prefix')
+}
 const migrated = legion.materializeConfig({
   profiles: {
     contract: {
@@ -197,5 +250,27 @@ if (migrated.enableStrategies !== contract.modelStrategyExposureDefault) {
 }
 if (migrated.enableDurableRuns !== contract.durableRunsDefault) {
   throw new Error('public contract durable run default drifted')
+}
+if (migrated.configVersion !== contract.configVersion || 'specialists' in migrated) {
+  throw new Error('published 1.x no-target materialization no longer returns Config v2')
+}
+const current = legion.materializeCurrentConfigWithDiagnostics({
+  profiles: {
+    contract: {
+      description: 'Contract verification.',
+      subagentProvider: 'spawn',
+      maxDepth: 1,
+      defaultRunInBackground: false,
+    },
+  },
+  defaultProfile: 'contract',
+})
+if (current.config.configVersion !== contract.canonicalConfigVersion
+  || !('specialists' in current.config) || 'profiles' in current.config) {
+  throw new Error('canonical materialization no longer returns Config v3')
+}
+if (current.diagnostics.length !== 2
+  || current.diagnostics.some(item => item.removalVersion !== contract.configKeyRemovalVersion)) {
+  throw new Error('canonical Config diagnostics no longer time-bound retired keys')
 }
 process.stdout.write('dsh-legion public contract v1 verified\n')

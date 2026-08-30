@@ -267,7 +267,7 @@ describe('the Host-plane settings row', () => {
     const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
     await ctx.plugin(legion, { role: 'settings', ...catalog } as unknown as legion.LegionConfig)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(
-      `the ${String(count)} Profile, Team, and Strategy entries it declares are ignored`,
+      `the ${String(count)} Specialist, Cohort, and Strategy entries it declares are ignored`,
     ))
     await ctx.fiber.dispose()
   })

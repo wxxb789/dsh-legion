@@ -81,6 +81,11 @@ describe('ACP agent specs', () => {
 })
 
 describe('ACP Specialists', () => {
+  it('publishes canonical helpers as the existing ACP implementation', () => {
+    expect(legion.acpSpecialist).toBe(legion.acpProfile)
+    expect(legion.assertAcpSpecialistCompatible).toBe(legion.assertAcpProfileCompatible)
+  })
+
   it('fixes every constraint an out-of-process child cannot honor', () => {
     const profile = legion.acpProfile(sample)
     expect(profile.subagentProvider).toBe('sample-agent')
@@ -120,13 +125,16 @@ describe('ACP Specialists', () => {
 describe('ACP catalog layer and mount rows', () => {
   it('derives Specialists and mount rows from one descriptor list', () => {
     const agents = [sample]
-    const layer = legion.acpCatalogLayer(agents)
+    const layer = legion.acpSpecialistCatalogLayer(agents)
+    const legacy = legion.acpCatalogLayer(agents)
     const rows = legion.acpMountRows(agents)
     expect(layer.id).toBe(legion.ACP_CATALOG_LAYER_ID)
-    expect(Object.keys(layer.profiles ?? {})).toEqual(['sample-agent'])
+    expect(Object.keys(layer.specialists)).toEqual(['sample-agent'])
+    expect(Object.keys(layer)).toEqual(['id', 'specialists'])
+    expect(legacy).toEqual({ id: layer.id, profiles: layer.specialists })
     expect(rows).toHaveLength(1)
     // The pairing this module exists to guarantee.
-    expect(rows[0]?.config.providerName).toBe(layer.profiles?.['sample-agent']?.subagentProvider)
+    expect(rows[0]?.config.providerName).toBe(layer.specialists['sample-agent']?.subagentProvider)
     expect(rows[0]?.name).toBe(legion.ACP_PROVIDER_PLUGIN)
     expect(rows[0]?.config.permission).toBe('reject')
   })

@@ -20,8 +20,8 @@ describe('shipped Legion preset template', () => {
     expect(legion).toMatchObject({ name: 'dsh-legion' })
     expect(legion?.config).not.toHaveProperty('enableStrategies')
     expect(legion?.config).toMatchObject({
-      configVersion: 2,
-      defaultProfile: 'quick',
+      configVersion: 3,
+      defaultSpecialist: 'quick',
       resourceRoots: { bundled: 'resources' },
       specialists: {
         deep: {

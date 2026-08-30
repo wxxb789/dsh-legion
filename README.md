@@ -107,6 +107,7 @@ If you are not running DeepSeek Harness, Legion is not the right tool, and a sta
 | Explainable policy | Stable digests, deterministic diagnostics, route evidence, and JSON explain output. |
 | Live reconfiguration | Optional: when the Host mounts a settings provider, edit the same config through the `legion` namespace and republish without a restart. |
 | Web settings card | A plugin card on the DSH Settings → Plugins tab, with staged edits and override badges. See [the settings card](docs/settings-card.md). |
+| Live Run Receipt | The separately packaged `dsh-legion-receipts` companion shows live per-member Cohort Run facts for the current Session; headless execution keeps the bounded terminal summary. |
 | ACP delegation | Optional Specialists for Codex, Claude Code, oh-my-pi, Kimi Code, Grok Build, Pi, GitHub Copilot CLI, Hermes, and ZCode over DSH's ACP backend. See [ACP delegation](docs/acp-delegation.md). |
 | Native DSH lifecycle | Continuations, cancellation, settlement, providers, and HMR-safe registration remain DSH-owned. |
 
@@ -154,7 +155,7 @@ Legion intentionally does **not** own the agent loop, sessions, persistence, mod
 
 **One delegation**, between the coordinator's tool call and the returned result:
 
-8. Arguments are validated and resolved to exactly one Specialist: the one named, or the configured `defaultProfile`.
+8. Arguments are validated and resolved to exactly one Specialist: the one named, or the configured `defaultSpecialist`.
 9. If that Specialist declares `routes`, Legion reads each candidate's exact-model metadata and takes the first candidate in your authored order that no static fact contradicts.
 10. Only static facts participate, such as context window and output budget. A candidate whose metadata cannot be read stays eligible; the call fails only when every candidate is positively ruled out.
 11. Legion starts exactly one child through the Host's subagent API with the Specialist's fixed policy applied, and never retries or switches routes when that child or its provider fails.
@@ -213,7 +214,7 @@ pnpm run build
 dsh plugin --profile web add .
 ~~~
 
-A local checkout needs built `lib/` artifacts, and the consequence of skipping the build has changed: because the bundle patch makes `dsh-legion` a Host loader entry, the Host's client module registry now scans it, and a missing `lib/client.js` fails Host activation loudly rather than merely leaving the card out. Run `pnpm run build` before installing a checkout. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it. The bundle patch now mounts one Host-plane row, `id: legion-settings` with `role: settings`, so the `legion` settings namespace and its Web card belong to the process instead of existing only while a session using the preset is alive.
+A local checkout needs both packages' built `lib/` artifacts. The root package installs the exact `dsh-legion-receipts` companion dependency, and the bundle patch mounts two Host-plane rows: `legion-settings` serves the `legion` namespace and Settings card, while `legion-receipts` serves the live Run Receipt feed and Web UI. Missing either Client artifact fails Host activation loudly. Installation still injects no process-global model tool — the delegation tool stays on the agent plane, where a preset asks for it.
 
 ## Set up a Legion agent preset
 
@@ -298,7 +299,7 @@ The coordinator sees one `legion` tool plus active Specialist descriptions:
 }
 ~~~
 
-If `defaultProfile` is configured, `specialist` may be omitted. Concurrent sibling calls use DSH's normal parallel tool execution.
+If `defaultSpecialist` is configured, `specialist` may be omitted. Concurrent sibling calls use DSH's normal parallel tool execution.
 
 ### Run a Strategy
 
@@ -323,9 +324,9 @@ A minimal agent-preset row:
 - id: tool-legion
   name: dsh-legion
   config:
-    configVersion: 2
+    configVersion: 3
     toolName: legion
-    defaultProfile: quick
+    defaultSpecialist: quick
     specialists:
       quick:
         description: Fast exploration, extraction, and summaries.
@@ -361,10 +362,10 @@ To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHu
 | Field | Default | Meaning |
 |---|---:|---|
 | `role` | `delegation` | Composition role of this row, read from the row's own entry and never from the settings layer. A `settings` row registers the `legion` namespace and nothing else — no tool, no prompt section, no projection, no service. |
-| `configVersion` | `2` | Current configuration contract. Omitted or `1` is accepted and normalized to `2`; a v1 document that uses `catalogLayers`, `cohorts`, `strategies`, `enableStrategies`, or durable runs is rejected at activation instead of upgraded. |
+| `configVersion` | `3` | Canonical current contract. Published 1.x calls that omit an export target still materialize/export v2 until 2.0; legacy v1/v2 keys load with replacement diagnostics and are never rewritten in place. |
 | `toolName` | `legion` | Model-facing tool name. |
 | `specialists` | required | Semantic Specialist map. |
-| `defaultProfile` | none | Specialist used when a call omits `specialist`. |
+| `defaultSpecialist` | none | Specialist used when a call omits `specialist`. |
 | `enableRunInBackground` | `true` | Expose background delegation. |
 | `enableStrategies` | `false` | Explicitly expose active Strategies to the model. |
 | `guidance` | none | Extra coordinator guidance. |
@@ -374,7 +375,7 @@ To delegate to an external coding agent — Codex, Claude Code, Kimi Code, GitHu
 | `cohorts` | `{}` | Final deployment-layer Cohorts. |
 | `strategies` | `{}` | Final deployment-layer Strategies. |
 
-Specialist names must match `^[a-z][a-z0-9-]*$`.
+Specialist names must match `^[a-z][a-z0-9-]*$`. The package root exports current `Specialist*`, `Cohort*`, `CohortRun*`, Config v3 materializers, diagnostics, and ACP helpers. Published 1.x `Profile*`/`Team*` names remain explicit deprecated compatibility aliases with removal no earlier than 2.0.0.
 
 ### Specialist fields
 
@@ -417,20 +418,20 @@ Legion starts at most one child and never retries another route after provider, 
 
 ### Catalog Layers, Cohorts, and Strategies
 
-Config v2 layers Specialists, Cohorts, and Strategies. A later definition replaces the same name; a tombstone disables it; a later definition may revive it. Root maps are the final deployment layer.
+Config v3 layers Specialists, Cohorts, and Strategies. A later definition replaces the same name; a tombstone disables it; a later definition may revive it. Root maps are the final deployment layer.
 
 ~~~yaml
-configVersion: 2
+configVersion: 3
 cohorts:
   coding:
     description: One executor and one reviewer.
     members:
-      executor: { profile: deep }
-      reviewer: { profile: review }
+      executor: { specialist: deep }
+      reviewer: { specialist: review }
 strategies:
   reviewed:
     description: Execute and review.
-    team: coding
+    cohort: coding
     stages:
       - kind: delegate
         id: execute
@@ -503,7 +504,7 @@ Exit codes: `0` for no error diagnostic, `1` for capability errors, and `2` for 
 
 ## Status and limitations
 
-The source tree declares version `1.2.0` and config contract v2. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
+The source tree declares version `1.2.0`; canonical current configuration is v3, while published 1.x no-target materialization/export remains v2 for compatibility. Check [CHANGELOG.md](CHANGELOG.md), the [roadmap](docs/roadmap.md), and [GitHub Releases](https://github.com/wxxb789/dsh-legion/releases) before selecting or upgrading an install revision.
 
 Known limitations:
 
@@ -513,8 +514,8 @@ Known limitations:
 - A Specialist cannot override a child's reasoning effort.
 - In-process children inherit the parent's named DSH agent preset; no per-child named preset or Specialist-local DSH Skill setup is available across one-shot, continuable, and cold-resume paths. Specialists can still vary model, persona, tools, backend, and limits.
 - Legion does not inspect live provider health, credentials, authorization, quota, reachability, or latency; Route Plans report those facts as unknown.
-- Aggregate token or monetary-cost admission remains a [companion-package backlog item](docs/legion-v2-plan.md); current limits cover members, concurrency, deadlines, accepted output, tools, and eligible routes.
-- The GUI settings card edits four scalar policies; Specialists, Cohorts, Strategies, and catalog layers stay in the configuration document.
+- Aggregate token or monetary-cost admission remains a future Host-owned capability; it is unrelated to the observation-only Run Receipt companion. Current limits cover members, concurrency, deadlines, accepted output, tools, and eligible routes.
+- The GUI settings card edits five scalar policies; Specialists, Cohorts, Strategies, and catalog layers stay in the configuration document.
 - DSH now publishes assessed-line client contracts, including the `settings.plugin.item` slot declaration, but not its `clientBundle` build preset. Legion therefore typechecks against public packages while reproducing the loader artifact format by hand; a Host format change fails at load time rather than at build time.
 - The Specialist `result` schema still accepts `plan-delta-v1`, a contract meant for durable-run plan proposals rather than ordinary delegation. Treat it as unsupported for Specialists until it is either gated or deliberately published.
 - A bare package without compatible DSH peers is unsupported.
@@ -581,7 +582,7 @@ Issues and contributions are welcome through the [GitHub issue tracker](https://
 
 Durable runs are disabled by default and preserve v1.0 ephemeral behavior. When enabled by deployment, a Strategy caller explicitly selects journal mode with `execution: { durability: 'journal' }`; omission remains ephemeral. They use eight typed events in the invoking DSH Session journal and projection key `legion-run` at state version 7. Run control supports bounded read-only `inspect`, one-activation `resume`, flushed `cancel`, and validated proposal-only `steer`. Task delivery is at least once; matching fence and generation permit exactly one accepted commit, not exactly-once external effects. Mail is reserved, incorporated, durably flushed when required, then acknowledged; expired reservations are reclaimable.
 
-This package does not ship DSH persistence, projection, Session Query, atomic coordination, global admission, or child-receipt Host services. DSH 0.1.2-alpha.1 still provides no atomic run coordination service, and its persistence reader has no registration seam for out-of-repository `legion/*` events. Production durable mutation therefore remains unavailable and fails closed before append. No build binds a durable Strategy activation adapter either, so `execution` stays out of the model-facing schema; a programmatic journal request returns the missing Host capability codes or `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`. Pure contracts, validation, replay, and inspection remain usable. Ephemeral Strategy Run Receipts use `ctx.sessionQuery` for complete child discovery; when a persistence backend is mounted, Legion does not append the unsupported `legion/run-receipt` event, preventing a Session that the Host could write but not reopen. See [Durable Strategy Runs](docs/durable-runs.md), [Journal Contract v1](docs/journal-contract-v1.md), and the [DSH 0.1.2-alpha.1 audit](docs/notes/dsh-0.1.2-alpha.1-upgrade.md).
+This package does not ship DSH persistence, projection, Session Query, atomic coordination, global admission, or child-receipt Host services. DSH 0.1.2-alpha.1 still provides no atomic run coordination service, and its persistence reader has no registration seam for out-of-repository `legion/*` events. Production durable mutation therefore remains unavailable and fails closed before append. No build binds a durable Strategy activation adapter either, so `execution` stays out of the model-facing schema; a programmatic journal request returns the missing Host capability codes or `LEGION_DURABLE_EXECUTION_ADAPTER_UNAVAILABLE`. Pure contracts, validation, replay, and inspection remain usable. Ephemeral Cohort Run Receipts publish full live facts only through the optional `dsh-legion-receipts` companion: the same live Session and companion instance survive Client refresh/reconnect, while Session disposal, companion reload, or Host restart starts empty. Headless and missing-companion deployments still receive the bounded terminal tool summary, and no custom Session event or Receipt storage is used. See [Durable Strategy Runs](docs/durable-runs.md), [Journal Contract v1](docs/journal-contract-v1.md), and the [DSH 0.1.2-alpha.1 audit](docs/notes/dsh-0.1.2-alpha.1-upgrade.md).
 
 ## Related projects
 

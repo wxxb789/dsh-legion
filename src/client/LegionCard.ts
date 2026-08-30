@@ -2,7 +2,7 @@
  * Legion's plugin settings card.
  *
  * The card edits the scalar policies that are meaningful to change while the
- * harness runs. Profiles, routes, Teams, Strategies, and catalog layers stay in
+ * harness runs. Specialists, routes, Cohorts, Strategies, and catalog layers stay in
  * the configuration document on purpose: they are structured data whose
  * validity depends on other entries, and a form that let them be edited
  * field-by-field would publish half-built catalogs.
@@ -30,7 +30,7 @@ export interface LegionCardState extends FormShell {
   /** Whether the card is disclosing its controls. */
   readonly open: boolean
   readonly toolName: FieldState
-  readonly defaultProfile: FieldState
+  readonly defaultSpecialist: FieldState
   readonly maxResourceBytes: FieldState
   readonly enableRunInBackground: FieldState
   readonly enableStrategies: FieldState
@@ -240,19 +240,19 @@ export function LegionCard(props: LegionCardProps): ReactNode {
       }),
       row({
         ...shared,
-        id: 'dsh-legion-default-profile',
-        label: t('defaultProfile'),
-        hint: t('defaultProfileHint'),
+        id: 'dsh-legion-default-specialist',
+        label: t('defaultSpecialist'),
+        hint: t('defaultSpecialistHint'),
         invalidLabel: t('invalidText'),
-        state: state.defaultProfile,
+        state: state.defaultSpecialist,
         labelledBy: false,
-        onReset: () => { props.resetField('defaultProfile') },
+        onReset: () => { props.resetField('defaultSpecialist') },
         control: textControl({
-          id: 'dsh-legion-default-profile',
-          state: state.defaultProfile,
+          id: 'dsh-legion-default-specialist',
+          state: state.defaultSpecialist,
           disabled,
           numeric: false,
-          onEdit: text => { props.edit('defaultProfile', text) },
+          onEdit: text => { props.edit('defaultSpecialist', text) },
         }),
       }),
       row({

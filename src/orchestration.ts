@@ -87,6 +87,8 @@ export interface CompiledCohort {
   readonly maxMembers: number
   readonly maxConcurrentMembers: number
 }
+/** @deprecated Use CompiledCohort. */
+export type CompiledTeam = CompiledCohort
 
 export type ArtifactAvailability = 'required' | 'degraded' | 'optional'
 
@@ -274,7 +276,7 @@ function compiledCohort(
   const startErrors = diagnostics.length
   const members: Record<string, CompiledMemberSlot> = {}
   const entries = Object.entries(spec.members).sort(([left], [right]) => left.localeCompare(right))
-  if (entries.length === 0) push(diagnostics, 'TEAM_EMPTY', 'error', `team "${name}" has no members`, { team: name })
+  if (entries.length === 0) push(diagnostics, 'TEAM_EMPTY', 'error', `Cohort "${name}" has no members`, { team: name })
   let sumMin = 0
   let sumMax = 0
   for (const [slot, authored] of entries) {
@@ -284,7 +286,7 @@ function compiledCohort(
         diagnostics,
         'TEAM_PROFILE_UNKNOWN',
         'error',
-        `team "${name}" member "${slot}" references unknown profile "${authored.specialist}"`,
+        `Cohort "${name}" member "${slot}" references unknown Specialist "${authored.specialist}"`,
         { team: name },
       )
       continue
@@ -296,7 +298,7 @@ function compiledCohort(
         diagnostics,
         'TEAM_SLOT_MIN_EXCEEDS_MAX',
         'error',
-        `team "${name}" member "${slot}" minParticipants exceeds maxParticipants`,
+        `Cohort "${name}" member "${slot}" minParticipants exceeds maxParticipants`,
         { team: name },
       )
       continue
@@ -306,7 +308,7 @@ function compiledCohort(
         diagnostics,
         'TEAM_PROFILE_INACTIVE',
         'warning',
-        `team "${name}" member "${slot}" currently uses inactive profile "${authored.specialist}"`,
+        `Cohort "${name}" member "${slot}" currently uses inactive Specialist "${authored.specialist}"`,
         { team: name },
       )
     }
@@ -328,7 +330,7 @@ function compiledCohort(
       diagnostics,
       'TEAM_MEMBER_LIMIT_EXCEEDED',
       'error',
-      `team "${name}" maxMembers must contain required members and stay within the compiler ceiling`,
+      `Cohort "${name}" maxMembers must contain required members and stay within the compiler ceiling`,
       { team: name },
     )
   }
@@ -337,7 +339,7 @@ function compiledCohort(
       diagnostics,
       'TEAM_CONCURRENCY_LIMIT_EXCEEDED',
       'error',
-      `team "${name}" maxConcurrentMembers exceeds maxMembers`,
+      `Cohort "${name}" maxConcurrentMembers exceeds maxMembers`,
       { team: name },
     )
   }
@@ -419,7 +421,7 @@ function compileStrategyTemplate(
       diagnostics,
       'STRATEGY_TEAM_UNKNOWN',
       'error',
-      `strategy "${name}" references unavailable team "${spec.cohort}"`,
+      `Strategy "${name}" references unavailable Cohort "${spec.cohort}"`,
       { strategy: name },
     )
     return undefined
@@ -579,7 +581,7 @@ function compileStrategyTemplate(
         diagnostics,
         'STRATEGY_PROFILE_RESULT_MISMATCH',
         'error',
-        `strategy "${name}" stage "${stage.id}" output ${stage.output.contract} does not match profile "${member.specialist}" result`,
+        `Strategy "${name}" stage "${stage.id}" output ${stage.output.contract} does not match Specialist "${member.specialist}" result`,
         location,
       )
     }
@@ -681,7 +683,7 @@ function compileStrategyTemplate(
       diagnostics,
       'STRATEGY_MEMBER_CARDINALITY_UNSATISFIED',
       'error',
-      `strategy "${name}" requires ${String(participatingMembers)} Team participants but maxMembers is ${String(team.maxMembers)}`,
+      `Strategy "${name}" requires ${String(participatingMembers)} Cohort participants but maxMembers is ${String(team.maxMembers)}`,
       { strategy: name },
     )
   }
@@ -699,7 +701,7 @@ function compileStrategyTemplate(
       diagnostics,
       'STRATEGY_CONCURRENCY_LIMIT_EXCEEDED',
       'error',
-      `strategy "${name}" concurrency cannot satisfy its fanout/team limits`,
+      `Strategy "${name}" concurrency cannot satisfy its fanout/Cohort limits`,
       { strategy: name },
     )
   }
@@ -775,7 +777,7 @@ export function assertOrchestrationCatalogUsable(catalog: CompiledOrchestrationC
   if (errors.length > 0) throw new OrchestrationCompileError(errors)
 }
 
-/** Compile layered Team/Strategy data against one already-compiled Profile catalog. */
+/** Compile layered Cohort/Strategy data against one already-compiled Specialist catalog. */
 export function compileOrchestrationCatalog(
   profiles: CompiledSpecialistCatalog,
 ): CompiledOrchestrationCatalog {
@@ -941,7 +943,7 @@ export function compileStrategy(
       diagnostics,
       'TEAM_PROFILE_INACTIVE',
       'error',
-      `strategy "${request.strategy}" currently requires an inactive Profile`,
+      `Strategy "${request.strategy}" currently requires an inactive Specialist`,
       { strategy: request.strategy },
     )
     return deepFreeze({ ok: false, diagnostics })

@@ -258,6 +258,26 @@ describe('compileCatalog', () => {
     expect(reads).toBe(0)
   })
 
+  it('accepts the canonical Specialist invocation field and keeps the retired alias exclusive', () => {
+    const catalog = compileCatalog(base, spawn)
+    expect(compileDelegationPlan(catalog, {
+      specialist: 'review',
+      description: 'review change',
+      prompt: 'Review the patch.',
+    }).specialist).toBe('review')
+    expect(() => compileDelegationPlan(catalog, {
+      specialist: 'review',
+      profile: 'review',
+      description: 'review change',
+      prompt: 'Review the patch.',
+    })).toThrow(/specialist and deprecated profile cannot be combined/)
+    expect(() => compileDelegationPlan(catalog, {
+      specialist: 'missing',
+      description: 'review change',
+      prompt: 'Review the patch.',
+    })).toThrow(/unknown Specialist "missing"/)
+  })
+
   it('compiles one invocation to detached plan data and a structured schema', () => {
     const catalog = compileCatalog(base, spawn)
     const plan = compileDelegationPlan(catalog, {

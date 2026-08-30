@@ -22,11 +22,12 @@
  * semantics of `CardForm` in `@deepseek-ai/dsh-client-ui-settings-plugins` as
  * of DSH 0.1.0-rc.8.
  */
+import type { JsonValue } from '@deepseek-ai/dsh-tools'
 import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** The write one staged field performs when the card is saved. */
 export type FieldWrite =
-  | { readonly kind: 'set'; readonly value: unknown }
+  | { readonly kind: 'set'; readonly value: JsonValue }
   | { readonly kind: 'clear' }
 
 /** How one section field converts between its stored value and its draft. */
@@ -37,6 +38,8 @@ export interface FieldSpec {
   readonly format: (value: unknown) => string
   /** The write this draft stages, or undefined when the draft is not acceptable. */
   readonly parse: (text: string) => FieldWrite | undefined
+  /** Retired field names read on load and removed by a canonical save. */
+  readonly aliases?: readonly string[]
 }
 
 /** One control's state as the card renders it. */
@@ -78,9 +81,10 @@ export interface FormActions {
 }
 
 /** A free-text field; an empty draft clears it. */
-export function textField(field: string): FieldSpec {
+export function textField(field: string, aliases: readonly string[] = []): FieldSpec {
   return {
     field,
+    ...aliases.length === 0 ? {} : { aliases },
     format: value => typeof value === 'string' ? value : '',
     parse: (text) => {
       const trimmed = text.trim()
@@ -233,8 +237,8 @@ export class SettingsForm<Section> {
 
   /**
    * Every staged edit a save would write. A draft that restates what the
-   * section already holds carries no write at all, so retyping a value is not
-   * an edit; neither is clearing a field the user layer never carried, however
+   * section already holds carries no write unless that edit replaces a retired
+   * field alias; neither is clearing a field the user layer never carried, however
    * that clear was staged — the tri-state controls reach it by draft, not only
    * through reset. An unacceptable draft carries no runnable write, which keeps
    * the form dirty and makes the save refuse rather than drop it.
@@ -247,7 +251,7 @@ export class SettingsForm<Section> {
         if (this.stored(field)) planned.push({ field, run: () => this.clear(field) })
         continue
       }
-      if (staged.text === spec.format(this.sectionValue(field))) continue
+      if (staged.text === spec.format(this.sectionValue(field)) && !this.legacyStored(field)) continue
       const write = spec.parse(staged.text)
       if (write === undefined) planned.push({ field, run: undefined })
       else if (write.kind === 'clear') {
@@ -294,13 +298,22 @@ export class SettingsForm<Section> {
   }
 
   private async clear(field: string): Promise<boolean> {
-    await this.scope.unset(field)
+    const aliases = this.spec(field).aliases ?? []
+    if (aliases.length === 0) await this.scope.unset(field)
+    else await this.scope.mutate([field, ...aliases].map(path => ({ op: 'unset', path: [path] })))
     return !this.stored(field)
   }
 
-  private async store(field: string, value: unknown): Promise<boolean> {
-    await this.scope.set(field, value)
-    return this.userLayer()?.[field] === value
+  private async store(field: string, value: JsonValue): Promise<boolean> {
+    const aliases = this.spec(field).aliases ?? []
+    if (aliases.length === 0) await this.scope.set(field, value)
+    else await this.scope.mutate([
+      ...aliases.map(path => ({ op: 'unset' as const, path: [path] })),
+      { op: 'set', path: [field], value },
+    ])
+    const user = this.userLayer()
+    if (user?.[field] !== value) return false
+    return aliases.every(alias => !Object.hasOwn(user, alias))
   }
 
   private stage(field: string, edit: StagedEdit): void {
@@ -317,15 +330,21 @@ export class SettingsForm<Section> {
     return spec
   }
 
+  private fieldValue(source: unknown, field: string): unknown {
+    if (!isRecord(source)) return undefined
+    for (const candidate of [field, ...(this.spec(field).aliases ?? [])]) {
+      if (Object.hasOwn(source, candidate)) return source[candidate]
+    }
+    return undefined
+  }
+
   private sectionValue(field: string): unknown {
-    const section = this.scope.getSnapshot().value
-    return isRecord(section) ? section[field] : undefined
+    return this.fieldValue(this.scope.getSnapshot().value, field)
   }
 
   /** The composition layer's value — what a cleared field re-inherits. */
   private baseValue(field: string): unknown {
-    const base = this.scope.getSnapshot().base
-    return isRecord(base) ? base[field] : undefined
+    return this.fieldValue(this.scope.getSnapshot().base, field)
   }
 
   private userLayer(): Record<string, unknown> | undefined {
@@ -333,10 +352,17 @@ export class SettingsForm<Section> {
     return isRecord(user) ? user : undefined
   }
 
+  private legacyStored(field: string): boolean {
+    const user = this.userLayer()
+    return user !== undefined
+      && (this.spec(field).aliases ?? []).some(alias => Object.hasOwn(user, alias))
+  }
+
   /** Whether the raw user layer carries this field — what marks it overridden. */
   private stored(field: string): boolean {
     const user = this.userLayer()
-    return user !== undefined && Object.hasOwn(user, field)
+    return user !== undefined
+      && [field, ...(this.spec(field).aliases ?? [])].some(candidate => Object.hasOwn(user, candidate))
   }
 
   private publish(): void {

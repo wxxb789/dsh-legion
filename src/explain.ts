@@ -250,22 +250,22 @@ export function assertExplainViewV1(value: unknown): asserts value is ExplainVie
     profileName(profile.name)
     const modeForm = profile.allowedModes.join(',')
     if (!allowedModeForms.has(modeForm)) {
-      throw new Error(`dsh-legion: profile "${profile.name}" has duplicate or non-canonical allowed modes`)
+      throw new Error(`dsh-legion: Specialist "${profile.name}" has duplicate or non-canonical allowed modes`)
     }
     const defaultAllowed = profile.allowedModes.includes(profile.defaultMode)
     if ((profile.kind === 'active-profile') !== defaultAllowed) {
-      throw new Error(`dsh-legion: profile "${profile.name}" state disagrees with its default mode eligibility`)
+      throw new Error(`dsh-legion: Specialist "${profile.name}" state disagrees with its default mode eligibility`)
     }
     if (!view.tool.backgroundEnabled
       && (profile.defaultMode !== 'foreground' || profile.allowedModes.includes('continuable'))) {
-      throw new Error(`dsh-legion: profile "${profile.name}" enables background while the tool disables it`)
+      throw new Error(`dsh-legion: Specialist "${profile.name}" enables background while the tool disables it`)
     }
     if (profile.resultContract !== 'text' && profile.allowedModes.includes('continuable')) {
-      throw new Error(`dsh-legion: structured profile "${profile.name}" cannot allow continuable execution`)
+      throw new Error(`dsh-legion: structured Specialist "${profile.name}" cannot allow continuable execution`)
     }
     if (profile.route.maxTokens !== undefined
       && (!Number.isSafeInteger(profile.route.maxTokens) || profile.route.maxTokens < 1)) {
-      throw new Error(`dsh-legion: profile "${profile.name}" has invalid maxTokens`)
+      throw new Error(`dsh-legion: Specialist "${profile.name}" has invalid maxTokens`)
     }
   }
   const warningCodes = new Set<string>(WARNING_DIAGNOSTIC_CODES)
@@ -273,7 +273,7 @@ export function assertExplainViewV1(value: unknown): asserts value is ExplainVie
   for (const diagnostic of view.diagnostics) {
     profileName(diagnostic.profile)
     if (!profileByName.has(diagnostic.profile)) {
-      throw new Error(`dsh-legion: diagnostic ${diagnostic.code} references unknown profile "${diagnostic.profile}"`)
+      throw new Error(`dsh-legion: diagnostic ${diagnostic.code} references unknown Specialist "${diagnostic.profile}"`)
     }
     const compatible = diagnostic.severity === 'warning'
       ? warningCodes.has(diagnostic.code)
@@ -290,27 +290,27 @@ export function assertExplainViewV1(value: unknown): asserts value is ExplainVie
       .map(diagnostic => diagnostic.code)
     if (profile.kind === 'active-profile') {
       if (actualCodes.some(code => errorCodes.has(code) || code === 'PROFILE_PROVIDER_UNAVAILABLE')) {
-        throw new Error(`dsh-legion: active profile "${profile.name}" carries a blocking diagnostic`)
+        throw new Error(`dsh-legion: active Specialist "${profile.name}" carries a blocking diagnostic`)
       }
     } else if (profile.diagnosticCodes.length === 0
       || profile.diagnosticCodes.length !== actualCodes.length
       || profile.diagnosticCodes.some((code, index) => code !== actualCodes[index])) {
-      throw new Error(`dsh-legion: inactive profile "${profile.name}" reasons disagree with diagnostics`)
+      throw new Error(`dsh-legion: inactive Specialist "${profile.name}" reasons disagree with diagnostics`)
     }
     if (actualCodes.includes('PROFILE_PROVIDER_UNAVAILABLE') && profile.allowedModes.length !== 0) {
-      throw new Error(`dsh-legion: unavailable profile "${profile.name}" cannot allow execution`)
+      throw new Error(`dsh-legion: unavailable Specialist "${profile.name}" cannot allow execution`)
     }
   }
   const configuredDefault = view.tool.configuredDefaultProfile === undefined
     ? undefined
     : profileByName.get(view.tool.configuredDefaultProfile)
   if (view.tool.configuredDefaultProfile !== undefined && configuredDefault === undefined) {
-    throw new Error('dsh-legion: configured default profile does not exist in ExplainViewV1')
+    throw new Error('dsh-legion: configured default Specialist does not exist in ExplainViewV1')
   }
   if (view.tool.activeDefaultProfile !== undefined) {
     if (view.tool.activeDefaultProfile !== view.tool.configuredDefaultProfile
       || profileByName.get(view.tool.activeDefaultProfile)?.kind !== 'active-profile') {
-      throw new Error('dsh-legion: active default profile is not the configured active profile')
+      throw new Error('dsh-legion: active default Specialist is not the configured active Specialist')
     }
   }
   const defaultInactiveDiagnostics = view.diagnostics.filter(
@@ -397,7 +397,7 @@ export function explainCatalog(catalog: CompiledSpecialistCatalog, options: Expl
     }
     if (profile.active) {
       if (profile.allowedModes.length === 0) {
-        throw new Error(`dsh-legion: active profile "${profile.name}" has no allowed execution mode`)
+        throw new Error(`dsh-legion: active Specialist "${profile.name}" has no allowed execution mode`)
       }
       return {
         ...base,
@@ -450,7 +450,7 @@ export function explainCatalog(catalog: CompiledSpecialistCatalog, options: Expl
 
 export interface RenderExplainOptions {
   readonly command?: 'doctor' | 'explain'
-  readonly detail?: 'summary' | 'profiles'
+  readonly detail?: 'summary' | 'specialists' | 'profiles'
 }
 
 function routeText(routeView: ProfileRouteView): string {
@@ -474,13 +474,13 @@ export function renderExplainHuman(
     `Policy digest:  ${view.policyDigest}`,
     `Catalog digest: ${view.catalogDigest}`,
     '',
-    `Profiles: ${String(view.summary.configuredProfiles)} configured, ${String(view.summary.activeProfiles)} active, ${String(view.summary.inactiveProfiles)} inactive`,
+    `Specialists: ${String(view.summary.configuredProfiles)} configured, ${String(view.summary.activeProfiles)} active, ${String(view.summary.inactiveProfiles)} inactive`,
     `Model Strategy exposure: ${view.tool.strategyExposureEnabled === true ? 'enabled' : 'disabled'}`,
-    `Default: ${view.tool.configuredDefaultProfile ?? '<none>'}`
+    `Default Specialist: ${view.tool.configuredDefaultProfile ?? '<none>'}`
       + (view.tool.activeDefaultProfile === undefined ? ' (inactive or absent)' : ' (active)'),
   ]
 
-  if (options.detail === 'profiles') {
+  if (options.detail === 'specialists' || options.detail === 'profiles') {
     for (const profile of view.profiles) {
       lines.push(
         '',

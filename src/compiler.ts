@@ -115,6 +115,8 @@ export class CatalogCompileError extends Error {
 }
 
 export interface DelegationInvocation {
+  readonly specialist?: string
+  /** @deprecated Use specialist. */
   readonly profile?: string
   readonly description: string
   readonly prompt: string
@@ -170,6 +172,19 @@ export interface CompiledSpecialistCatalog {
   readonly catalogDigest: CatalogDigest
   readonly resourceDigest: ResourceDigest
 }
+
+/** @deprecated Use CompiledSpecialistCatalog. */
+export type CompiledCatalog = CompiledSpecialistCatalog
+/** @deprecated Use SpecialistDiagnostic. */
+export type Diagnostic = LegacyDiagnostic
+/** @deprecated Use SpecialistDiagnosticCode. */
+export type DiagnosticCode = SpecialistDiagnosticCode
+/** @deprecated Use SpecialistDiagnosticSeverity. */
+export type DiagnosticSeverity = SpecialistDiagnosticSeverity
+/** @deprecated Use SpecialistErrorDiagnostic. */
+export type ErrorDiagnostic = LegacyErrorDiagnostic
+/** @deprecated Use EffectiveSpecialist. */
+export type EffectiveProfile = EffectiveSpecialist
 
 function copyPromptFragments(
   fragments: readonly LoadedPromptFragment[],
@@ -248,7 +263,7 @@ export function assertCatalogUsable(catalog: CompiledSpecialistCatalog): void {
 }
 
 /**
- * Compile one detached, deterministic profile catalog from schema-materialized
+ * Compile one detached, deterministic Specialist catalog from schema-materialized
  * policy and a plain provider snapshot. No Cordis or DSH live object crosses
  * this seam.
  */
@@ -291,7 +306,7 @@ export function compileSpecialistCatalog(
         code: 'PROFILE_LLM_ADAPTER_UNAVAILABLE',
         severity: 'warning',
         specialist: identity,
-        message: `profile "${name}" has no Route Candidate with a registered LLM adapter`,
+        message: `Specialist "${name}" has no Route Candidate with a registered LLM adapter`,
       })
     }
     let foregroundSupported = false
@@ -302,7 +317,7 @@ export function compileSpecialistCatalog(
         code: 'PROFILE_PROVIDER_UNAVAILABLE',
         severity: 'warning',
         specialist: identity,
-        message: `profile "${name}" requires unavailable subagent provider "${profile.subagentProvider}"`,
+        message: `Specialist "${name}" requires unavailable subagent provider "${profile.subagentProvider}"`,
       })
     } else {
       const agentOptionsSupported = (profile.agentOptions === undefined && profile.routes === undefined)
@@ -404,7 +419,7 @@ export function compileSpecialistCatalog(
       code: 'DEFAULT_PROFILE_INACTIVE',
       severity: 'warning',
       specialist: specialistName(config.defaultSpecialist),
-      message: `default profile "${config.defaultSpecialist}" is not active in this runtime snapshot`,
+      message: `default Specialist "${config.defaultSpecialist}" is not active in this runtime snapshot`,
     })
   }
 
@@ -482,12 +497,19 @@ export function compileDelegationPlan(
     throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation must contain plain data')
   }
   const source = invocation as unknown as Record<string, unknown>
-  const allowed = new Set(['profile', 'description', 'prompt', 'runInBackground'])
+  const allowed = new Set(['specialist', 'profile', 'description', 'prompt', 'runInBackground'])
   const unknownFields = Object.keys(source).filter(key => !allowed.has(key))
   if (unknownFields.length > 0
+    || (source.specialist !== undefined && typeof source.specialist !== 'string')
     || (source.profile !== undefined && typeof source.profile !== 'string')
     || (source.runInBackground !== undefined && typeof source.runInBackground !== 'boolean')) {
     throw new DelegationPlanError('REQUEST_INVALID', 'delegation invocation fields are invalid')
+  }
+  if (invocation.specialist !== undefined && invocation.profile !== undefined) {
+    throw new DelegationPlanError(
+      'REQUEST_INVALID',
+      'specialist and deprecated profile cannot be combined',
+    )
   }
   if (typeof invocation.description !== 'string'
     || invocation.description.trim().length === 0
@@ -500,17 +522,17 @@ export function compileDelegationPlan(
       'description and prompt must be non-empty bounded strings',
     )
   }
-  const selected = invocation.profile ?? catalog.defaultSpecialist
+  const selected = invocation.specialist ?? invocation.profile ?? catalog.defaultSpecialist
   if (selected === undefined) {
-    throw new DelegationPlanError('PROFILE_REQUIRED', 'profile is required because no active default is configured')
+    throw new DelegationPlanError('PROFILE_REQUIRED', 'Specialist is required because no active default is configured')
   }
   const known = catalog.specialists[selected]
   if (known === undefined) {
-    throw new DelegationPlanError('PROFILE_UNKNOWN', `unknown profile "${selected}"`)
+    throw new DelegationPlanError('PROFILE_UNKNOWN', `unknown Specialist "${selected}"`)
   }
   const profile = catalog.activeSpecialists[selected]
   if (profile === undefined) {
-    throw new DelegationPlanError('PROFILE_INACTIVE', `profile "${selected}" is inactive in this runtime snapshot`)
+    throw new DelegationPlanError('PROFILE_INACTIVE', `Specialist "${selected}" is inactive in this runtime snapshot`)
   }
   if (!catalog.enableRunInBackground && invocation.runInBackground === true) {
     throw new DelegationPlanError('BACKGROUND_DISABLED', 'run_in_background is disabled for this plugin instance')
@@ -521,13 +543,13 @@ export function compileDelegationPlan(
   if (mode === 'continuable' && profile.result !== 'text') {
     throw new DelegationPlanError(
       'STRUCTURED_BACKGROUND_UNSUPPORTED',
-      `profile "${selected}" uses foreground-only result contract "${profile.result}"`,
+      `Specialist "${selected}" uses foreground-only result contract "${profile.result}"`,
     )
   }
   if (!profile.allowedModes.includes(mode)) {
     throw new DelegationPlanError(
       'MODE_UNSUPPORTED',
-      `profile "${selected}" does not support ${mode} execution in this runtime snapshot`,
+      `Specialist "${selected}" does not support ${mode} execution in this runtime snapshot`,
     )
   }
   const schema = mode === 'foreground' ? outputSchemaFor(profile.result) : undefined

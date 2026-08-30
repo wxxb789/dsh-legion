@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import * as legion from '../src/index.ts'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 
@@ -15,6 +16,37 @@ describe('public contract v1', () => {
     expect(result.status).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).toContain('public contract v1 verified')
+  })
+
+  it('publishes canonical Specialist, Cohort, Cohort Run, ACP, and Config v3 exports', () => {
+    expect(legion.LegionProfileSchema).toBe(legion.SpecialistSpecSchema)
+    expect(legion.TeamSpecSchema).toBe(legion.CohortSpecSchema)
+    expect(legion.TEAM_RUN_OUTCOMES).toBe(legion.COHORT_RUN_OUTCOMES)
+    expect(legion.acpProfile).toBe(legion.acpSpecialist)
+    expect(legion.assertAcpProfileCompatible).toBe(legion.assertAcpSpecialistCompatible)
+    expect(legion.defineTeam).toBe(legion.defineCohort)
+
+    expect(legion.SPECIALIST_NAME).toBe(legion.PROFILE_NAME)
+    expect(legion.SpecialistName('review')).toBe('review')
+    expect(legion.CohortName('coding')).toBe('coding')
+    expect(legion.CohortRunId('team-run-123e4567-e89b-42d3-a456-426614174000'))
+      .toBe('team-run-123e4567-e89b-42d3-a456-426614174000')
+    expect(legion.CANONICAL_CONFIG_VERSION).toBe(3)
+    expect(legion.materializeCurrentConfig({
+      specialists: {
+        review: {
+          description: 'Review.',
+          subagentProvider: 'spawn',
+          maxDepth: 1,
+          defaultRunInBackground: false,
+        },
+      },
+      defaultSpecialist: 'review',
+    })).toMatchObject({
+      configVersion: 3,
+      defaultSpecialist: 'review',
+      specialists: { review: { description: 'Review.' } },
+    })
   })
 
   it('freezes canonical Specialist and Strategy request field sets with the legacy alias', () => {

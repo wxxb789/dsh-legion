@@ -1062,13 +1062,14 @@ describe('dsh-legion', () => {
     }))
   })
 
-  it('fails loud when a foreground profile requests a capability its provider lacks', async () => {
+  it('fails loud with current Specialist copy when a foreground capability is unavailable', async () => {
     const external = provider('external', {
       capabilities: NO_START_CAPABILITIES,
       continuable: false,
     })
     await expect(setup({
-      profiles: {
+      configVersion: 3,
+      specialists: {
         product: {
           description: 'External product worker.',
           subagentProvider: 'external',
@@ -1076,8 +1077,8 @@ describe('dsh-legion', () => {
           defaultRunInBackground: false,
         },
       },
-      defaultProfile: 'product',
-    }, [external])).rejects.toThrow(/PROFILE_DEPTH_UNSUPPORTED/)
+      defaultSpecialist: 'product',
+    }, [external])).rejects.toThrow(/PROFILE_DEPTH_UNSUPPORTED: provider "external"/)
   })
 
   it('treats abnormal child settlement as an error and preserves partial output', async () => {

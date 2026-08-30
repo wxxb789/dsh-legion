@@ -55,6 +55,8 @@ export const LEGION_MAX_RESOURCE_BYTES = { min: 1, max: 4 * 1024 * 1024 } as con
 /** The Legion section fields this card edits — a deliberate subset of the schema. */
 export interface LegionCardSection {
   toolName?: string
+  defaultSpecialist?: string
+  /** @deprecated Read-only compatibility input; saves remove it in favor of defaultSpecialist. */
   defaultProfile?: string
   maxResourceBytes?: number
   enableRunInBackground?: boolean
@@ -77,7 +79,7 @@ export class LegionCardController {
   constructor(scope: SettingsScope<LegionCardSection>) {
     this.form = new SettingsForm(scope, [
       textField('toolName'),
-      textField('defaultProfile'),
+      textField('defaultSpecialist', ['defaultProfile']),
       numberField('maxResourceBytes', LEGION_MAX_RESOURCE_BYTES),
       booleanField('enableRunInBackground'),
       booleanField('enableStrategies'),
@@ -91,7 +93,7 @@ export class LegionCardController {
       ...this.form.shell(),
       open: this.open,
       toolName: this.form.field('toolName'),
-      defaultProfile: this.form.field('defaultProfile'),
+      defaultSpecialist: this.form.field('defaultSpecialist'),
       maxResourceBytes: this.form.field('maxResourceBytes'),
       enableRunInBackground: this.form.field('enableRunInBackground'),
       enableStrategies: this.form.field('enableStrategies'),

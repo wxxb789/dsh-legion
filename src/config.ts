@@ -11,7 +11,9 @@ import {
 import { resolveCatalogLayers } from './catalog-layer.ts'
 import { deepCopy, deepFreeze } from './internal/value.ts'
 
-export const PROFILE_NAME = /^[a-z][a-z0-9-]*$/
+export const SPECIALIST_NAME = /^[a-z][a-z0-9-]*$/
+/** @deprecated Use SPECIALIST_NAME. */
+export const PROFILE_NAME = SPECIALIST_NAME
 /** Published 1.x no-target materialize/export version. */
 export const CURRENT_CONFIG_VERSION = 2 as const
 /** Canonical version used by the new current Config interfaces. */
@@ -121,6 +123,9 @@ export interface SpecialistSpec {
   /** Explicit instruction fragments loaded through configured resource roots. */
   readonly promptFiles?: PromptFileReference[]
 }
+
+/** @deprecated Use SpecialistSpec. */
+export type LegionProfile = SpecialistSpec
 
 type LegacyMemberSlotSpec = Omit<MemberSlotSpec, 'specialist'> & { readonly profile: string }
 type LegacyCohortSpec = Omit<CohortSpec, 'members'> & {
@@ -277,6 +282,9 @@ export const SpecialistSpecSchema: z<SpecialistSpec> = z.object({
   result: z.union(RESULT_CONTRACTS).default('text'),
   promptFiles: z.array(PromptFileReferenceSchema).default(undefined as unknown as PromptFileReference[]),
 })
+
+/** @deprecated Use SpecialistSpecSchema. */
+export const LegionProfileSchema = SpecialistSpecSchema
 
 const CatalogDisableSchema = z.object({
   [CONFIG_NAMESPACE_VOCABULARY.specialist.current]: z.array(z.string().pattern(PROFILE_NAME)),
@@ -947,7 +955,7 @@ export function exportConfigDocument(
     || Object.keys(current.cohorts).length > 0
     || Object.keys(current.strategies).length > 0) {
     throw new Error(
-      'dsh-legion: config v2 Strategy exposure or Teams/Strategies cannot be rolled back to config v1',
+      'dsh-legion: config v2 Strategy exposure or Cohorts/Strategies cannot be rolled back to config v1',
     )
   }
   const {
@@ -1012,38 +1020,38 @@ function validateCurrentConfig(
 
   for (const [name, profile] of entries) {
     if (!PROFILE_NAME.test(name)) {
-      throw new Error(`dsh-legion: profile name "${name}" must match ${String(PROFILE_NAME)}`)
+      throw new Error(`dsh-legion: Specialist name "${name}" must match ${String(SPECIALIST_NAME)}`)
     }
     if (profile.description.trim().length === 0) {
-      throw new Error(`dsh-legion: profile "${name}" description must not be blank`)
+      throw new Error(`dsh-legion: Specialist "${name}" description must not be blank`)
     }
     if (profile.subagentProvider.trim().length === 0) {
-      throw new Error(`dsh-legion: profile "${name}" subagentProvider must not be blank`)
+      throw new Error(`dsh-legion: Specialist "${name}" subagentProvider must not be blank`)
     }
     if (profile.routes !== undefined && profile.agentOptions !== undefined) {
-      throw new Error(`dsh-legion: profile "${name}" cannot combine routes with legacy agentOptions`)
+      throw new Error(`dsh-legion: Specialist "${name}" cannot combine routes with legacy agentOptions`)
     }
     if (profile.routes !== undefined) {
       if (profile.routes.length === 0 || profile.routes.length > 8) {
-        throw new Error(`dsh-legion: profile "${name}" routes must contain between 1 and 8 candidates`)
+        throw new Error(`dsh-legion: Specialist "${name}" routes must contain between 1 and 8 candidates`)
       }
       const routeIds = new Set<string>()
       for (const route of profile.routes) {
         if (routeIds.has(route.id)) {
-          throw new Error(`dsh-legion: profile "${name}" repeats route id "${route.id}"`)
+          throw new Error(`dsh-legion: Specialist "${name}" repeats route id "${route.id}"`)
         }
         routeIds.add(route.id)
         if (route.provider.trim().length === 0 || route.model.trim().length === 0) {
-          throw new Error(`dsh-legion: profile "${name}" route "${route.id}" needs an exact provider and model`)
+          throw new Error(`dsh-legion: Specialist "${name}" route "${route.id}" needs an exact provider and model`)
         }
         if (route.instructions !== undefined && route.instructions.trim().length === 0) {
-          throw new Error(`dsh-legion: profile "${name}" route "${route.id}" instructions must not be blank`)
+          throw new Error(`dsh-legion: Specialist "${name}" route "${route.id}" instructions must not be blank`)
         }
         if (route.maxTokens !== undefined
           && route.constraints?.minEffectiveOutputTokens !== undefined
           && route.maxTokens < route.constraints.minEffectiveOutputTokens) {
           throw new Error(
-            `dsh-legion: profile "${name}" route "${route.id}" maxTokens is below minEffectiveOutputTokens`,
+            `dsh-legion: Specialist "${name}" route "${route.id}" maxTokens is below minEffectiveOutputTokens`,
           )
         }
       }
@@ -1052,23 +1060,23 @@ function validateCurrentConfig(
       && profile.toolFilter.allow === undefined
       && profile.toolFilter.deny === undefined) {
       throw new Error(
-        `dsh-legion: profile "${name}" toolFilter names neither allow nor deny`,
+        `dsh-legion: Specialist "${name}" toolFilter names neither allow nor deny`,
       )
     }
     if ((profile.promptFiles?.length ?? 0) > 32) {
-      throw new Error(`dsh-legion: profile "${name}" promptFiles exceeds the limit of 32`)
+      throw new Error(`dsh-legion: Specialist "${name}" promptFiles exceeds the limit of 32`)
     }
     const references = new Set<string>()
     for (const reference of profile.promptFiles ?? []) {
       if (config.resourceRoots?.[reference.root] === undefined) {
         throw new Error(
-          `dsh-legion: profile "${name}" prompt file references unknown root "${reference.root}"`,
+          `dsh-legion: Specialist "${name}" prompt file references unknown root "${reference.root}"`,
         )
       }
-      assertPortableRelativePath(reference.path, `profile "${name}" prompt file path`)
+      assertPortableRelativePath(reference.path, `Specialist "${name}" prompt file path`)
       const key = `${reference.root}:${reference.path}`
       if (references.has(key)) {
-        throw new Error(`dsh-legion: profile "${name}" repeats prompt file "${key}"`)
+        throw new Error(`dsh-legion: Specialist "${name}" repeats prompt file "${key}"`)
       }
       references.add(key)
     }

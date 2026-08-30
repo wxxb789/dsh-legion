@@ -19,6 +19,7 @@
     "src/resources.ts",
     "src/result-contract.ts",
     "src/route.ts",
+    "tests/settings-card.spec.ts",
     "packages/run-receipt-feed/tests/client-overlay.spec.ts",
     "packages/run-receipt-feed/tests/fixtures.ts"
   ],
