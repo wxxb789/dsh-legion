@@ -62,27 +62,46 @@ const manifestPaths = manifestArguments.length > 0
   ? manifestArguments.map(path => resolve(path))
   : [resolve(root, 'package.json'), resolve(root, 'packages/run-receipt-feed/package.json')]
 const asJson = argv.includes('--json')
+const DEFAULT_LIVE_ACQUISITION_DEADLINE_MS = 240_000
+
+const liveAcquisitionDeadlineMs = () => {
+  const value = process.env.LEGION_PREFLIGHT_ACQUISITION_TIMEOUT_MS
+  if (value === undefined) return DEFAULT_LIVE_ACQUISITION_DEADLINE_MS
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error('LEGION_PREFLIGHT_ACQUISITION_TIMEOUT_MS must be a positive integer')
+  }
+  return parsed
+}
+
+const object = value => (typeof value === 'object' && value !== null && !Array.isArray(value)
+  ? value
+  : null)
 
 const scopedDependencies = (value) => Object.fromEntries(
-  Object.entries(typeof value === 'object' && value !== null ? value : {})
+  Object.entries(object(value) ?? {})
     .filter(([name]) => name.startsWith(`${DSH_SCOPE}/dsh-`)),
 )
 
-const fetchPackument = async (name) => {
+const fetchPackument = async (name, deadline) => {
   const url = `${registryUrl}/${name.replace('/', '%2f')}`
   let lastError
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (deadline.signal.aborted) break
     try {
       const response = await fetch(url, {
         headers: { accept: 'application/vnd.npm.install-v1+json' },
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.any([deadline.signal, AbortSignal.timeout(30_000)]),
       })
-      if (response.status === 404) return null
+      if (response.status === 404) return undefined
       if (!response.ok) throw new Error(`registry answered ${String(response.status)}`)
       return await response.json()
     } catch (error) {
       lastError = error
     }
+  }
+  if (deadline.signal.aborted) {
+    throw new Error(`live registry acquisition deadline exceeded after ${String(deadline.milliseconds)}ms`)
   }
   // A registry that cannot be reached is a gate failure, never a publish gap:
   // reporting an unreachable registry as an unpublished package would be the
@@ -90,23 +109,41 @@ const fetchPackument = async (name) => {
   throw new Error(`could not query ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
 }
 
-const recordLiveSnapshot = async (packages) => {
+const recordLiveSnapshot = async (packages, deadlineMilliseconds) => {
+  const deadline = {
+    milliseconds: deadlineMilliseconds,
+    signal: AbortSignal.timeout(deadlineMilliseconds),
+  }
   const recorded = {}
   const queued = new Set(packages)
   const pending = [...packages]
   while (pending.length > 0) {
     const batch = pending.splice(0, 8)
-    const answers = await Promise.all(batch.map(async name => [name, await fetchPackument(name)]))
+    const answers = await Promise.all(batch.map(async name => [name, await fetchPackument(name, deadline)]))
     for (const [name, packument] of answers) {
-      const versions = Object.keys(packument?.versions ?? {})
+      if (packument === undefined) {
+        recorded[name] = { versions: [], distTags: {}, manifests: {} }
+        continue
+      }
+      const packumentObject = object(packument)
+      const versionObjects = object(packumentObject?.versions)
+      if (versionObjects === null) {
+        recorded[name] = {
+          ...(packumentObject !== null && Object.hasOwn(packumentObject, 'versions') ? { versions: null } : {}),
+          distTags: object(packumentObject?.['dist-tags']) ?? {},
+          manifests: {},
+        }
+        continue
+      }
+      const versions = Object.keys(versionObjects)
       // Every version's requirements are recorded, because the resolution walk
       // follows ranges to whatever version satisfies them: the gap that broke
       // the packed install sat on a version no declaration names, reached from
       // one that does.
       const manifests = {}
       for (const line of versions) {
-        const manifest = packument?.versions?.[line]
-        if (manifest === undefined || manifest === null) continue
+        const manifest = object(versionObjects[line])
+        if (manifest === null) continue
         const dependencies = scopedDependencies(manifest.dependencies)
         const peerDependencies = scopedDependencies(manifest.peerDependencies)
         const peerDependenciesMeta = Object.fromEntries(
@@ -122,7 +159,7 @@ const recordLiveSnapshot = async (packages) => {
       }
       recorded[name] = {
         versions,
-        distTags: packument?.['dist-tags'] ?? {},
+        distTags: object(packumentObject['dist-tags']) ?? {},
         manifests,
       }
     }
@@ -188,7 +225,10 @@ if (nonApplicable !== undefined) {
       acquired = { policy, snapshot: emptySnapshot, workspaceManifests }
     } else {
       const snapshot = snapshotPath === undefined
-        ? await recordLiveSnapshot(closure.map(name => `${DSH_SCOPE}/${name}`))
+        ? await recordLiveSnapshot(
+            closure.map(name => `${DSH_SCOPE}/${name}`),
+            liveAcquisitionDeadlineMs(),
+          )
         : await loadSnapshot(snapshotPath)
       if (recordPath !== undefined) {
         await writeFile(resolve(recordPath), `${JSON.stringify(snapshot, null, 2)}\n`)

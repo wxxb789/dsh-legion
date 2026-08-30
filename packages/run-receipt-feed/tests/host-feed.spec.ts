@@ -64,7 +64,7 @@ function withTokenStatus(
   const fields = ['totalTokens', 'uncachedInputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const
   const sessions = value.tokenAccount.sessions.map(sample => Object.fromEntries([
     ['childId', sample.childId],
-    ['logRevision', sample.logRevision],
+    ['logRevision', unavailable ? null : sample.logRevision],
     ...fields.map((field) => [field, unavailable
       ? { status, reason: 'observation-failed' as const }
       : { status, value: sample[field].status === 'unavailable' ? 0 : sample[field].value, source: 'session-fold' as const }]),
@@ -260,6 +260,32 @@ describe('RunReceiptFeed public Host interface', () => {
     }))).toEqual({ ok: false, code: 'invalid-transition' })
     expect(feed.publish(parent, replace({
       ...ended,
+      participation: {
+        ...ended.participation,
+        rows: ended.participation.rows.map(row => ({
+          ...row,
+          timing: row.timing.status === 'reported' ? { ...row.timing, elapsedMs: 1 } : row.timing,
+        })),
+      },
+    }))).toEqual({ ok: false, code: 'invalid-transition' })
+    expect(feed.publish(parent, replace({
+      ...ended,
+      tokenAccount: {
+        ...ended.tokenAccount,
+        totals: {
+          ...ended.tokenAccount.totals,
+          totalTokens: { ...ended.tokenAccount.totals.totalTokens, value: 2 },
+          outputTokens: { ...ended.tokenAccount.totals.outputTokens, value: 1 },
+        },
+        sessions: ended.tokenAccount.sessions.map(sample => ({
+          ...sample,
+          totalTokens: { status: 'reported' as const, value: 2, source: 'session-fold' as const },
+          outputTokens: { status: 'reported' as const, value: 1, source: 'session-fold' as const },
+        })),
+      },
+    }))).toEqual({ ok: false, code: 'invalid-transition' })
+    expect(feed.publish(parent, replace({
+      ...ended,
       tokenAccount: {
         ...ended.tokenAccount,
         sessions: ended.tokenAccount.sessions.map(sample => ({ ...sample, logRevision: 0 })),
@@ -278,16 +304,56 @@ describe('RunReceiptFeed public Host interface', () => {
     }))).toEqual({ ok: false, code: 'invalid-transition' })
   })
 
-  it('accepts honest token evidence degradation and later recovery', async () => {
+  it('accepts honest timing and token evidence degradation and later recovery', async () => {
     const { feed, session } = await harness()
     const parent = session('evidence-transition').value
     const reported = receipt(String(parent.id), 1, 1)
     expect(feed.publish(parent, replace(reported))).toMatchObject({ ok: true, revision: 1 })
-    expect(feed.publish(parent, replace(withTokenStatus(reported, 'provisional'))))
-      .toMatchObject({ ok: true, revision: 2 })
-    expect(feed.publish(parent, replace(withTokenStatus(reported, 'unavailable'))))
-      .toMatchObject({ ok: true, revision: 3 })
-    expect(feed.publish(parent, replace(reported))).toMatchObject({ ok: true, revision: 4 })
+
+    const nullRevisionWithKnownTokens = {
+      ...reported,
+      tokenAccount: {
+        ...reported.tokenAccount,
+        sessions: reported.tokenAccount.sessions.map(sample => ({ ...sample, logRevision: null })),
+      },
+    }
+    expect(feed.publish(parent, replace(nullRevisionWithKnownTokens)))
+      .toEqual({ ok: false, code: 'invalid-references' })
+
+    const provisional = withTokenStatus(reported, 'provisional')
+    expect(feed.publish(parent, replace(provisional))).toMatchObject({ ok: true, revision: 2 })
+    const unavailableTokens = withTokenStatus(provisional, 'unavailable')
+    const unavailable = {
+      ...unavailableTokens,
+      timing: {
+        ...unavailableTokens.timing,
+        elapsedMs: unavailableTokens.timing.elapsedMs + 1,
+        coverage: {
+          status: 'unavailable' as const,
+          total: 1,
+          reported: 0,
+          provisional: 0,
+          unavailable: 1,
+          truncated: 0,
+        },
+      },
+      participation: {
+        ...unavailableTokens.participation,
+        rows: unavailableTokens.participation.rows.map(row => ({
+          ...row,
+          timing: { status: 'unavailable' as const, reason: 'observation-failed' as const },
+        })),
+      },
+    }
+    expect(feed.publish(parent, replace(unavailable))).toMatchObject({ ok: true, revision: 3 })
+    expect(unavailable.tokenAccount.sessions[0]?.logRevision).toBeNull()
+
+    const recovered = {
+      ...reported,
+      timing: { ...reported.timing, elapsedMs: unavailable.timing.elapsedMs + 1 },
+    }
+    expect(feed.publish(parent, replace(recovered))).toMatchObject({ ok: true, revision: 4 })
+    expect(recovered.tokenAccount.sessions[0]?.logRevision).not.toBeNull()
   })
 
   it('rejects remote token claims and impossible known token subtotals', async () => {

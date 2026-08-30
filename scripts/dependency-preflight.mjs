@@ -253,18 +253,21 @@ const object = (value) => (typeof value === 'object' && value !== null && !Array
   ? value
   : null)
 
-// null means the snapshot records nothing for this package, which is missing
-// evidence; an empty version list means the registry publishes nothing, which
-// is a gap. The acquisition path writes an explicit empty list for a 404, so
-// the two never collapse into each other.
+// An explicit empty version list means the registry publishes nothing. Missing
+// or malformed version evidence is coverage failure instead and must never be
+// collapsed into an upstream publication gap.
 const published = (snapshot, name) => {
   const entry = object(object(snapshot.packages) === null ? undefined : snapshot.packages[name])
-  if (entry === null) return null
-  const versions = Array.isArray(entry.versions)
-    ? entry.versions.filter(item => typeof item === 'string')
-    : []
+  if (entry === null) return { evidenceError: `the snapshot records nothing for ${name}` }
+  if (!Object.hasOwn(entry, 'versions')) return { evidenceError: `the snapshot records no versions for ${name}` }
+  if (!Array.isArray(entry.versions)) {
+    return { evidenceError: `the snapshot records malformed versions for ${name}: expected an array` }
+  }
+  if (entry.versions.some(item => typeof item !== 'string')) {
+    return { evidenceError: `the snapshot records malformed versions for ${name}: every entry must be a string` }
+  }
   return {
-    versions: sortVersions(versions),
+    versions: sortVersions(entry.versions),
     distTags: object(entry.distTags) ?? {},
     manifests: object(entry.manifests) ?? {},
   }
@@ -288,12 +291,12 @@ const walkResolution = (snapshot, seeds) => {
     if (visited.has(key)) continue
     visited.add(key)
     const entry = published(snapshot, current.package)
-    if (entry === null) {
+    if (entry.evidenceError !== undefined) {
       findings.push(finding({
         code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
         classification: 'coverage',
         package: current.package,
-        detail: `the snapshot records nothing for ${current.package}, reached as ${current.label}`,
+        detail: `${entry.evidenceError}, reached as ${current.label}`,
       }))
       continue
     }
@@ -318,7 +321,7 @@ const walkResolution = (snapshot, seeds) => {
       if (!target.startsWith(`${DSH_SCOPE}/dsh-`)) continue
       if (object(optionalPeers[target])?.optional === true) continue
       const targetEntry = published(snapshot, target)
-      if (targetEntry === null) {
+      if (targetEntry.evidenceError !== undefined) {
         findings.push(finding({
           code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
           classification: 'coverage',
@@ -327,7 +330,7 @@ const walkResolution = (snapshot, seeds) => {
           target,
           range,
           detail: `${key} (${current.label}) requires ${target}@${String(range)}`
-            + ` and the snapshot records nothing for ${target}`,
+            + ` and ${targetEntry.evidenceError}`,
         }))
         continue
       }
@@ -512,12 +515,12 @@ export const evaluateDependencyPreflight = ({ policy, snapshot, workspaceManifes
   let checkedLines = 0
   for (const name of declared.packages) {
     const entry = published(snapshot, name)
-    if (entry === null) {
+    if (entry.evidenceError !== undefined) {
       findings.push(finding({
         code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
         classification: 'coverage',
         package: name,
-        detail: `the registry snapshot records nothing for ${name}, which this contract declares in the registry-install closure`,
+        detail: `${entry.evidenceError}, which this contract declares in the registry-install closure`,
       }))
       continue
     }
@@ -698,9 +701,9 @@ export const evaluateDependencyPreflight = ({ policy, snapshot, workspaceManifes
   const all = [...localFindings, ...findings]
   const status = all.some(item => item.classification === 'local-regression')
     ? 'local-regression'
-    : all.some(item => item.classification === 'upstream-publish-gap')
-        ? 'upstream-publish-gap'
-        : all.some(item => item.classification === 'coverage') ? 'incomplete-evidence' : 'satisfied'
+    : all.some(item => item.classification === 'coverage')
+        ? 'incomplete-evidence'
+        : all.some(item => item.classification === 'upstream-publish-gap') ? 'upstream-publish-gap' : 'satisfied'
   return {
     schemaVersion: DEPENDENCY_PREFLIGHT_SCHEMA_VERSION,
     status,

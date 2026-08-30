@@ -54,6 +54,23 @@ function runReleasePublisher(view: { output?: string; absent?: boolean; checkOnl
 }
 
 describe('reproducible CI and release contracts', () => {
+  it('rejects stale unexpected tarballs in the reproducible-pack destination', () => {
+    const output = mkdtempSync(join(tmpdir(), 'dsh-legion-stale-pack-'))
+    try {
+      writeFileSync(join(output, 'stale-generation.tgz'), 'stale')
+      const result = spawnSync(process.execPath, ['scripts/verify-reproducible-pack.mjs', output], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(
+        'reproducible pack output contains unexpected existing tarball(s): stale-generation.tgz',
+      )
+    } finally {
+      rmSync(output, { recursive: true, force: true })
+    }
+  })
+
   it('commits a pnpm v9 lockfile for every direct dependency', () => {
     const lock = load(readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')) as {
       lockfileVersion?: string
@@ -77,7 +94,12 @@ describe('reproducible CI and release contracts', () => {
     const parsedWorkflow = load(workflow) as {
       jobs: Record<'quality' | 'compatibility', {
         strategy: { matrix: { dsh?: unknown } }
-        steps: Array<{ if?: string; run?: string }>
+        steps: Array<{
+          if?: string
+          run?: string
+          uses?: string
+          with?: { 'fetch-depth'?: number }
+        }>
       }>
     }
     const sourceInstall = {
@@ -87,6 +109,11 @@ describe('reproducible CI and release contracts', () => {
     for (const job of [parsedWorkflow.jobs.quality, parsedWorkflow.jobs.compatibility]) {
       expect(job.steps.filter(step => step.run?.includes('install-dsh-tarballs'))).toEqual([sourceInstall])
     }
+    expect(parsedWorkflow.jobs.quality.steps).toContainEqual(expect.objectContaining({
+      uses: expect.stringMatching(/^actions\/checkout@/u),
+      with: { 'fetch-depth': 0 },
+    }))
+    expect(parsedWorkflow.jobs.quality.steps).toContainEqual({ run: 'pnpm run test:composition:built' })
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('minimum')
     expect(parsedWorkflow.jobs.compatibility.strategy.matrix.dsh).toContain('latest-tested')
     expect(readFileSync(join(ROOT, '.npmrc'), 'utf8').replace(/\r\n/g, '\n'))

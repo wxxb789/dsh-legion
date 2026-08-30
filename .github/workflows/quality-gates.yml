@@ -57,6 +57,8 @@ jobs:
             node: 24.19.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: 11.21.0
@@ -77,6 +79,7 @@ jobs:
         run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output dependency-preflight-report.json
       - run: pnpm run typecheck
       - run: pnpm run build
+      - run: pnpm run test:composition:built
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract
       - run: pnpm run test:unit

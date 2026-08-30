@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { access, readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { spawnSync } from 'node:child_process'
 import { load } from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 
@@ -77,6 +79,80 @@ describe('published package contract', () => {
     expect(installer).toContain('readWorkspacePackages(projectRoot)')
     expect(installer).toContain('for (const group of workspaceDependencyGroups())')
     expect(installer).not.toContain("const packagePath = join(projectRoot, 'package.json')")
+  })
+
+  it('loads the source installer before dependencies exist and reaches argument validation', async () => {
+    const checkout = await mkdtemp(join(tmpdir(), 'dsh-legion-install-free-'))
+    try {
+      const scripts = join(checkout, 'scripts')
+      await mkdir(scripts)
+      for (const name of [
+        'install-dsh-tarballs.mjs',
+        'native-command.mjs',
+        'registry-config.mjs',
+        'source-install-restore.mjs',
+        'workspace-packages.mjs',
+      ]) {
+        await copyFile(resolve(ROOT, 'scripts', name), join(scripts, name))
+      }
+      const result = spawnSync(process.execPath, [join(scripts, 'install-dsh-tarballs.mjs')], {
+        cwd: checkout,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_PATH: '' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('usage: install-dsh-tarballs.mjs --from <directory>')
+      expect(result.stderr).not.toContain('ERR_MODULE_NOT_FOUND')
+    } finally {
+      await rm(checkout, { recursive: true, force: true })
+    }
+  })
+
+  it('parses only the repository workspace list and rejects escaping patterns without dependencies', async () => {
+    const checkout = await mkdtemp(join(tmpdir(), 'dsh-legion-workspace-parser-'))
+    try {
+      await mkdir(join(checkout, 'packages', 'child'), { recursive: true })
+      await writeFile(join(checkout, 'package.json'), JSON.stringify({
+        name: 'workspace-root',
+        version: '1.0.0',
+        dependencies: { 'workspace-child': 'workspace:1.0.0' },
+      }))
+      await writeFile(join(checkout, 'packages', 'child', 'package.json'), JSON.stringify({
+        name: 'workspace-child',
+        version: '1.0.0',
+      }))
+      const script = [
+        `import { readWorkspacePackages } from ${JSON.stringify(pathToFileURL(resolve(ROOT, 'scripts/workspace-packages.mjs')).href)}`,
+        'process.stdout.write(JSON.stringify(readWorkspacePackages(process.cwd()).map(item => item.name)))',
+      ].join(';')
+      await writeFile(join(checkout, 'pnpm-workspace.yaml'), [
+        'packages:',
+        "  - '.'",
+        "  - 'packages/*'",
+        '',
+        'allowBuilds:',
+        '  esbuild: true',
+        '',
+      ].join('\n'))
+      const valid = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: checkout,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_PATH: '' },
+      })
+      expect(valid.status).toBe(0)
+      expect(JSON.parse(valid.stdout)).toEqual(['workspace-child', 'workspace-root'])
+
+      await writeFile(join(checkout, 'pnpm-workspace.yaml'), "packages:\n  - '../outside-*'\n")
+      const escaping = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: checkout,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_PATH: '' },
+      })
+      expect(escaping.status).not.toBe(0)
+      expect(escaping.stderr).toContain('package pattern escapes the workspace')
+    } finally {
+      await rm(checkout, { recursive: true, force: true })
+    }
   })
 
   it('ships every runtime, preset, and example surface named by its manifest and README', async () => {

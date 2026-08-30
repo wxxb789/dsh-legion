@@ -41,10 +41,14 @@ const fixturePreflight = (args: string[]) => preflight([...args, ...fixtureManif
  * asynchronously: a synchronous spawn would block the very event loop that has
  * to answer its requests.
  */
-const preflightAsync = (args: string[]) => new Promise<{ status: number | null; stdout: string }>(
+const preflightAsync = (
+  args: string[],
+  environment: NodeJS.ProcessEnv = {},
+) => new Promise<{ status: number | null; stdout: string }>(
   (resolve, reject) => {
     const child = spawn(process.execPath, ['scripts/verify-dependency-preflight.mjs', ...args], {
       cwd: ROOT,
+      env: { ...process.env, ...environment },
     })
     let stdout = ''
     child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
@@ -270,6 +274,33 @@ describe('dependency availability preflight', () => {
     })
   })
 
+  it.each([
+    ['missing', 'missing-versions.snapshot.json', 'records no versions'],
+    ['non-array', 'non-array-versions.snapshot.json', 'expected an array'],
+    ['mixed', 'mixed-versions.snapshot.json', 'every entry must be a string'],
+  ])('treats %s versions evidence as incomplete coverage', (_kind, snapshot, detail) => {
+    const result = fixturePreflight([
+      '--policy', fixture('host-line.policy.json'),
+      '--snapshot', fixture(snapshot),
+      '--json',
+    ])
+    expect(result.status).toBe(3)
+    const report = JSON.parse(result.stdout) as {
+      status: string
+      findings: Array<{ code: string; classification: string; detail: string }>
+    }
+    expect(report.status).toBe('incomplete-evidence')
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: 'LEGION_REGISTRY_COVERAGE_INCOMPLETE',
+      classification: 'coverage',
+      detail: expect.stringContaining(detail),
+    }))
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      code: 'LEGION_PACKAGE_UNPUBLISHED',
+    }))
+    expect(report.findings.some(item => item.classification === 'upstream-publish-gap')).toBe(false)
+  })
+
   it('emits a typed non-applicable artifact without acquiring registry evidence', () => {
     withTempDir('legion-preflight-not-applicable-', (dir) => {
       const output = join(dir, 'report.json')
@@ -308,6 +339,37 @@ describe('dependency availability preflight', () => {
       expect(result.stdout).toContain('could not query')
       expect(result.stdout).not.toContain('LEGION_PACKAGE_UNPUBLISHED')
     } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close(error => (error === undefined ? resolve() : reject(error)))
+      })
+    }
+  })
+
+  it('writes typed acquisition failure before the overall live deadline expires', async () => {
+    const server = createServer(() => {})
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const port = (server.address() as AddressInfo).port
+      await withTempDirAsync('legion-preflight-deadline-', async (dir) => {
+        const output = join(dir, 'report.json')
+        const result = await preflightAsync([
+          '--policy', fixture('host-line.policy.json'),
+          '--registry', `http://127.0.0.1:${String(port)}`,
+          '--output', output,
+          '--json',
+          ...fixtureManifestArgs,
+        ], { LEGION_PREFLIGHT_ACQUISITION_TIMEOUT_MS: '100' })
+        expect(result.status).toBe(3)
+        const report = JSON.parse(result.stdout) as { status: string; error: string }
+        expect(report).toMatchObject({
+          status: 'acquisition-failure',
+          error: expect.stringContaining('live registry acquisition deadline exceeded after 100ms'),
+        })
+        expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(report)
+        expect(result.stdout).not.toContain('LEGION_PACKAGE_UNPUBLISHED')
+      })
+    } finally {
+      server.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         server.close(error => (error === undefined ? resolve() : reject(error)))
       })

@@ -6,7 +6,9 @@ import type {} from '@deepseek-ai/dsh-llm-retry'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import SubagentRuntime, {
+  SubagentRunId,
   type ResolvedSubagentStartRequest,
   type SubagentProvider,
   type SubagentResult,
@@ -28,7 +30,14 @@ import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/exe
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { CohortRunId } from '../src/identity.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
-import { createRunReceipt, finishRunReceipt } from '../src/run-receipt.ts'
+import {
+  createRunReceipt,
+  finishRunReceipt,
+  observeRunReceiptParticipation,
+  publishRunReceipt,
+  setRunReceiptObservation,
+  type RunReceiptObservation,
+} from '../src/run-receipt.ts'
 
 const contexts: Context[] = []
 const FULL_PROVIDER_CAPABILITIES = {
@@ -218,16 +227,16 @@ async function setup(provider: SubagentProvider, observation = false) {
   contexts.push(ctx)
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
-  if (observation) {
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(TokenMeter)
-    await ctx.plugin(SqliteSessionQuery, { path: ':memory:', openAt: 'never' })
-  }
+  const projectionRow = observation ? ctx.plugin(SessionProjectionRegistry) : undefined
+  if (projectionRow !== undefined) await projectionRow
+  const tokenMeterRow = observation ? ctx.plugin(TokenMeter) : undefined
+  if (tokenMeterRow !== undefined) await tokenMeterRow
+  if (observation) await ctx.plugin(SqliteSessionQuery, { path: ':memory:', openAt: 'never' })
   await ctx.plugin(SubagentRuntime)
   ctx.subagents.registerProvider(provider)
   const session = ctx.sessions.create(SessionId(`receipt-parent-${String(contexts.length)}`))
   const parent = { id: session.id, session } as unknown as Agent
-  return { ctx, session, parent }
+  return { ctx, session, parent, projectionRow, tokenMeterRow }
 }
 
 describe('Run Receipt public publication and degraded execution', () => {
@@ -244,7 +253,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     expect(RunReceiptSchema.safeParse(failed).success).toBe(true)
   })
 
-  it('derives stage and outcome from the frozen plan and settlement rather than child narration', async () => {
+  it('derives settlement from the plan without publishing child lastAssistantMessage', async () => {
     const narration = 'MODEL_NARRATION_SENTINEL_claims_failure_and_extra_stage'
     const runtime = await setup({
       name: 'remote',
@@ -257,11 +266,14 @@ describe('Run Receipt public publication and degraded execution', () => {
           result: Promise.resolve({
             output: [{ type: 'text', text: narration }],
             stopReason: 'completed',
-            lastAssistantMessage: narration,
           }),
           async dispose() {},
         }
       },
+    })
+    let lifecycleSawSentinel = false
+    runtime.ctx.on('subagent/end', (info) => {
+      lifecycleSawSentinel ||= JSON.stringify(info.lastAssistantMessage).includes(narration)
     })
     const publisher = new RecordingPublisher(runtime.ctx)
     const { snapshot, plan } = executionPlan()
@@ -279,7 +291,9 @@ describe('Run Receipt public publication and degraded execution', () => {
     expect(receipt.outcome).toBe('completed')
     expect(receipt.stages).toMatchObject([{ id: 'work', status: 'completed' }])
     expect(receipt.stages).toHaveLength(1)
-    expect(JSON.stringify(receipt)).not.toContain(narration)
+    expect(receipt.participation.rows[0]?.stopReason).toBe('completed')
+    expect(lifecycleSawSentinel).toBe(true)
+    expect(JSON.stringify(publisher.publications)).not.toContain(narration)
   })
 
   it('publishes the complete frozen graph before the first child starts without a Session event', async () => {
@@ -555,7 +569,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     ])
   })
 
-  it('uses Agent status while live and lifecycle end before local Agent disposal', async () => {
+  it('reuses unchanged token evidence across status edges and recovers from capability loss', async () => {
     const result = Promise.withResolvers<SubagentResult>()
     let runtime!: Awaited<ReturnType<typeof setup>>
     let child!: Agent
@@ -607,12 +621,30 @@ describe('Run Receipt public publication and degraded execution', () => {
       new AbortController().signal,
     )
     await expect.poll(() => latestReceipt(publisher).participation.rows[0]?.state).toBe('running')
-    expect(latestReceipt(publisher).tokenAccount.sessions[0]?.totalTokens).toEqual({
+    const incompleteSample = latestReceipt(publisher).tokenAccount.sessions[0]
+    expect(incompleteSample?.totalTokens).toEqual({
       status: 'unavailable',
       reason: 'incomplete-turn',
     })
+    child.session.append('step/start', { turn: 0, step: 1 })
+    assistantUsage(child.session, 0, 1, {
+      inputTokens: 6,
+      outputTokens: 2,
+      totalTokens: 10,
+      cacheReadTokens: 2,
+      cacheWriteTokens: 0,
+    })
+    child.session.append('step/end', { turn: 0, step: 1 })
+    child.session.append('turn/end', { turn: 0, reason: { kind: 'completed' } })
     setStatus(child, 'idle')
     emitAgentEvent(runtime.ctx, child, 'agent/status', { status: 'idle' })
+    const reportedSample = latestReceipt(publisher).tokenAccount.sessions[0]
+    expect(reportedSample).toMatchObject({
+      logRevision: child.session.events.length,
+      totalTokens: { status: 'reported', value: 10 },
+    })
+    expect(reportedSample).not.toBe(incompleteSample)
+    expect(Object.isFrozen(reportedSample)).toBe(true)
     expect(latestReceipt(publisher).participation.rows).toEqual([
       expect.objectContaining({
         childId: child.id,
@@ -622,11 +654,41 @@ describe('Run Receipt public publication and degraded execution', () => {
       }),
     ])
 
+    setStatus(child, 'running')
+    emitAgentEvent(runtime.ctx, child, 'agent/status', { status: 'running' })
+    expect(latestReceipt(publisher).tokenAccount.sessions[0]).toBe(reportedSample)
+
+    await runtime.tokenMeterRow?.dispose()
+    await runtime.projectionRow?.dispose()
+    setStatus(child, 'idle')
+    emitAgentEvent(runtime.ctx, child, 'agent/status', { status: 'idle' })
+    expect(latestReceipt(publisher)).toMatchObject({
+      participation: {
+        rows: [{ timing: { status: 'unavailable', reason: 'capability-unavailable' } }],
+      },
+      tokenAccount: {
+        sessions: [{
+          logRevision: null,
+          totalTokens: { status: 'unavailable', reason: 'capability-unavailable' },
+        }],
+      },
+    })
+
+    const restoredProjection = runtime.ctx.plugin(SessionProjectionRegistry)
+    await restoredProjection
+    const restoredTokenMeter = runtime.ctx.plugin(TokenMeter)
+    await restoredTokenMeter
+    setStatus(child, 'running')
+    emitAgentEvent(runtime.ctx, child, 'agent/status', { status: 'running' })
+    expect(latestReceipt(publisher).tokenAccount.sessions[0]).toBe(reportedSample)
+    expect(latestReceipt(publisher).participation.rows[0]?.timing.status).toBe('reported')
+
     result.resolve(completed())
     const outcome = await pending
 
     expect(outcome.kind).toBe('completed')
     expect(outcome.receipt.participationCounts).toMatchObject({ local: 1, remote: 0, ended: 1 })
+    expect(outcome.receipt.feed).toEqual({ status: 'available', failure: null })
   })
 
   it('reports mixed local and remote facts with known local token subtotals', async () => {
@@ -826,6 +888,75 @@ describe('Run Receipt public publication and degraded execution', () => {
     ])
     expect(descendantLease).toBeDefined()
     expect(() => descendantLease?.retain()).toThrow(/disposed/)
+  })
+
+  it('keeps admitted rows stable when a late lower-sort child arrives after saturation', async () => {
+    const runtime = await setup({
+      name: 'remote',
+      capabilities: FULL_PROVIDER_CAPABILITIES,
+      inheritsParentContext: false,
+      async start() { throw new Error('not used') },
+    })
+    const publisher = new RecordingPublisher(runtime.ctx)
+    const { plan } = executionPlan()
+    let observation: RunReceiptObservation | undefined
+    const observer = observeRunReceiptParticipation(
+      runtime.ctx,
+      runtime.parent,
+      ['work'],
+      value => { observation = value },
+    )
+    const emitChild = (childId: string, run: string): void => {
+      const id = SessionId(childId)
+      runtime.ctx.emit(scopeTarget(runtime.ctx.subagents, runtime.parent), 'subagent/start', {
+        runId: SubagentRunId(run),
+        provider: 'remote',
+        id,
+        local: false,
+      })
+      observer.trackChild(id, undefined, { stage: 'work', member: 'worker', childIndex: 0 })
+    }
+    for (let index = 0; index < RECEIPT_FEED_LIMITS.participantsPerReceipt; index += 1) {
+      emitChild(`zz-admitted-${String(index).padStart(3, '0')}`, `admitted-${String(index)}`)
+    }
+    if (observation === undefined) throw new Error('expected saturated observation')
+    let receipt = setRunReceiptObservation(
+      createRunReceipt(
+        plan,
+        CohortRunId('team-run-00000000-0000-4000-8000-000000000098'),
+        runtime.session.id,
+        1,
+      ),
+      observation,
+      2,
+    )
+    expect(publishRunReceipt(runtime.ctx, runtime.session, receipt))
+      .toEqual({ status: 'available', failure: null })
+    const before = receipt.participation.rows.map(row => row.childId)
+    expect(before).toHaveLength(RECEIPT_FEED_LIMITS.participantsPerReceipt)
+
+    emitChild('aa-late-lower-sort', 'late-lower-sort')
+    if (observation === undefined) throw new Error('expected overflow observation')
+    receipt = setRunReceiptObservation(receipt, observation, 3)
+    expect(publishRunReceipt(runtime.ctx, runtime.session, receipt))
+      .toEqual({ status: 'available', failure: null })
+
+    const abort = new AbortController()
+    const iterator = publisher.follow(String(runtime.session.id), abort.signal)[Symbol.asyncIterator]()
+    const frame = await iterator.next()
+    abort.abort()
+    await iterator.return?.()
+    if (frame.done || frame.value.type !== 'baseline') throw new Error('expected Receipt feed baseline')
+    const fedReceipt = frame.value.value.receipts[0]
+    expect(fedReceipt?.participation.rows.map(row => row.childId)).toEqual(before)
+    expect(fedReceipt?.tokenAccount.sessions.map(sample => sample.childId)).toEqual(before)
+    expect(fedReceipt?.participation.coverage).toMatchObject({
+      total: RECEIPT_FEED_LIMITS.participantsPerReceipt + 1,
+      reported: RECEIPT_FEED_LIMITS.participantsPerReceipt,
+      unavailable: 0,
+      truncated: 1,
+    })
+    observer.dispose()
   })
 
   it('reports exact participant truncation in the full Receipt and summary', async () => {

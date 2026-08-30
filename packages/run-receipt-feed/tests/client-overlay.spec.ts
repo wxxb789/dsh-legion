@@ -29,6 +29,7 @@ class TestLocale {
   private readonly dictionaries = new Map<string, Record<string, string>>()
   private readonly listeners = new Set<() => void>()
   private revision = 0
+  factsRenders = 0
 
   register(namespace: string, dictionaries: { en: Record<string, string> }): () => void {
     this.dictionaries.set(namespace, dictionaries.en)
@@ -39,6 +40,7 @@ class TestLocale {
 
   bind(namespace: string): (key: string, params?: Record<string, unknown>) => string {
     return (key, params = {}) => {
+      if (key === 'stages') this.factsRenders += 1
       const template = this.dictionaries.get(namespace)?.[key] ?? key
       return template.replace(/\{([^}]+)\}/g, (_match, name: string) => String(params[name] ?? `{${name}}`))
     }
@@ -168,15 +170,18 @@ class ScriptedRemote {
   readonly generation = createSnapshotStore({ id: 1, host: { home: '' } })
   readonly mounted: unknown[] = []
   disposedMounts = 0
-  readonly legionReceipts?: { follow(sessionId: string, signal?: AbortSignal): AsyncIterable<ReceiptFeedFrame> }
+  readonly legionReceipts?: unknown
   private readonly mountFailure: Error | undefined
 
-  constructor(script: FollowScript, options: { incompatible?: boolean; missingNamespace?: boolean } = {}) {
+  constructor(
+    script: FollowScript,
+    options: { incompatible?: boolean; missingNamespace?: boolean; malformedNamespace?: boolean } = {},
+  ) {
     this.mountFailure = options.incompatible === true ? new Error('incompatible Remote contribution') : undefined
     if (options.missingNamespace !== true) {
-      this.legionReceipts = {
-        follow: (sessionId, signal = new AbortController().signal) => script.open(sessionId, signal),
-      }
+      this.legionReceipts = options.malformedNamespace === true
+        ? { follow: 'not-a-function' }
+        : { follow: (sessionId: string, signal = new AbortController().signal) => script.open(sessionId, signal) }
     }
   }
 
@@ -251,6 +256,7 @@ function partialReceipt(sessionId: string): RunReceipt {
 
 interface Bench {
   readonly runtime: SlotTestRuntime
+  readonly locale: TestLocale
   readonly script: FollowScript
   readonly remote: ScriptedRemote
   readonly view: ReturnType<SlotTestRuntime['renderSlot']>
@@ -258,7 +264,9 @@ interface Bench {
   readonly receiptFeature: Awaited<ReturnType<SlotTestRuntime['mount']>>
 }
 
-async function bench(options: { incompatible?: boolean; missingNamespace?: boolean; otherOverlay?: boolean } = {}): Promise<Bench> {
+async function bench(
+  options: { incompatible?: boolean; missingNamespace?: boolean; malformedNamespace?: boolean; otherOverlay?: boolean } = {},
+): Promise<Bench> {
   localStorage.clear()
   const runtime = await SlotTestRuntime.create()
   await runtime.sessions.add({ id: 'session-a' })
@@ -289,7 +297,7 @@ async function bench(options: { incompatible?: boolean; missingNamespace?: boole
   const receiptFeature = await runtime.mount({ inject: [...inject], apply: apply as (ctx: Context) => unknown })
   const view = runtime.renderSlot('shell.overlay', {})
   const conversation = runtime.renderSlot('conversation', {})
-  return { runtime, script, remote, view, conversation, receiptFeature }
+  return { runtime, locale, script, remote, view, conversation, receiptFeature }
 }
 
 async function show(channel: FollowChannel, frame: ReceiptFeedFrame, runtime: SlotTestRuntime): Promise<void> {
@@ -509,6 +517,13 @@ describe('Run Receipt companion Client', () => {
     }
   })
 
+  it('degrades a malformed generated Remote namespace without opening the feed', async () => {
+    const b = await trackedBench({ malformedNamespace: true })
+    expect(b.remote.mounted).toHaveLength(1)
+    expect(b.view.container.querySelector('[data-receipt-state="feed-unavailable"]')).not.toBeNull()
+    expect(b.view.container.textContent).toContain('Run Receipt feed is unavailable')
+  })
+
   it('keeps business facts out of localStorage and coexists with another overlay control', async () => {
     const b = await trackedBench({ otherOverlay: true })
     const stream = await b.script.nextOpen('session-a')
@@ -555,12 +570,22 @@ describe('Run Receipt companion Client', () => {
       })
       return event
     }
+    const factsRenders = desktop.locale.factsRenders
+    const stagesHeading = desktop.view.view.getByRole('heading', { name: 'Stages' })
     drag.dispatchEvent(pointer('pointerdown', 100, 100))
-    drag.dispatchEvent(pointer('pointermove', 180, 140))
-    await desktop.runtime.flush()
-    expect(desktop.view.container.querySelector('aside')?.getAttribute('data-layout')).toBe('floating')
-    expect(JSON.parse(localStorage.getItem('dsh-legion-receipts.presentation.v1') ?? '{}'))
-      .toMatchObject({ docked: false, x: 120, y: 90 })
+    for (const [clientX, clientY, x, y] of [
+      [180, 140, 120, 90],
+      [240, 200, 180, 150],
+      [300, 260, 240, 210],
+    ] as const) {
+      drag.dispatchEvent(pointer('pointermove', clientX, clientY))
+      await desktop.runtime.flush()
+      expect(desktop.view.container.querySelector('aside')?.getAttribute('data-layout')).toBe('floating')
+      expect(JSON.parse(localStorage.getItem('dsh-legion-receipts.presentation.v1') ?? '{}'))
+        .toMatchObject({ docked: false, x, y })
+      expect(desktop.locale.factsRenders).toBe(factsRenders)
+      expect(desktop.view.view.getByRole('heading', { name: 'Stages' })).toBe(stagesHeading)
+    }
     await desktop.runtime.dispose()
     benches.splice(benches.indexOf(desktop.runtime), 1)
 

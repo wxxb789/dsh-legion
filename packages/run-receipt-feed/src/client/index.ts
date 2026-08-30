@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import receiptsRemote from 'dsh-legion-receipts/remote'
 import './styles.ts'
-import { ClientReceiptModel } from './model.ts'
+import { ClientReceiptModel, type ReceiptRemote } from './model.ts'
 import {
   createReceiptPresentationStore,
   RUN_RECEIPT_OVERLAY_ID,
@@ -31,17 +31,18 @@ export { en, RECEIPT_LOCALE_NS, zh } from './locales.ts'
 /** The Gateway-owned Client Remote service must exist before self-mount. */
 export const inject = ['remote']
 
-function namespace(ctx: Context): object | undefined {
-  const value = Reflect.get(ctx.remote, 'legionReceipts')
-  return typeof value === 'object' && value !== null ? value : undefined
+function isReceiptRemote(value: unknown): value is ReceiptRemote {
+  if (typeof value !== 'object' || value === null || typeof Reflect.get(value, '$stream') !== 'function') return false
+  const namespace = Reflect.get(value, 'legionReceipts')
+  return typeof namespace === 'object' && namespace !== null && typeof Reflect.get(namespace, 'follow') === 'function'
 }
 
 function registerUi(ctx: Context, unavailableReason?: string): () => Promise<void> {
-  const remoteNamespace = unavailableReason === undefined ? namespace(ctx) : undefined
+  const remote = unavailableReason === undefined && isReceiptRemote(ctx.remote) ? ctx.remote : undefined
   const model = new ClientReceiptModel(
     ctx.sessions,
-    remoteNamespace === undefined ? undefined : ctx.remote as never,
-    unavailableReason ?? (remoteNamespace === undefined ? 'Run Receipt Remote namespace is unavailable' : undefined),
+    remote,
+    unavailableReason ?? (remote === undefined ? 'Run Receipt Remote namespace is unavailable' : undefined),
   )
   const stopModel = ctx.effect(
     () => async () => { await model.dispose() },

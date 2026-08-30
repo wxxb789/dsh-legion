@@ -85,7 +85,7 @@ async function materialize(): Promise<{
       RemoteStreamCarrierError: class RemoteStreamCarrierError extends Error {},
     },
     '@deepseek-ai/dsh-client-store': { createSnapshotStore() {}, defineStore() {} },
-    react: { createElement() {}, Fragment: Symbol('Fragment'), useEffect() {}, useRef() {} },
+    react: { createElement() {}, Fragment: Symbol('Fragment'), memo: (component: unknown) => component, useEffect() {}, useRef() {} },
     '@deepseek-ai/dsh-client-ui-primitives': { Button() {}, Pill() {}, StateDot() {} },
   }
   const exports = handoff.factory((specifier) => {

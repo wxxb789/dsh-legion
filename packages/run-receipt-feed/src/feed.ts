@@ -100,8 +100,8 @@ function validateReplacement(previous: RunReceipt, next: RunReceipt): SemanticFa
       return 'invalid-transition'
     }
     if (participant.timing.status === 'reported'
-      && (candidate.timing.status !== 'reported'
-        || candidate.timing.elapsedMs < participant.timing.elapsedMs)) return 'invalid-transition'
+      && candidate.timing.status === 'reported'
+      && candidate.timing.elapsedMs < participant.timing.elapsedMs) return 'invalid-transition'
   }
 
   const samples = new Map(next.tokenAccount.sessions.map(sample => [sample.childId, sample]))
@@ -109,7 +109,8 @@ function validateReplacement(previous: RunReceipt, next: RunReceipt): SemanticFa
     const candidate = samples.get(sample.childId)
     if (candidate === undefined
       || (sample.logRevision !== null
-        && (candidate.logRevision === null || candidate.logRevision < sample.logRevision))
+        && candidate.logRevision !== null
+        && candidate.logRevision < sample.logRevision)
       || RUN_RECEIPT_TOKEN_FIELDS.some(field => !validTokenTransition(sample[field], candidate[field]))) {
       return 'invalid-transition'
     }

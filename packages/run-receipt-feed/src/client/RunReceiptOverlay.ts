@@ -2,6 +2,7 @@
 import {
   createElement as h,
   Fragment,
+  memo,
   useEffect,
   useRef,
   type PointerEvent as ReactPointerEvent,
@@ -314,6 +315,38 @@ function dragEnd(event: ReactPointerEvent<HTMLElement>, actions: OverlayActions)
   event.currentTarget.releasePointerCapture(event.pointerId)
 }
 
+interface ReceiptFactsProps {
+  readonly actions: OverlayActions
+  readonly selected: RunReceipt
+  readonly snapshot: ClientReceiptSnapshot
+  readonly t: RunReceiptOverlayProps['t']
+}
+
+const ReceiptFacts = memo(function ReceiptFacts({
+  actions, selected, snapshot, t,
+}: ReceiptFactsProps): ReactNode {
+  return h(Fragment, null, [
+    (snapshot.model?.receipts.length ?? 0) > 1
+      ? h('label', { className: 'dsh-legion-receipt__selector', key: 'selector' }, [
+          h('span', { key: 'label' }, t('selectRun')),
+          h('select', {
+            className: 'dsh-legion-receipt__action',
+            'aria-label': t('selectRun'),
+            value: selected.runId,
+            onChange: (event: { currentTarget: HTMLSelectElement }) => {
+              if (snapshot.sessionId !== undefined) actions.select(snapshot.sessionId, event.currentTarget.value)
+            },
+            key: 'select',
+          }, snapshot.model?.receipts.map(receipt => h('option', { value: receipt.runId, key: receipt.runId },
+            `${receipt.strategy} · ${receipt.runId} · ${receipt.outcome}`))),
+        ])
+      : null,
+    stages(selected, t),
+    participants(selected, t),
+    aggregate(selected, t),
+  ])
+})
+
 /** Render the current Session model without taking over the frame-wide pointer layer. */
 export function RunReceiptOverlay(props: RunReceiptOverlayProps): ReactNode {
   const snapshot = props.useReceipt(value => value)
@@ -421,26 +454,13 @@ export function RunReceiptOverlay(props: RunReceiptOverlayProps): ReactNode {
         snapshot.diagnostic === undefined
           ? null
           : h('code', { className: 'dsh-legion-receipt__diagnostic', key: 'diagnostic' }, snapshot.diagnostic),
-        selected === undefined ? null : h(Fragment, { key: 'facts' }, [
-          (snapshot.model?.receipts.length ?? 0) > 1
-            ? h('label', { className: 'dsh-legion-receipt__selector', key: 'selector' }, [
-                h('span', { key: 'label' }, props.t('selectRun')),
-                h('select', {
-                  className: 'dsh-legion-receipt__action',
-                  'aria-label': props.t('selectRun'),
-                  value: selected.runId,
-                  onChange: (event: { currentTarget: HTMLSelectElement }) => {
-                    if (snapshot.sessionId !== undefined) props.actions.select(snapshot.sessionId, event.currentTarget.value)
-                  },
-                  key: 'select',
-                }, snapshot.model?.receipts.map(receipt => h('option', { value: receipt.runId, key: receipt.runId },
-                  `${receipt.strategy} · ${receipt.runId} · ${receipt.outcome}`))),
-              ])
-            : null,
-          stages(selected, props.t),
-          participants(selected, props.t),
-          aggregate(selected, props.t),
-        ]),
+        selected === undefined ? null : h(ReceiptFacts, {
+          actions: props.actions,
+          selected,
+          snapshot,
+          t: props.t,
+          key: 'facts',
+        }),
       ])
 
   return h(Fragment, null, [

@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, symlink } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { runNativeCommand } from './native-command.mjs'
 import { readPackedPackageSet, verifyPackedPackageContents } from './package-set.mjs'
@@ -14,6 +14,13 @@ if (!['git', 'workspace'].includes(sourceMode)) {
 }
 const outputArgument = arguments_.find(argument => !argument.startsWith('--source='))
 const outputDirectory = outputArgument === undefined ? undefined : resolve(outputArgument)
+if (outputDirectory !== undefined) {
+  await mkdir(outputDirectory, { recursive: true })
+  const unexpectedTarballs = (await readdir(outputDirectory)).filter(name => name.endsWith('.tgz')).sort()
+  if (unexpectedTarballs.length > 0) {
+    throw new Error(`reproducible pack output contains unexpected existing tarball(s): ${unexpectedTarballs.join(', ')}`)
+  }
+}
 const canonicalTempRoot = trustedTempRoot()
 const sandbox = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-reproducible-pack-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandbox))
@@ -89,8 +96,8 @@ try {
     }
   }
   if (outputDirectory !== undefined) {
-    await mkdir(outputDirectory, { recursive: true })
     for (const item of first.values()) await copyFile(item.tarball, join(outputDirectory, item.tarballFile))
+    readPackedPackageSet(outputDirectory, [...first.values()])
   }
   for (const item of [...first.values()].sort((left, right) => left.name.localeCompare(right.name))) {
     process.stdout.write(`verified reproducible package ${item.name}@${item.version} ${item.tarballSha256}\n`)

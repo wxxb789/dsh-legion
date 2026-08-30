@@ -113,7 +113,7 @@ const U10_ACCEPTANCE_EVIDENCE = [
     command: 'pnpm run test:unit',
     files: [
       ['packages/run-receipt-feed/tests/client-overlay.spec.ts', 'recreates the Client plugin generation and recovers the same active Host baseline'],
-      ['tests/run-receipt-telemetry.spec.ts', 'uses Agent status while live and lifecycle end before local Agent disposal'],
+      ['tests/run-receipt-telemetry.spec.ts', 'reuses unchanged token evidence across status edges and recovers from capability loss'],
     ],
   },
   {
@@ -452,7 +452,7 @@ describe('repository vocabulary', () => {
     }
     expect(guide).toContain('Cross-cutting R5 evidence')
     expect(await readFile(resolve(ROOT, 'tests/run-receipt-telemetry.spec.ts'), 'utf8'))
-      .toContain('derives stage and outcome from the frozen plan and settlement rather than child narration')
+      .toContain('derives settlement from the plan without publishing child lastAssistantMessage')
   })
 
   it('ships only the canonical Config v3 dialect in current README and YAML examples', async () => {

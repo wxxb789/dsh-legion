@@ -105,7 +105,7 @@ export interface RunReceiptParticipationObserver {
 interface LifecycleRecord {
   readonly info: SubagentRunInfo
   readonly startedAt: number
-  end?: SubagentRunEndInfo
+  stopReason?: SubagentRunEndInfo['stopReason']
   endedAt?: number
   binding?: RunReceiptChildBinding
   localAgent?: Agent
@@ -115,6 +115,11 @@ interface LifecycleRecord {
   coldCut?: SessionCut | undefined
   coldTiming?: RunReceiptTimingEvidence
   coldToken?: RunReceiptTokenSample
+  tokenCache?: Readonly<{
+    session: Session
+    logRevision: number
+    sample: RunReceiptTokenSample
+  }>
   coldLifecycle?: true
 }
 
@@ -497,6 +502,7 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
     cacheWriteTokens: unavailableToken(reason),
   })
   let cut = record.coldCut
+  let liveSession: Session | undefined
   if (cut === undefined) {
     const session = record.localAgent?.session
     if (session === undefined) return unavailable('session-unavailable')
@@ -507,6 +513,9 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
       if (!Number.isSafeInteger(measured.logRevision)
         || measured.logRevision < 0
         || measured.logRevision > session.events.length) return unavailable('observation-failed')
+      if (record.tokenCache?.session === session
+        && record.tokenCache.logRevision === measured.logRevision) return record.tokenCache.sample
+      liveSession = session
       cut = {
         header: session.header,
         events: session.events.slice(0, measured.logRevision),
@@ -542,7 +551,7 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
       addCompactionUsage(dimensions, event.data.usage)
     }
   }
-  return {
+  const sample = deepFreeze({
     childId: String(record.info.id),
     logRevision: cut.logRevision,
     totalTokens: tokenEvidence(dimensions.totalTokens, incomplete),
@@ -550,7 +559,11 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
     outputTokens: tokenEvidence(dimensions.outputTokens, incomplete),
     cacheReadTokens: tokenEvidence(dimensions.cacheReadTokens, incomplete),
     cacheWriteTokens: tokenEvidence(dimensions.cacheWriteTokens, incomplete),
+  })
+  if (liveSession !== undefined) {
+    record.tokenCache = { session: liveSession, logRevision: cut.logRevision, sample }
   }
+  return sample
 }
 
 function remoteTokenSample(record: LifecycleRecord): RunReceiptTokenSample {
@@ -611,6 +624,8 @@ function tokenAccount(
 class HostRunReceiptParticipationObserver implements RunReceiptParticipationObserver {
   private readonly recordsByChild = new Map<SessionId, Map<SubagentRunInfo['runId'], LifecycleRecord>>()
   private readonly bound = new Map<SubagentRunInfo['runId'], LifecycleRecord>()
+  private readonly cold: LifecycleRecord[] = []
+  private readonly admitted = new Set<SubagentRunInfo['runId']>()
   private readonly agents = new Map<SessionId, Agent>()
   private readonly stageOrder: ReadonlyMap<string, number>
   private readonly unavailable = new Set<string>()
@@ -723,7 +738,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         const record: LifecycleRecord = {
           info,
           startedAt: observation.header.createdAt,
-          end: { ...info, stopReason: 'completed' },
+          stopReason: 'completed',
           endedAt: observation.events.at(-1)?.time ?? observation.header.createdAt,
           binding,
           parentId: entry.parentId,
@@ -738,7 +753,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         record.coldTiming = sessionTiming(observation.projections)
         record.coldToken = sessionTokenSample(this.ctx, record)
         record.coldCut = undefined
-        this.bound.set(record.info.runId, record)
+        this.cold.push(record)
         this.unavailable.delete(`cold:${String(entry.id)}`)
       } catch {
         this.unavailable.add(`cold:${String(entry.id)}`)
@@ -831,7 +846,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     if (record === undefined) return
     if (carrier !== this.parent
       && (!isAgent(carrier) || record.parentId !== carrier.id)) return
-    record.end = info
+    record.stopReason = info.stopReason
     record.endedAt = Date.now()
     this.emit()
   }
@@ -850,7 +865,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
   }
 
   private hasBoundChild(id: SessionId): boolean {
-    return [...this.bound.values()].some(record => record.info.id === id)
+    return [...this.bound.values(), ...this.cold].some(record => record.info.id === id)
   }
 
   private rootRecord(agent: Agent): LifecycleRecord | undefined {
@@ -872,7 +887,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
     const parentId = record.parentId
     const depth = record.depth
     if (binding === undefined || parentId === undefined || depth === undefined) return undefined
-    const ended = record.end !== undefined
+    const ended = record.endedAt !== undefined
     let state: PublishedRunReceiptParticipant['state']
     if (ended) state = 'ended'
     else if (!record.info.local) state = 'running'
@@ -902,9 +917,9 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         source: record.info.local ? 'session' : 'remote',
         state,
         timing,
-        ...record.end === undefined || record.coldLifecycle === true
+        ...record.stopReason === undefined || record.coldLifecycle === true
           ? {}
-          : { stopReason: String(record.end.stopReason) },
+          : { stopReason: String(record.stopReason) },
       },
       record,
       stageOrder: this.stageOrder.get(binding.stage) ?? Number.MAX_SAFE_INTEGER,
@@ -922,7 +937,7 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
   }
 
   private emit(): void {
-    const records = [...this.bound.values()]
+    const records = [...this.bound.values(), ...this.cold]
     const candidates = records
       .flatMap(record => {
         const participant = this.participant(record)
@@ -934,7 +949,22 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
         || left.row.childId.localeCompare(right.row.childId))
     const dynamicUnavailable = records.length - candidates.length
     const maximum = RECEIPT_FEED_LIMITS.participantsPerReceipt
-    const kept = candidates.slice(0, maximum)
+    for (const candidate of candidates) {
+      if (this.admitted.size >= maximum) break
+      if (candidate.record.coldLifecycle !== true) this.admitted.add(candidate.record.info.runId)
+    }
+    let coldSeats = maximum - this.admitted.size
+    const keptCold = new Set<ParticipantCandidate>()
+    for (const candidate of candidates) {
+      if (coldSeats === 0) break
+      if (candidate.record.coldLifecycle === true) {
+        keptCold.add(candidate)
+        coldSeats -= 1
+      }
+    }
+    const kept = candidates.filter(candidate => candidate.record.coldLifecycle === true
+      ? keptCold.has(candidate)
+      : this.admitted.has(candidate.record.info.runId))
     const truncated = Math.max(0, candidates.length - kept.length)
     const unavailable = this.unavailable.size + dynamicUnavailable
     const rows = kept.map(candidate => candidate.row)

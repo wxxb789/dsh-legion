@@ -15,7 +15,7 @@ import {
   type RunReceipt,
 } from '../types.ts'
 
-type ReceiptRemote = Pick<ClientRemote, '$stream'> & {
+export type ReceiptRemote = Pick<ClientRemote, '$stream'> & {
   readonly legionReceipts: TypertClientRemote['legionReceipts']
 }
 
