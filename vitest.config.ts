@@ -36,6 +36,10 @@ export default defineConfig({
       '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/bind.ts'),
       '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': officialClientSource('dsh-client-ui-renderer', 'ui-renderer', 'client/scoped-slots.tsx'),
       '@deepseek-ai/dsh-client-ui-session/client': officialClientSource('dsh-client-ui-session', 'ui-session', 'client/index.ts'),
+      'react-dom/client': resolve(
+        resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'react-dom'),
+        'client.js',
+      ),
       'use-sync-external-store/shim/with-selector': resolve(
         resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, 'use-sync-external-store'),
         'shim/with-selector.js',
