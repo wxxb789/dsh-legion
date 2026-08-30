@@ -6,7 +6,6 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as legion from '../src/index.ts'
-import { mountTestTokenAccounting } from './token-meter-test-service.ts'
 
 /** Minimal subagent backend; these tests only need a registered provider name. */
 function provider(name = 'spawn'): SubagentProvider {
@@ -89,7 +88,6 @@ const baseConfig = {
 async function setup(config: unknown, settings?: FakeSettings): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(AgentRegistry)
-  await mountTestTokenAccounting(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SubagentRuntime)
@@ -215,8 +213,7 @@ describe('settings-sourced publication', () => {
     const settings = new FakeSettings({ legion: { toolName: 'delegate' } })
     const ctx = new Context()
     await ctx.plugin(AgentRegistry)
-    await mountTestTokenAccounting(ctx)
-    await ctx.plugin(SystemPrompt)
+      await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)
     ctx.subagents.registerProvider(provider())

@@ -65,13 +65,14 @@ function stableParticipant(previous: RunReceiptParticipant, next: RunReceiptPart
     && previous.stage === next.stage
     && previous.member === next.member
     && previous.childIndex === next.childIndex
+    && previous.runId === next.runId
+    && previous.provider === next.provider
     && previous.source === next.source
 }
 
 function validTokenTransition(previous: RunReceiptTokenEvidence, next: RunReceiptTokenEvidence): boolean {
-  if (previous.status === 'unavailable') return true
-  if (next.status === 'unavailable' || next.value < previous.value) return false
-  return previous.status !== 'reported' || next.status === 'reported'
+  if (previous.status === 'unavailable' || next.status === 'unavailable') return true
+  return next.value >= previous.value
 }
 
 function validateReplacement(previous: RunReceipt, next: RunReceipt): SemanticFailure | undefined {
@@ -102,6 +103,9 @@ function validateReplacement(previous: RunReceipt, next: RunReceipt): SemanticFa
     const candidate = participants.get(participant.childId)
     if (candidate === undefined || !stableParticipant(participant, candidate)) return 'invalid-transition'
     if (participant.state === 'ended' && candidate.state !== 'ended') return 'invalid-transition'
+    if (participant.stopReason !== undefined && candidate.stopReason !== participant.stopReason) {
+      return 'invalid-transition'
+    }
     if (participant.timing.status === 'reported'
       && (candidate.timing.status !== 'reported'
         || candidate.timing.elapsedMs < participant.timing.elapsedMs)) return 'invalid-transition'

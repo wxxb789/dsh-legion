@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import {
   ToolCallId,
   LlmAdapter,
@@ -15,27 +15,41 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
-import AgentRegistry, { emitAgentEvent, type Agent, type AgentStatus } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 import type {
   ResolvedSubagentStartRequest,
-  SubagentDescendantListEntry,
   SubagentProvider,
   SubagentResult,
   SubagentStartRequest,
 } from '@deepseek-ai/dsh-subagent'
+import type {
+  ReceiptPublication,
+  ReceiptPublicationResult,
+  RunReceiptPublisher,
+} from 'dsh-legion-receipts'
 import * as legion from '../src/index.ts'
-import {
-  mountTestSessionQuery,
-  mountTestTokenAccounting,
-  TestSessionProjections,
-  TestTokenMeter,
-} from './token-meter-test-service.ts'
 
 const signal = new AbortController().signal
 let callSequence = 0
+
+class RecordingPublisher extends Service implements RunReceiptPublisher {
+  readonly publications: ReceiptPublication[] = []
+
+  constructor(
+    ctx: Context,
+    private readonly result: ReceiptPublicationResult = { ok: true, changed: true, revision: 1 },
+  ) {
+    super(ctx, 'legionReceipts')
+  }
+
+  publish(_session: Parameters<RunReceiptPublisher['publish']>[0], publication: ReceiptPublication) {
+    this.publications.push(publication)
+    return this.result
+  }
+}
 
 class RouteAdapter extends LlmAdapter {
   constructor(
@@ -61,23 +75,6 @@ class RouteAdapter extends LlmAdapter {
 function parent(id = 'parent'): Agent {
   const session = Session.create(SessionId(id))
   return { id: session.id, session } as unknown as Agent
-}
-
-function registryAgent(id: string, status: AgentStatus, parentId?: SessionId): Agent {
-  const initial = Session.create(SessionId(id))
-  const session = parentId === undefined
-    ? initial
-    : Session.create(initial.id, [], {
-        ...initial.header,
-        parentSession: parentId,
-        origin: 'subagent',
-        delegationDepth: 1,
-      })
-  return { id: session.id, session, status } as unknown as Agent
-}
-
-function setAgentStatus(agent: Agent, status: AgentStatus): void {
-  (agent as { status: AgentStatus }).status = status
 }
 
 function provider(
@@ -130,29 +127,8 @@ function provider(
   return result
 }
 
-function projections(ctx: Context): TestSessionProjections {
-  return (ctx as unknown as { get(name: string): unknown }).get('sessionProjections') as TestSessionProjections
-}
-
-function setTokenSample(
-  ctx: Context,
-  session: Session,
-  usage: {
-    readonly uncachedInputTokens: number
-    readonly outputTokens: number
-    readonly cacheReadTokens: number
-    readonly cacheWriteTokens: number
-  },
-  measurement: { readonly totalTokens: number; readonly surfaceTokens: number },
-): void {
-  projections(ctx).setValue(session, 'tokenUsage', usage)
-  ;((ctx as unknown as { get(name: string): unknown }).get('tokenMeter') as TestTokenMeter).set(session, measurement)
-}
-
 async function mountAccountingServices(ctx: Context): Promise<void> {
   await ctx.plugin(SessionStore)
-  await mountTestTokenAccounting(ctx)
-  mountTestSessionQuery(ctx)
 }
 
 async function setup(
@@ -417,179 +393,8 @@ describe('dsh-legion', () => {
     expect(starts).toHaveLength(4)
   })
 
-  it('publishes a settlement-driven Run Receipt and bounded tool summary', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(1_700_000_000_000)
-    try {
-      const first = Promise.withResolvers<SubagentResult>()
-      const second = Promise.withResolvers<SubagentResult>()
-      const starts: Array<Record<string, unknown>> = []
-      let ctx!: Context
-      let session!: Session
-      let index = 0
-      const capture = provider('spawn', {
-        onStart: () => {
-          starts.push(structuredClone(
-            projections(ctx).snapshot(session).values['legion/run-receipts'] as Record<string, unknown>,
-          ))
-        },
-        result: () => index++ === 0 ? first.promise : second.promise,
-      })
-      ctx = new Context()
-      await mountAccountingServices(ctx)
-      await ctx.plugin(AgentRegistry)
-      await ctx.plugin(SystemPrompt)
-      await ctx.plugin(ToolRuntime)
-      await ctx.plugin(SubagentRuntime)
-      vi.spyOn(ctx.subagents, 'listDescendants').mockResolvedValue([])
-      ctx.subagents.registerProvider(capture)
-      await ctx.plugin(legion, {
-        configVersion: 2,
-        toolName: 'legion',
-        enableRunInBackground: true,
-        enableStrategies: true,
-        catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
-        profiles: {
-          deep: {
-            description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2,
-            defaultRunInBackground: false, result: 'text',
-          },
-          quick: {
-            description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2,
-            defaultRunInBackground: false, result: 'text',
-          },
-          review: {
-            description: 'Review.', subagentProvider: 'spawn', maxDepth: 2,
-            defaultRunInBackground: false, result: 'review-v1',
-          },
-        },
-        defaultProfile: 'quick',
-      })
-      session = ctx.sessions.create(SessionId('receipt-parent'))
-      const agent = { id: session.id, session } as unknown as Agent
-
-      const pending = execute(ctx, {
-        kind: 'strategy',
-        strategy: 'independent-review',
-        objective: 'Publish the graph before execution.',
-      }, agent)
-      for (let step = 0; step < 30 && starts.length < 1; step += 1) await Promise.resolve()
-
-      const beforeFirstStart = starts[0] as { receipts: Record<string, { stages: unknown[] }> }
-      const runId = Object.keys(beforeFirstStart.receipts)[0]!
-      expect(beforeFirstStart.receipts[runId]).toMatchObject({
-        runId,
-        strategy: 'independent-review',
-        cohort: 'independent-review',
-        outcome: 'running',
-        elapsedMs: 0,
-        stages: [
-          { id: 'execute', after: [], status: 'pending' },
-          { id: 'review', after: ['execute'], status: 'pending' },
-        ],
-      })
-
-      vi.setSystemTime(1_700_000_000_100)
-      first.resolve({ output: [{ type: 'text', text: 'execution evidence' }], stopReason: 'completed' })
-      for (let step = 0; step < 30 && starts.length < 2; step += 1) await Promise.resolve()
-      const beforeSecondStart = starts[1] as typeof beforeFirstStart
-      expect(beforeSecondStart.receipts[runId]?.stages).toMatchObject([
-        { id: 'execute', status: 'completed' },
-        { id: 'review', status: 'pending' },
-      ])
-
-      vi.setSystemTime(1_700_000_000_250)
-      second.resolve({
-        output: [{ type: 'text', text: 'reviewed' }],
-        structured: { verdict: 'pass', summary: 'Good.', findings: [], verification: ['checked'] },
-        stopReason: 'completed',
-      })
-      const result = await pending
-      expect(result.isError).toBe(false)
-      if (result.isError) throw new Error(rendered(result))
-
-      const projection = projections(ctx).snapshot(session).values['legion/run-receipts'] as {
-        receipts: Record<string, Record<string, unknown>>
-      }
-      expect(projection.receipts[runId]).toMatchObject({
-        outcome: 'completed',
-        elapsedMs: 250,
-        stages: [
-          { id: 'execute', status: 'completed' },
-          { id: 'review', status: 'completed' },
-        ],
-      })
-      expect(JSON.stringify(projection.receipts[runId])).not.toMatch(/money|cost|price|currency/iu)
-      expect(result.value).toMatchObject({
-        kind: 'strategy',
-        strategy: 'independent-review',
-        receipt: {
-          runId,
-          outcome: 'completed',
-          elapsedMs: 250,
-          stageCounts: { total: 2, pending: 0, completed: 2, degraded: 0, cancelled: 0, failed: 0 },
-        },
-      })
-      expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
-      expect(rendered(result)).toContain('Run receipt: completed in 250ms; stages 2/2 settled')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('samples per-session tokens on status and settlement and explicitly sums the child tree', async () => {
-    const results = [Promise.withResolvers<SubagentResult>(), Promise.withResolvers<SubagentResult>()]
-    const first = registryAgent('receipt-live-first', 'running')
-    const nested = registryAgent('receipt-cold-grandchild', 'running', first.id)
-    const unrelated = registryAgent('receipt-unrelated', 'running')
-    const second = registryAgent('receipt-live-second', 'running')
-    const removers: Array<() => void> = []
-    let starts = 0
-    const ctx = new Context()
-    await mountAccountingServices(ctx)
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(SystemPrompt)
-    await ctx.plugin(ToolRuntime)
-    await ctx.plugin(SubagentRuntime)
-    // These Agents predate the run observer, so their sessions can only come from backfill.
-    removers.push(ctx.agents.register(first), ctx.agents.register(nested), ctx.agents.register(unrelated))
-    const zeroUsage = {
-      uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-    }
-    setTokenSample(ctx, first.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
-    setTokenSample(ctx, nested.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
-    setTokenSample(ctx, second.session, zeroUsage, { totalTokens: 0, surfaceTokens: 0 })
-    setTokenSample(ctx, unrelated.session, {
-      uncachedInputTokens: 100, outputTokens: 100, cacheReadTokens: 100, cacheWriteTokens: 100,
-    }, { totalTokens: 400, surfaceTokens: 400 })
-    ctx.subagents.registerProvider({
-      name: 'spawn',
-      capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
-      inheritsParentContext: false,
-      async start() {
-        const index = starts++
-        const child = index === 0 ? first : second
-        const remove = index === 0 ? removers[0]! : ctx.agents.register(child)
-        if (index !== 0) removers.push(remove)
-        return {
-          id: child.id,
-          localAgent: child,
-          result: results[index]!.promise,
-          async dispose() { remove() },
-        }
-      },
-    })
-    const coldChildren: SubagentDescendantListEntry[] = [
-      { kind: 'child', id: first.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: true, mode: 'one-shot', label: 'execute executor' },
-      { kind: 'child', id: nested.id, parentId: first.id, depth: 2, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'nested child' },
-      { kind: 'child', id: second.id, parentId: SessionId('receipt-registry-parent'), depth: 1, activity: 'inactive', hasChildren: false, mode: 'one-shot', label: 'review reviewer' },
-    ]
-    vi.spyOn(ctx.subagents, 'listDescendants').mockImplementation(async () => {
-      // Reusing an ended id must not let live registry state contaminate the cold tree.
-      removers.push(ctx.agents.register(registryAgent(String(first.id), 'running')))
-      return coldChildren
-    })
-    await ctx.plugin(legion, {
+  it('returns a fixed-shape Strategy summary through the public tool result', async () => {
+    const ctx = await setup({
       configVersion: 2,
       toolName: 'legion',
       enableRunInBackground: true,
@@ -601,215 +406,136 @@ describe('dsh-legion', () => {
         review: { description: 'Review.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'review-v1' },
       },
       defaultProfile: 'quick',
-    })
-    const session = ctx.sessions.create(SessionId('receipt-registry-parent'))
-    const agent = { id: session.id, session } as unknown as Agent
-    const snapshot = () => projections(ctx).snapshot(session).values['legion/run-receipts'] as {
-      receipts: Record<string, {
-        participation: Array<Record<string, unknown>>
-        tokenAccount: {
-          totals: Record<string, number>
-          sessions: Array<Record<string, unknown>>
-        }
-      }>
-    }
-
-    try {
-      const pending = execute(ctx, {
-        kind: 'strategy',
-        strategy: 'independent-review',
-        objective: 'Observe registry participation without model narration.',
-      }, agent)
-      await vi.waitFor(() => expect(starts).toBe(1))
-      const runId = Object.keys(snapshot().receipts)[0]!
-      expect(snapshot().receipts[runId]?.participation).toEqual([{
-        childId: first.id,
-        parentId: session.id,
-        depth: 1,
-        stage: 'execute',
-        member: 'executor',
-        childIndex: 0,
-        state: 'live',
-        registryStatus: 'running',
-      }, {
-        childId: nested.id,
-        parentId: first.id,
-        depth: 2,
-        stage: 'execute',
-        member: 'executor',
-        childIndex: 0,
-        state: 'live',
-        registryStatus: 'running',
-      }])
-
-      setTokenSample(ctx, first.session, {
-        uncachedInputTokens: 10, outputTokens: 4, cacheReadTokens: 7, cacheWriteTokens: 2,
-      }, { totalTokens: 30, surfaceTokens: 11 })
-      // Reading the projection does not sample the O(surface) Host meter.
-      expect(snapshot().receipts[runId]?.tokenAccount.totals.totalTokens).toBe(0)
-      setAgentStatus(first, 'idle')
-      emitAgentEvent(ctx, first, 'agent/status', { status: 'idle' })
-      expect(snapshot().receipts[runId]?.participation).toMatchObject([
-        { childId: first.id, state: 'live', registryStatus: 'idle' },
-        { childId: nested.id, state: 'live', registryStatus: 'running' },
-      ])
-      expect(snapshot().receipts[runId]?.tokenAccount).toMatchObject({
-        totals: {
-          totalTokens: 23,
-          uncachedInputTokens: 10,
-          outputTokens: 4,
-          cacheReadTokens: 7,
-          cacheWriteTokens: 2,
-        },
-        sessions: [
-          { childId: first.id, stage: 'execute', member: 'executor', totalTokens: 23 },
-          { childId: nested.id, stage: 'execute', member: 'executor', totalTokens: 0 },
-        ],
-      })
-      setTokenSample(ctx, nested.session, {
-        uncachedInputTokens: 3, outputTokens: 1, cacheReadTokens: 5, cacheWriteTokens: 0,
-      }, { totalTokens: 12, surfaceTokens: 5 })
-      expect(snapshot().receipts[runId]?.tokenAccount.totals.totalTokens).toBe(23)
-      setAgentStatus(nested, 'idle')
-      emitAgentEvent(ctx, nested, 'agent/status', { status: 'idle' })
-      expect(snapshot().receipts[runId]?.tokenAccount.totals).toMatchObject({
-        totalTokens: 32,
-        uncachedInputTokens: 13,
-        outputTokens: 5,
-        cacheReadTokens: 12,
-        cacheWriteTokens: 2,
-      })
-
-      results[0]!.resolve({ output: [], stopReason: 'completed' })
-      await vi.waitFor(() => expect(starts).toBe(2))
-      expect(snapshot().receipts[runId]?.participation).toMatchObject([
-        { childId: first.id, state: 'ended' },
-        { childId: nested.id, state: 'live', registryStatus: 'idle' },
-        { childId: second.id, state: 'live', registryStatus: 'running' },
-      ])
-      setTokenSample(ctx, second.session, {
-        uncachedInputTokens: 6, outputTokens: 2, cacheReadTokens: 8, cacheWriteTokens: 1,
-      }, { totalTokens: 20, surfaceTokens: 8 })
-
-      results[1]!.resolve({
-        output: [],
-        structured: { verdict: 'pass', summary: 'No narration needed.', findings: [], verification: ['registry'] },
-        stopReason: 'completed',
-      })
-      const result = await pending
-      expect(result.isError).toBe(false)
-      if (result.isError) throw new Error(rendered(result))
-      expect(snapshot().receipts[runId]?.participation).toEqual([
-        { childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
-        { childId: nested.id, parentId: first.id, depth: 2, stage: 'execute', member: 'executor', childIndex: 0, state: 'ended' },
-        { childId: second.id, parentId: session.id, depth: 1, stage: 'review', member: 'reviewer', childIndex: 0, state: 'ended' },
-      ])
-      expect(snapshot().receipts[runId]?.tokenAccount).toMatchObject({
-        totals: {
-          totalTokens: 49,
-          uncachedInputTokens: 19,
-          outputTokens: 7,
-          cacheReadTokens: 20,
-          cacheWriteTokens: 3,
-        },
-        sessions: [
-          { childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', totalTokens: 23 },
-          { childId: nested.id, parentId: first.id, depth: 2, stage: 'execute', member: 'executor', totalTokens: 9 },
-          { childId: second.id, parentId: session.id, depth: 1, stage: 'review', member: 'reviewer', totalTokens: 17 },
-        ],
-      })
-      expect(result.value).toMatchObject({
-        receipt: {
-          participationCounts: { total: 3, running: 0, idle: 0, ended: 3 },
-          tokenTotals: {
-            totalTokens: 49,
-            uncachedInputTokens: 19,
-            outputTokens: 7,
-            cacheReadTokens: 20,
-            cacheWriteTokens: 3,
-          },
-        },
-      })
-      expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
-      expect(rendered(result)).toContain('participation 0 running, 0 idle, 3 ended')
-      expect(rendered(result)).toContain('tokens 49 total; 19 uncached input, 20 cache-read')
-
-      const terminal = snapshot().receipts[runId]!
-      session.append('legion/run-receipt', {
-        ...terminal,
-        participation: [{
-          childId: first.id, parentId: session.id, depth: 1, stage: 'execute', member: 'executor', childIndex: 0,
-          state: 'live', registryStatus: 'ready',
-        }],
-      } as never)
-      expect(snapshot().receipts[runId]).toEqual(terminal)
-      session.append('legion/run-receipt', {
-        ...terminal,
-        tokenAccount: {
-          ...terminal.tokenAccount,
-          totals: { ...terminal.tokenAccount.totals, totalTokens: 50 },
-        },
-      } as never)
-      expect(snapshot().receipts[runId]).toEqual(terminal)
-      expect(JSON.stringify(terminal)).not.toContain('receipt-unrelated')
-
-      const { tokenAccount: _v2TokenAccount, ...versionTwo } = terminal
-      const versionTwoRunId = 'team-run-00000000-0000-4000-8000-000000000002'
-      session.append('legion/run-receipt', {
-        ...versionTwo, schemaVersion: 2, runId: versionTwoRunId,
-      } as never)
-      expect(snapshot().receipts[versionTwoRunId]).toMatchObject({
-        schemaVersion: 3,
-        participation: terminal.participation,
-        tokenAccount: { totals: { totalTokens: 0 }, sessions: [] },
-      })
-
-      const {
-        participation: _legacyParticipation,
-        tokenAccount: _legacyTokenAccount,
-        ...legacy
-      } = terminal as Record<string, unknown> & { participation: unknown; tokenAccount: unknown }
-      const legacyRunId = 'team-run-00000000-0000-4000-8000-000000000001'
-      session.append('legion/run-receipt', { ...legacy, schemaVersion: 1, runId: legacyRunId } as never)
-      expect(snapshot().receipts[legacyRunId]).toMatchObject({
-        schemaVersion: 3,
-        participation: [],
-        tokenAccount: { totals: { totalTokens: 0 }, sessions: [] },
-      })
-    } finally {
-      for (const remove of removers) remove()
-    }
-  })
-
-  it('fails closed when the Host cannot enumerate the complete token tree', async () => {
-    const ctx = await setup({
-      configVersion: 2,
-      enableStrategies: true,
-      catalogLayers: [legion.DEFAULT_CATALOG_LAYER],
-      profiles: {
-        deep: { description: 'Deep.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
-        quick: { description: 'Quick.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'text' },
-        review: { description: 'Review.', subagentProvider: 'spawn', maxDepth: 2, defaultRunInBackground: false, result: 'review-v1' },
-      },
-      defaultProfile: 'quick',
     }, [provider('spawn', {
       result: request => request.outputSchema === undefined
-        ? { output: [], stopReason: 'completed' }
+        ? { output: [{ type: 'text', text: 'evidence' }], stopReason: 'completed' }
         : {
-            output: [],
-            structured: { verdict: 'pass', summary: 'Done.', findings: [], verification: [] },
+            output: [{ type: 'text', text: 'review' }],
+            structured: { verdict: 'pass', summary: 'Good.', findings: [], verification: ['checked'] },
             stopReason: 'completed',
           },
     })])
-    vi.spyOn(ctx.subagents, 'listDescendants').mockRejectedValue(new Error('tree unavailable'))
+    const publisher = new RecordingPublisher(ctx)
 
     const result = await execute(ctx, {
       kind: 'strategy',
       strategy: 'independent-review',
-      objective: 'Require a complete account.',
+      objective: 'Return an honest bounded summary.',
     })
+
+    expect(result.isError).toBe(false)
+    if (result.isError) throw new Error(rendered(result))
+    expect(result.value).toMatchObject({
+      receipt: {
+        stageCounts: { total: 2, pending: 0, completed: 2 },
+        participationCounts: { total: 2, local: 0, remote: 2, ended: 2 },
+        tokenTotals: { totalTokens: null },
+        unavailableCounts: { participation: 1 },
+        truncatedCounts: { participation: 0, tokenSessions: 0 },
+        coverage: { participation: 'partial', timing: 'partial', tokens: 'unavailable' },
+        feed: { status: 'available', failure: null },
+      },
+    })
+    expect(Object.values((result.value as { receipt: Record<string, unknown> }).receipt).some(Array.isArray)).toBe(false)
+    const receiptText = JSON.stringify((result.value as { receipt: unknown }).receipt)
+    const publicationText = JSON.stringify(publisher.publications)
+    expect(receiptText).not.toContain('Return an honest bounded summary.')
+    expect(publicationText).not.toContain('Return an honest bounded summary.')
+    expect(publicationText).not.toContain('evidence')
+    expect(publisher.publications.some(item => item.type === 'replace')).toBe(true)
+    const outputSchema = ctx.tools.get('legion')?.output.schema
+    expect(JSON.stringify(outputSchema)).toContain('unavailableCounts')
+    expect(JSON.stringify(outputSchema)).toContain('feed')
+  })
+
+  it('clears retained terminal presentation only after direct preflight and before start', async () => {
+    let publisher!: RecordingPublisher
+    const ctx = await setup({
+      configVersion: 2,
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        quick: {
+          description: 'Quick.',
+          subagentProvider: 'spawn',
+          maxDepth: 2,
+          defaultRunInBackground: false,
+          result: 'text',
+        },
+      },
+      defaultProfile: 'quick',
+    }, [provider('spawn', {
+      onStart: () => {
+        expect(publisher.publications.at(-1)).toEqual({
+          type: 'clear-terminal',
+          sessionId: 'direct-clear-parent',
+        })
+      },
+    })])
+    publisher = new RecordingPublisher(ctx)
+    const caller = parent('direct-clear-parent')
+
+    const malformed = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Missing prompt.',
+    }, caller)
+    expect(malformed.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
+
+    const aborted = new AbortController()
+    aborted.abort('cancelled before admission')
+    const cancelled = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Cancelled direct call.',
+      prompt: 'Never start.',
+      run_in_background: false,
+    }, caller, aborted.signal)
+    expect(cancelled.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
+
+    const result = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Valid direct call.',
+      prompt: 'Start once.',
+      run_in_background: false,
+    }, caller)
+
+    if (result.isError) throw new Error(rendered(result))
+    expect(result.isError).toBe(false)
+    expect(publisher.publications).toEqual([{
+      type: 'clear-terminal',
+      sessionId: 'direct-clear-parent',
+    }])
+  })
+
+  it('does not clear terminal presentation for an unroutable direct call', async () => {
+    const ctx = await setup({
+      configVersion: 2,
+      toolName: 'legion',
+      enableRunInBackground: true,
+      profiles: {
+        routed: {
+          description: 'Routed.',
+          subagentProvider: 'spawn',
+          routes: [{ id: 'missing', provider: 'missing-llm', model: 'missing-model' }],
+          maxDepth: 2,
+          defaultRunInBackground: false,
+          result: 'text',
+        },
+      },
+      defaultProfile: 'routed',
+    })
+    const publisher = new RecordingPublisher(ctx)
+
+    const result = await execute(ctx, {
+      specialist: 'routed',
+      description: 'Cannot route.',
+      prompt: 'Do not clear.',
+      run_in_background: false,
+    }, parent('unroutable-clear-parent'))
+
     expect(result.isError).toBe(true)
-    expect(rendered(result)).toContain('incomplete Run Receipt child tree')
+    expect(publisher.publications).toEqual([])
   })
 
   it('publishes Strategy schema, guidance, and snapshot from one provider lifecycle generation', async () => {

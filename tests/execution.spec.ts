@@ -9,7 +9,6 @@ import { materializeConfig, type Config } from '../src/config.ts'
 import { DEFAULT_CATALOG_LAYER } from '../src/default-catalog.ts'
 import { createStrategyExecutionSnapshot, executeStrategyPlan } from '../src/execution.ts'
 import { compileOrchestrationCatalog, compileStrategy } from '../src/orchestration.ts'
-import { mountTestSessionQuery, TestSessionProjections, TestTokenMeter } from './token-meter-test-service.ts'
 
 const parentSession = Session.create(SessionId('strategy-parent'))
 const parent = { id: parentSession.id, session: parentSession } as unknown as Agent
@@ -73,9 +72,6 @@ function setup(
 ) {
   const ctx = new Context()
   new SessionStore(ctx)
-  new TestSessionProjections(ctx)
-  new TestTokenMeter(ctx)
-  mountTestSessionQuery(ctx)
   const starts: string[] = []
   const disposed: string[] = []
   let index = 0

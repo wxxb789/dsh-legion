@@ -42,6 +42,8 @@ function receipt(sessionId, receiptIndex, participantCount) {
       stage: 'execute',
       member: 'executor',
       childIndex: participantIndex,
+      runId: `lifecycle-${String(receiptIndex)}-${String(participantIndex)}`,
+      provider: 'benchmark',
       source: 'session',
       state: 'running',
       timing: { status: 'reported', elapsedMs: participantIndex + 1, source: 'subagent-timing' },

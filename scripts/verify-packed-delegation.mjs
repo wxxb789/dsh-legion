@@ -161,11 +161,14 @@ try {
     '@deepseek-ai/dsh-llm',
     '@deepseek-ai/dsh-session',
     '@deepseek-ai/dsh-session-persistence-jsonl',
+    '@deepseek-ai/dsh-session-projection',
     '@deepseek-ai/dsh-session-query',
     '@deepseek-ai/dsh-session-query-sqlite',
+    '@deepseek-ai/dsh-scope',
     '@deepseek-ai/dsh-subagent',
     '@deepseek-ai/dsh-subagent-spawn-in-process',
     '@deepseek-ai/dsh-system-prompt',
+    '@deepseek-ai/dsh-token-meter',
     '@deepseek-ai/dsh-tools',
   ].map(name => `${name}@${dshVersion}`)
   let dshDependencies
@@ -176,6 +179,7 @@ try {
       '@deepseek-ai/cordis',
       ...dshPackages.map(specifier => specifier.slice(0, specifier.lastIndexOf('@'))),
       '@deepseek-ai/schemastery',
+      'dsh-legion-receipts',
       'js-yaml',
     ]
     for (const packageName of packages) {

@@ -19,7 +19,6 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as SpawnProvider from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as legion from '../src/index.ts'
-import { mountTestTokenAccounting } from './token-meter-test-service.ts'
 
 class TextAdapter extends LlmAdapter {
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -44,7 +43,6 @@ describe('real DSH continuation manager integration', () => {
     ctx.baseUrl = pathToFileURL(root).href + '/'
     try {
       await mountAgentLoopTestDependencies(ctx)
-      await mountTestTokenAccounting(ctx)
       await ctx.plugin(JsonlSessionPersistence, { root })
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(SubagentRuntime)

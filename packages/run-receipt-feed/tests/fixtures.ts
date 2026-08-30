@@ -73,6 +73,8 @@ export function receipt(
     stage: 'execute',
     member: 'executor',
     childIndex,
+    runId: `lifecycle-${String(childIndex)}`,
+    provider: 'spawn',
     source: 'session' as const,
     state: 'running' as const,
     timing: {

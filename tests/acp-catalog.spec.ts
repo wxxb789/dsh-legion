@@ -7,7 +7,6 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime, { NO_START_CAPABILITIES, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as legion from '../src/index.ts'
-import { mountTestTokenAccounting } from './token-meter-test-service.ts'
 
 /**
  * A provider shaped exactly like the DSH ACP backend: no start-time
@@ -276,7 +275,6 @@ describe('ACP catalog against the real compiler', () => {
   async function setup(providers: SubagentProvider[]): Promise<Context> {
     const ctx = new Context()
     await ctx.plugin(AgentRegistry)
-    await mountTestTokenAccounting(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SubagentRuntime)

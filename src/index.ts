@@ -28,11 +28,7 @@ import {
   type RuntimeSnapshot,
 } from './compiler.ts'
 import { createCoordinatorCatalog, renderCoordinatorGuidance } from './prompt.ts'
-import {
-  installRunReceiptProjection,
-  renderRunReceiptSummary,
-  type RunReceiptProjectionHostContext,
-} from './run-receipt.ts'
+import { clearRunReceiptTerminal, renderRunReceiptSummary } from './run-receipt.ts'
 import { outputText, settleForeground } from './settlement.ts'
 import {
   assertOrchestrationCatalogUsable,
@@ -338,9 +334,6 @@ export const name = 'dsh-legion'
  * symptom would be a card that never appears.
  */
 export const DELEGATION_INJECT = Object.freeze([
-  'agents',
-  'sessionProjections',
-  'tokenMeter',
   'tools',
   'subagents',
   'systemPrompt',
@@ -760,6 +753,8 @@ function createToolDefinition(
                     additionalProperties: false,
                     properties: {
                       total: { type: 'number' as const, required: true as const },
+                      local: { type: 'number' as const, required: true as const },
+                      remote: { type: 'number' as const, required: true as const },
                       running: { type: 'number' as const, required: true as const },
                       idle: { type: 'number' as const, required: true as const },
                       ended: { type: 'number' as const, required: true as const },
@@ -770,11 +765,56 @@ function createToolDefinition(
                     required: true as const,
                     additionalProperties: false,
                     properties: {
-                      totalTokens: { type: 'number' as const, required: true as const },
-                      uncachedInputTokens: { type: 'number' as const, required: true as const },
-                      outputTokens: { type: 'number' as const, required: true as const },
-                      cacheReadTokens: { type: 'number' as const, required: true as const },
-                      cacheWriteTokens: { type: 'number' as const, required: true as const },
+                      totalTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
+                      uncachedInputTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
+                      outputTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
+                      cacheReadTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
+                      cacheWriteTokens: { required: true as const, oneOf: [{ type: 'number' as const }, { type: 'null' as const }] as const },
+                    },
+                  },
+                  unavailableCounts: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      participation: { type: 'number' as const, required: true as const },
+                      timing: { type: 'number' as const, required: true as const },
+                      tokenDimensions: { type: 'number' as const, required: true as const },
+                    },
+                  },
+                  truncatedCounts: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      participation: { type: 'number' as const, required: true as const },
+                      tokenSessions: { type: 'number' as const, required: true as const },
+                    },
+                  },
+                  coverage: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      participation: { type: 'string' as const, required: true as const, enum: ['complete', 'partial', 'unavailable'] },
+                      timing: { type: 'string' as const, required: true as const, enum: ['complete', 'partial', 'unavailable'] },
+                      tokens: { type: 'string' as const, required: true as const, enum: ['complete', 'partial', 'unavailable'] },
+                    },
+                  },
+                  feed: {
+                    type: 'object' as const,
+                    required: true as const,
+                    additionalProperties: false,
+                    properties: {
+                      status: {
+                        type: 'string' as const,
+                        required: true as const,
+                        enum: ['available', 'unavailable', 'rejected', 'incompatible'],
+                      },
+                      failure: {
+                        required: true as const,
+                        oneOf: [{ type: 'string' as const }, { type: 'null' as const }] as const,
+                      },
                     },
                   },
                 },
@@ -859,9 +899,11 @@ function createToolDefinition(
       }
       requireProvider(ctx, plan)
       const request = requestFor(parent, plan)
+      requireSelectedLlmAdapter(ctx, plan)
 
       if (plan.mode === 'continuable') {
-        requireSelectedLlmAdapter(ctx, plan)
+        exec.signal.throwIfAborted()
+        clearRunReceiptTerminal(ctx, parent.session)
         const started = await ctx.subagents.startContinuable({
           provider: plan.subagentProvider,
           label: plan.label,
@@ -881,13 +923,15 @@ function createToolDefinition(
         }
       }
 
-      requireSelectedLlmAdapter(ctx, plan)
       return settleForeground(
         plan,
-        () => ctx.subagents.start(plan.subagentProvider, {
-          ...request,
-          signal: exec.signal,
-        }),
+        () => {
+          clearRunReceiptTerminal(ctx, parent.session)
+          return ctx.subagents.start(plan.subagentProvider, {
+            ...request,
+            signal: exec.signal,
+          })
+        },
         exec.signal,
         cleanup => {
           if (cleanup.kind !== 'quiescent') {
@@ -1078,7 +1122,6 @@ export async function apply(ctx: Context, config: LegionConfig): Promise<void> {
 
 async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<void> {
   registerLegionRunProjection(ctx as unknown as HostProjectionContext)
-  installRunReceiptProjection(ctx as unknown as RunReceiptProjectionHostContext)
   const durableCapabilities = detectDurableCapabilities(
     ctx as unknown as DurableCapabilityContext,
   )

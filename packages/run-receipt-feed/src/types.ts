@@ -37,7 +37,12 @@ export type RunReceiptTimingEvidence =
     }
   | {
       readonly status: 'unavailable'
-      readonly reason: 'session-unavailable' | 'remote-unobservable' | 'not-reported'
+      readonly reason:
+        | 'session-unavailable'
+        | 'remote-unobservable'
+        | 'not-reported'
+        | 'capability-unavailable'
+        | 'observation-failed'
     }
 
 export interface RunReceiptParticipant {
@@ -47,8 +52,14 @@ export interface RunReceiptParticipant {
   readonly stage: string
   readonly member: string
   readonly childIndex: number
+  /** Host lifecycle identity, or null for a cold descendant with no observed edge. */
+  readonly runId: string | null
+  /** Host lifecycle provider, or null with an unobserved cold lifecycle. */
+  readonly provider: string | null
   readonly source: 'session' | 'remote'
   readonly state: 'running' | 'idle' | 'ended'
+  /** Present only when an observed Host lifecycle end supplied it. */
+  readonly stopReason?: string
   readonly timing: RunReceiptTimingEvidence
 }
 
@@ -67,7 +78,13 @@ export type RunReceiptTokenEvidence =
     }
   | {
       readonly status: 'unavailable'
-      readonly reason: 'not-reported' | 'session-unavailable' | 'remote-unobservable' | 'incomplete-turn'
+      readonly reason:
+        | 'not-reported'
+        | 'session-unavailable'
+        | 'remote-unobservable'
+        | 'incomplete-turn'
+        | 'capability-unavailable'
+        | 'observation-failed'
     }
 
 export interface RunReceiptTokenSample {
@@ -270,6 +287,9 @@ function validateReferences(receipt: RunReceipt): ReceiptSemanticFailure | undef
       || !parentIds.has(participant.parentId)
       || (participant.depth === 1 && participant.childIndex >= stage.expectedChildren)
       || (participant.source === 'remote' && participant.state === 'idle')
+      || ((participant.runId === null) !== (participant.provider === null))
+      || (participant.stopReason !== undefined
+        && (participant.runId === null || participant.state !== 'ended'))
       || (participant.timing.status === 'reported'
         && participant.timing.source !== (participant.source === 'session' ? 'subagent-timing' : 'host-lifecycle'))) {
       return 'invalid-references'
@@ -378,7 +398,7 @@ function receiptSemanticFailure(receipt: RunReceipt): ReceiptSemanticFailure | u
 const NonNegativeSafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 const PositiveSafeIntegerSchema = NonNegativeSafeIntegerSchema.min(1)
 const BoundedTextSchema = z.string().min(1).max(512)
-const NameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/).max(128)
+const NameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/)
 const RunIdSchema = z.string().regex(/^team-run-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
 const DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 
@@ -408,7 +428,13 @@ export const RunReceiptTimingEvidenceSchema: z.ZodType<RunReceiptTimingEvidence>
   }),
   z.strictObject({
     status: z.literal('unavailable'),
-    reason: z.enum(['session-unavailable', 'remote-unobservable', 'not-reported']),
+    reason: z.enum([
+      'session-unavailable',
+      'remote-unobservable',
+      'not-reported',
+      'capability-unavailable',
+      'observation-failed',
+    ]),
   }),
 ])
 
@@ -419,10 +445,16 @@ export const RunReceiptParticipantSchema: z.ZodType<RunReceiptParticipant> = z.s
   stage: BoundedTextSchema,
   member: NameSchema,
   childIndex: NonNegativeSafeIntegerSchema,
+  runId: BoundedTextSchema.nullable(),
+  provider: BoundedTextSchema.nullable(),
   source: z.enum(['session', 'remote']),
   state: z.enum(['running', 'idle', 'ended']),
+  stopReason: BoundedTextSchema.optional(),
   timing: RunReceiptTimingEvidenceSchema,
-})
+}).transform(({ stopReason, ...participant }) => ({
+  ...participant,
+  ...stopReason === undefined ? {} : { stopReason },
+}))
 
 export const RunReceiptTokenEvidenceSchema: z.ZodType<RunReceiptTokenEvidence> = z.discriminatedUnion('status', [
   z.strictObject({
@@ -437,7 +469,14 @@ export const RunReceiptTokenEvidenceSchema: z.ZodType<RunReceiptTokenEvidence> =
   }),
   z.strictObject({
     status: z.literal('unavailable'),
-    reason: z.enum(['not-reported', 'session-unavailable', 'remote-unobservable', 'incomplete-turn']),
+    reason: z.enum([
+      'not-reported',
+      'session-unavailable',
+      'remote-unobservable',
+      'incomplete-turn',
+      'capability-unavailable',
+      'observation-failed',
+    ]),
   }),
 ])
 

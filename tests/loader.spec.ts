@@ -11,7 +11,6 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as legion from '../src/index.ts'
-import { TestSessionProjections, TestTokenMeter } from './token-meter-test-service.ts'
 
 let root: string | undefined
 let ctx: Context | undefined
@@ -30,10 +29,6 @@ describe('Cordis Loader composition', () => {
     await writeFile(configPath, [
       "- id: agents",
       "  name: '@deepseek-ai/dsh-agent'",
-      "- id: session-projections",
-      "  name: 'test-session-projections'",
-      "- id: token-meter",
-      "  name: 'test-token-meter'",
       "- id: system-prompt",
       "  name: '@deepseek-ai/dsh-system-prompt'",
       "- id: tools",
@@ -57,8 +52,6 @@ describe('Cordis Loader composition', () => {
     ctx.loader.builtins.include = Include
     const modules = new Map<string, unknown>([
       ['@deepseek-ai/dsh-agent', AgentRegistry],
-      ['test-session-projections', TestSessionProjections],
-      ['test-token-meter', TestTokenMeter],
       ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
       ['@deepseek-ai/dsh-tools', ToolRuntime],
       ['@deepseek-ai/dsh-subagent', SubagentRuntime],

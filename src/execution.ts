@@ -18,7 +18,6 @@ import type {
 import { CohortRunId, type CohortRunId as CohortRunIdType } from './identity.ts'
 import { deepFreeze } from './internal/value.ts'
 import {
-  canPublishRunReceipt,
   createRunReceipt,
   finishRunReceipt,
   observeRunReceiptParticipation,
@@ -26,8 +25,9 @@ import {
   setRunReceiptObservation,
   settleRunReceiptStage,
   summarizeRunReceipt,
-  type RunReceipt,
+  type LiveRunReceipt,
   type RunReceiptChildBinding,
+  type RunReceiptFeedStatus,
   type RunReceiptStageStatus,
   type RunReceiptSummary,
 } from './run-receipt.ts'
@@ -440,21 +440,23 @@ export async function executeStrategyPlan(
     throw new Error('dsh-legion: Strategy Plan generation does not match execution snapshot')
   }
   const runId = CohortRunId(`team-run-${randomUUID()}`)
-  const publishReceiptEvent = canPublishRunReceipt(ctx)
-  const publishReceipt = (next: RunReceipt): RunReceipt => {
-    if (publishReceiptEvent) publishRunReceipt(parent.session, next)
+  let feed: RunReceiptFeedStatus | undefined
+  const publishReceipt = (next: LiveRunReceipt): LiveRunReceipt => {
+    const publication = publishRunReceipt(ctx, parent.session, next)
+    feed = feed === undefined || feed.status === 'available' ? publication : feed
     return next
   }
-  let receipt = publishReceipt(createRunReceipt(plan, runId))
+  let receipt = publishReceipt(createRunReceipt(plan, runId, parent.session.id))
   const participation = observeRunReceiptParticipation(
     ctx,
-    parent.session.id,
+    parent,
     receipt.stages.map(stage => stage.id),
-    (rows, tokenAccount) => {
-      receipt = publishReceipt(setRunReceiptObservation(receipt, rows, tokenAccount))
+    (observation) => {
+      receipt = publishReceipt(setRunReceiptObservation(receipt, observation))
     },
   )
   const observeChild: ObserveChild = participation.trackChild.bind(participation)
+  const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
   const settleStage = (
     stage: string,
     status: Exclude<RunReceiptStageStatus, 'pending'>,
@@ -463,11 +465,16 @@ export async function executeStrategyPlan(
     receipt = publishReceipt(settleRunReceiptStage(receipt, stage, status))
   }
   const finishOutcome = async <Outcome extends CohortRunResult>(outcome: Outcome) => {
-    await participation.finish()
+    await participation.finish(deadline.signal)
     receipt = publishReceipt(finishRunReceipt(receipt, outcome.kind))
-    return deepFreeze({ ...outcome, receipt: summarizeRunReceipt(receipt) })
+    return deepFreeze({
+      ...outcome,
+      receipt: summarizeRunReceipt(
+        receipt,
+        feed ?? { status: 'unavailable', failure: 'publisher-unavailable' },
+      ),
+    })
   }
-  const deadline = combinedSignal(parentSignal, plan.limits.deadlineMs)
   const terminal = new TerminalArbiter()
   const claimCancellation = () => { terminal.claim('cancelled') }
   if (deadline.signal.aborted) claimCancellation()

@@ -3,7 +3,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
-import type { ReceiptFeedFrame, RunReceiptFeed as RunReceiptFeedType } from '../src/index.ts'
+import type { ReceiptFeedFrame, RunReceipt, RunReceiptFeed as RunReceiptFeedType } from '../src/index.ts'
 import { nextFrame, receipt, replace, runId, settle } from './fixtures.ts'
 
 const PACKAGE_ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
@@ -45,6 +45,41 @@ function follow(feed: RunReceiptFeedType, session: Session): {
 } {
   const abort = new AbortController()
   return { abort, iterator: feed.follow(String(session.id), abort.signal)[Symbol.asyncIterator]() }
+}
+
+function withTokenStatus(
+  value: RunReceipt,
+  status: 'reported' | 'provisional' | 'unavailable',
+): RunReceipt {
+  const count = value.tokenAccount.sessions.length
+  const evidenceCoverage = {
+    status: status === 'reported' ? 'complete' as const : status === 'provisional' ? 'partial' as const : 'unavailable' as const,
+    total: count,
+    reported: status === 'reported' ? count : 0,
+    provisional: status === 'provisional' ? count : 0,
+    unavailable: status === 'unavailable' ? count : 0,
+    truncated: 0,
+  }
+  const fields = ['totalTokens', 'uncachedInputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const
+  const sessions = value.tokenAccount.sessions.map(sample => Object.fromEntries([
+    ['childId', sample.childId],
+    ['logRevision', sample.logRevision],
+    ...fields.map((field) => [field, status === 'unavailable'
+      ? { status, reason: 'observation-failed' as const }
+      : { status, value: sample[field].status === 'unavailable' ? 0 : sample[field].value, source: 'session-fold' as const }]),
+  ]) as unknown as RunReceipt['tokenAccount']['sessions'][number])
+  const totals = Object.fromEntries(fields.map((field) => [field, {
+    value: status === 'unavailable' ? null : value.tokenAccount.totals[field].value,
+    coverage: evidenceCoverage,
+  }])) as unknown as RunReceipt['tokenAccount']['totals']
+  return {
+    ...value,
+    tokenAccount: {
+      coverage: evidenceCoverage.status,
+      totals,
+      sessions,
+    },
+  }
 }
 
 describe('RunReceiptFeed public Host interface', () => {
@@ -175,6 +210,24 @@ describe('RunReceiptFeed public Host interface', () => {
     observer.abort.abort()
   })
 
+  it('accepts root-valid names longer than the former local cap', async () => {
+    const { feed, session } = await harness()
+    const parent = session('long-names').value
+    const name = `a${'b'.repeat(128)}`
+    const original = receipt(String(parent.id), 1, 1)
+    const value = {
+      ...original,
+      strategy: name,
+      cohort: name,
+      stages: original.stages.map(stage => ({ ...stage, member: name })),
+      participation: {
+        ...original.participation,
+        rows: original.participation.rows.map(row => ({ ...row, member: name })),
+      },
+    }
+    expect(feed.publish(parent, replace(value))).toMatchObject({ ok: true, revision: 1 })
+  })
+
   it('keeps participant and token evidence monotone', async () => {
     const { feed, session } = await harness()
     const parent = session('monotone').value
@@ -222,6 +275,18 @@ describe('RunReceiptFeed public Host interface', () => {
         sessions: ended.tokenAccount.sessions.map(sample => ({ ...sample, childId: 'replacement-child' })),
       },
     }))).toEqual({ ok: false, code: 'invalid-transition' })
+  })
+
+  it('accepts honest token evidence degradation and later recovery', async () => {
+    const { feed, session } = await harness()
+    const parent = session('evidence-transition').value
+    const reported = receipt(String(parent.id), 1, 1)
+    expect(feed.publish(parent, replace(reported))).toMatchObject({ ok: true, revision: 1 })
+    expect(feed.publish(parent, replace(withTokenStatus(reported, 'provisional'))))
+      .toMatchObject({ ok: true, revision: 2 })
+    expect(feed.publish(parent, replace(withTokenStatus(reported, 'unavailable'))))
+      .toMatchObject({ ok: true, revision: 3 })
+    expect(feed.publish(parent, replace(reported))).toMatchObject({ ok: true, revision: 4 })
   })
 
   it('rejects remote token claims and impossible known token subtotals', async () => {

@@ -8,9 +8,11 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as SpawnProvider from '@deepseek-ai/dsh-subagent-spawn-in-process'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import * as legion from 'dsh-legion'
 
 const consumerManifest = JSON.parse(readFileSync('package.json', 'utf8'))
@@ -140,7 +142,10 @@ class PackedAdapter extends LlmAdapter {
     yield { type: 'block-start', index: 0, blockType: 'text' }
     yield { type: 'text-delta', index: 0, text: 'packed delegation ok' }
     yield { type: 'block-end', index: 0, block: { type: 'text', text: 'packed delegation ok' } }
-    yield { type: 'usage', usage: { inputTokens: 8, outputTokens: 3 } }
+    yield {
+      type: 'usage',
+      usage: { inputTokens: 8, outputTokens: 3, totalTokens: 11, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    }
     yield { type: 'finish', reason: { kind: 'stop' } }
   }
 }
@@ -157,34 +162,8 @@ try {
   writeFileSync(join(resourceRoot, 'packed.md'), 'Use the packed artifact instruction.\n')
 
   await mountAgentLoopTestDependencies(ctx)
-  if (ctx.get('sessionProjections') === undefined) {
-    ctx.provide('sessionProjections', {
-      register() { return () => undefined },
-      snapshot(session) {
-        const byStep = new Map()
-        for (const event of session.events) {
-          const usage = event.type === 'assistant/chunk' && event.data.chunk.type === 'usage'
-            ? event.data.chunk.usage
-            : event.type === 'assistant/message'
-              ? event.data.usage
-              : undefined
-          if (usage !== undefined) byStep.set(`${String(event.data.turn)}:${String(event.data.step)}`, usage)
-        }
-        const tokenUsage = [...byStep.values()].reduce((total, usage) => ({
-          uncachedInputTokens: total.uncachedInputTokens + usage.inputTokens,
-          outputTokens: total.outputTokens + usage.outputTokens,
-          cacheReadTokens: total.cacheReadTokens + (usage.cacheReadTokens ?? 0),
-          cacheWriteTokens: total.cacheWriteTokens + (usage.cacheWriteTokens ?? 0),
-        }), { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })
-        return { asOfSeq: session.seq - 1, values: { tokenUsage } }
-      },
-    })
-  }
-  ctx.provide('tokenMeter', {
-    measure(session) {
-      return { logRevision: session.events.length, totalTokens: 0, surfaceTokens: 0 }
-    },
-  })
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(TokenMeter)
   await ctx.plugin(JsonlSessionPersistence, { root: sessionRoot })
   await ctx.plugin(SqliteSessionQuery, { path: ':memory:', openAt: 'never' })
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -302,6 +281,21 @@ try {
     || value.outcome.final?.name !== 'final'
     || value.outcome.final?.value !== 'packed delegation ok') {
     throw new Error('packed Strategy returned an unexpected Legion result')
+  }
+  const receipt = value.receipt
+  if (receipt?.outcome !== 'completed'
+    || receipt.stageCounts?.completed !== 2
+    || receipt.participationCounts?.local !== 2
+    || receipt.participationCounts?.remote !== 0
+    || receipt.tokenTotals?.totalTokens !== 22
+    || receipt.coverage?.tokens !== 'complete'
+    || receipt.feed?.status !== 'unavailable'
+    || receipt.feed?.failure !== 'publisher-unavailable'
+    || Object.values(receipt).some(Array.isArray)) {
+    throw new Error(`packed Strategy returned an invalid bounded Receipt summary: ${JSON.stringify(receipt)}`)
+  }
+  if (parent.session.events.some(event => event.type === 'legion/run-receipt')) {
+    throw new Error('packed persistent Session contains a custom Run Receipt event')
   }
   process.stdout.write('packed tarball completed one harmless real Config v2 Team Strategy successfully\n')
 } finally {

@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { Config } from '../src/config.ts'
-import { RUN_RECEIPT_PROJECTION_KEY } from '../src/run-receipt.ts'
 import { LEGION_SETTINGS_NAMESPACE } from '../src/settings.ts'
 import { CLIENT_BANNER, CLIENT_FOOTER, CLIENT_INTRO } from '../tsdown.client.config.ts'
 
@@ -477,7 +476,7 @@ describe('client plugin behaviour', () => {
   })
 
   it('uses the projection key published by the Host half', () => {
-    expect(materialize().exports.LEGION_RUN_RECEIPT_PROJECTION_KEY).toBe(RUN_RECEIPT_PROJECTION_KEY)
+    expect(materialize().exports.LEGION_RUN_RECEIPT_PROJECTION_KEY).toBe('legion/run-receipts')
   })
 
   it('renders no overlay without a current Run Receipt projection', () => {
