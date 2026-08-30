@@ -1,9 +1,16 @@
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import { readWorkspacePackages, resolveWorkspaceInstalledPackage } from './scripts/workspace-packages.mjs'
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url))
-const installed = (path: string): string => resolve(ROOT, 'node_modules/@deepseek-ai', path)
+const WORKSPACE_PACKAGES = readWorkspacePackages(ROOT)
+const installed = (path: string): string => {
+  const separator = path.indexOf('/')
+  const packageName = `@deepseek-ai/${separator === -1 ? path : path.slice(0, separator)}`
+  const packageRoot = resolveWorkspaceInstalledPackage(ROOT, WORKSPACE_PACKAGES, packageName)
+  return separator === -1 ? packageRoot : resolve(packageRoot, path.slice(separator + 1))
+}
 
 export default defineConfig({
   resolve: {
