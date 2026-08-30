@@ -21,6 +21,8 @@ export default defineConfig({
       '@deepseek-ai/dsh-client-ui-chat/client': installed('dsh-client-ui-chat/lib/types/client/contract/snapshot.js'),
       '@deepseek-ai/dsh-client-ui-conversation/client': installed('dsh-client-ui-conversation/lib/types/client/contract/snapshot.js'),
       '@deepseek-ai/dsh-client-ui-renderer/client': installed('dsh-client-ui-renderer/lib/types/client/index.js'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/bind.ts': installed('dsh-client-ui-renderer/lib/types/client/bind.js'),
+      '@deepseek-ai/dsh-client-ui-renderer/src/client/scoped-slots.tsx': installed('dsh-client-ui-renderer/lib/types/client/scoped-slots.js'),
       '@deepseek-ai/dsh-client-ui-session/client': installed('dsh-client-ui-session/lib/types/client/index.js'),
     },
   },
