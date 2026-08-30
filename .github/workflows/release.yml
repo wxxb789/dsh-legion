@@ -54,6 +54,7 @@ jobs:
           name: package-tarball
           path: dist/*.tgz
           if-no-files-found: error
+          overwrite: true
 
   gates:
     needs: pack
@@ -64,6 +65,7 @@ jobs:
   release:
     needs: [pack, gates]
     runs-on: ubuntu-24.04
+    environment: npm
     permissions:
       contents: write
       id-token: write
@@ -86,21 +88,33 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: |
           mapfile -t tarballs < <(find dist -maxdepth 1 -name '*.tgz' -type f)
-          test "${#tarballs[@]}" -eq 1
-          echo "RELEASE_TARBALL=${tarballs[0]}" >> "$GITHUB_ENV"
+          test "${#tarballs[@]}" -eq 2
+          ROOT_TARBALL="$(find dist -maxdepth 1 -name 'dsh-legion-[0-9]*.tgz' -type f -print -quit)"
+          COMPANION_TARBALL="$(find dist -maxdepth 1 -name 'dsh-legion-receipts-[0-9]*.tgz' -type f -print -quit)"
+          test -n "$ROOT_TARBALL" && test -n "$COMPANION_TARBALL"
+          echo "ROOT_TARBALL=$ROOT_TARBALL" >> "$GITHUB_ENV"
+          echo "COMPANION_TARBALL=$COMPANION_TARBALL" >> "$GITHUB_ENV"
       - name: Verify npm recovery identity before publishing release evidence
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only
+          node scripts/publish-release.mjs "$COMPANION_TARBALL" "dsh-legion-receipts@$VERSION" "$DSH_REGISTRY" --check-only
+          node scripts/publish-release.mjs "$ROOT_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only
       - run: node scripts/verify-compatibility-receipts.mjs dist
-      - run: mkdir -p dist/sbom-root && tar -xzf "$RELEASE_TARBALL" -C dist/sbom-root
+      - run: mkdir -p dist/sbom-root && tar -xzf "$ROOT_TARBALL" -C dist/sbom-root
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: dist/sbom-root/package
           format: spdx-json
           output-file: dist/dsh-legion.spdx.json
           upload-artifact: false
-      - run: rm -rf dist/sbom-root && node scripts/hash-artifacts.mjs dist
+      - run: mkdir -p dist/sbom-companion && tar -xzf "$COMPANION_TARBALL" -C dist/sbom-companion
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: dist/sbom-companion/package
+          format: spdx-json
+          output-file: dist/dsh-legion-receipts.spdx.json
+          upload-artifact: false
+      - run: rm -rf dist/sbom-root dist/sbom-companion && node scripts/hash-artifacts.mjs dist
       - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: dist/*
@@ -109,6 +123,7 @@ jobs:
           name: release-${{ github.ref_name }}
           path: dist/*
           if-no-files-found: error
+          overwrite: true
       - name: Stage recoverable GitHub draft release
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -121,7 +136,8 @@ jobs:
       - name: Publish with npm Trusted Publishing and provenance
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"
+          node scripts/publish-release.mjs "$COMPANION_TARBALL" "dsh-legion-receipts@$VERSION" "$DSH_REGISTRY"
+          node scripts/publish-release.mjs "$ROOT_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"
       - name: Publish GitHub release after npm succeeds
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --title "$GITHUB_REF_NAME"
         env:

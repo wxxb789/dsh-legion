@@ -31,8 +31,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24.19.0
-      - run: node scripts/verify-dependency-preflight.mjs --record dependency-preflight-snapshot.json --output dependency-preflight-report.json
-      - if: always()
+      - if: inputs.dsh-source-artifact == ''
+        run: node scripts/verify-dependency-preflight.mjs --record dependency-preflight-snapshot.json --output dependency-preflight-report.json
+      - if: inputs.dsh-source-artifact == '' && always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: dependency-preflight-quality-${{ github.run_attempt }}
@@ -72,6 +73,8 @@ jobs:
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
         run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
+      - if: inputs.dsh-source-artifact != ''
+        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output dependency-preflight-report.json
       - run: pnpm run typecheck
       - run: pnpm run build
       - run: pnpm run verify:contract
@@ -118,6 +121,8 @@ jobs:
         run: pnpm install --frozen-lockfile --registry=${{ env.DSH_REGISTRY }}
       - if: inputs.dsh-source-artifact != ''
         run: pnpm exec node scripts/install-dsh-tarballs.mjs --from "${{ runner.temp }}/dsh-npm" --registry "${{ env.DSH_REGISTRY }}"
+      - if: inputs.dsh-source-artifact != ''
+        run: pnpm exec node scripts/verify-dependency-preflight.mjs --non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs" --output dependency-preflight-report.json
       - run: pnpm run build
       - run: pnpm run verify:contract
       - run: pnpm run verify:journal-contract
@@ -138,5 +143,8 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}
-          path: compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.*
+          path: |
+            compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.json
+            compatibility-${{ matrix.platform.id }}-${{ matrix.dsh.channel }}-${{ matrix.node }}.lock.yaml
           if-no-files-found: error
+          overwrite: true

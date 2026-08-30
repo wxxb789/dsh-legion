@@ -71,6 +71,13 @@ export function publishRelease({
     'publish', tarball, '--access', 'public', '--provenance', `--registry=${registry}`,
   ])
   if (result.status !== 0) {
+    const recovered = registryState(packageSpec, registry, execute)
+    if (recovered.kind === 'present' && recovered.integrity === integrityOf(tarball)) {
+      return {
+        kind: 'recovered',
+        message: `${packageSpec} published identical content before npm returned an error; recovered`,
+      }
+    }
     throw new Error(`npm publish ${packageSpec} failed:\n${result.stdout}${result.stderr}`)
   }
   return {
@@ -79,6 +86,22 @@ export function publishRelease({
     stdout: result.stdout,
     stderr: result.stderr,
   }
+}
+
+/** Preflight the complete package set before publishing it in dependency order. */
+export function publishPackageSet({ packages, registry, execute = runNpm }) {
+  if (!Array.isArray(packages) || packages.length === 0) {
+    throw new Error('publish package set must not be empty')
+  }
+  const packageSpecs = new Set()
+  const preflight = packages.map(item => {
+    if (packageSpecs.has(item.packageSpec)) throw new Error(`duplicate release package ${item.packageSpec}`)
+    packageSpecs.add(item.packageSpec)
+    return publishRelease({ ...item, registry, execute, checkOnly: true })
+  })
+  return packages.map((item, index) => preflight[index].kind === 'identical'
+    ? preflight[index]
+    : publishRelease({ ...item, registry, execute }))
 }
 
 const entry = process.argv[1]

@@ -39,16 +39,24 @@
     "lib/typert.remote-client.d.ts"
   ],
   "scripts": {
-    "build": "pnpm run clean && pnpm run build:host && pnpm run build:client",
-    "build:host": "tsc -b tsconfig.host-face.json && pnpm run bundle:host",
-    "build:client": "tsc -b tsconfig.client.json && pnpm run bundle:client",
+    "build": "pnpm run build:package",
+    "build:package": "pnpm run clean:package && pnpm run build:host:package && pnpm run build:client:package",
+    "build:host": "pnpm run build:host:package",
+    "build:host:package": "tsc -b tsconfig.host-face.json && pnpm run bundle:host",
+    "build:client": "pnpm run build:client:package",
+    "build:client:package": "tsc -b tsconfig.client.json && pnpm run bundle:client",
     "bundle:host": "tsdown --config tsdown.config.ts",
     "bundle:client": "tsdown --config tsdown.client.config.ts",
-    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
-    "typecheck": "pnpm run clean && tsc -b tsconfig.host-face.json && pnpm run bundle:host && tsc -b tsconfig.client.json",
-    "test": "vitest run --root ../.. --config vitest.config.ts packages/run-receipt-feed/tests --maxWorkers=1",
+    "clean": "pnpm run clean:package",
+    "clean:package": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "typecheck": "pnpm run typecheck:package",
+    "typecheck:package": "pnpm run clean:package && tsc -b tsconfig.host-face.json && pnpm run bundle:host && tsc -b tsconfig.client.json",
+    "test": "pnpm run build:package && pnpm run test:unit:package",
+    "test:unit:package": "vitest run --root ../.. --config vitest.config.ts packages/run-receipt-feed/tests --maxWorkers=1",
     "benchmark:receipt-feed": "node ../../scripts/benchmark-receipt-feed.mjs",
-    "verify:pack": "npm pack --dry-run --ignore-scripts"
+    "verify:pack": "pnpm run verify:pack:package",
+    "verify:pack:package": "pnpm --config.ignore-scripts=true pack --dry-run",
+    "prepare": "pnpm run build:package"
   },
   "dsh": {
     "client": {

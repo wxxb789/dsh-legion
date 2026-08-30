@@ -201,10 +201,14 @@ describe('dsh-legion-receipts package contract', () => {
     ])
 
     const value = await manifest()
-    expect(value.scripts.build).toBe('pnpm run clean && pnpm run build:host && pnpm run build:client')
-    expect(value.scripts['build:host']).toMatch(/^tsc -b tsconfig\.host-face\.json && /)
-    expect(value.scripts['build:client']).toMatch(/^tsc -b tsconfig\.client\.json && /)
-    expect(value.scripts.test).toBe('vitest run --root ../.. --config vitest.config.ts packages/run-receipt-feed/tests --maxWorkers=1')
+    expect(value.scripts.build).toBe('pnpm run build:package')
+    expect(value.scripts['build:package'])
+      .toBe('pnpm run clean:package && pnpm run build:host:package && pnpm run build:client:package')
+    expect(value.scripts['build:host:package']).toMatch(/^tsc -b tsconfig\.host-face\.json && /)
+    expect(value.scripts['build:client:package']).toMatch(/^tsc -b tsconfig\.client\.json && /)
+    expect(value.scripts.test).toBe('pnpm run build:package && pnpm run test:unit:package')
+    expect(value.scripts['test:unit:package'])
+      .toBe('vitest run --root ../.. --config vitest.config.ts packages/run-receipt-feed/tests --maxWorkers=1')
   })
 
   it('uses package-mode Typert generation instead of handwritten descriptors', async () => {

@@ -22,6 +22,12 @@ if (process.env.DSH_LEGION_PACKED_CONSUMER !== '1'
 }
 const require = createRequire(import.meta.url)
 const publicContract = require('dsh-legion/contracts/v1.json')
+const installedRootManifest = require('dsh-legion/package.json')
+const installedCompanionManifest = require('dsh-legion-receipts/package.json')
+if (installedRootManifest.dependencies?.['dsh-legion-receipts'] !== installedCompanionManifest.version
+  || installedRootManifest.version !== installedCompanionManifest.version) {
+  throw new Error('packed consumer did not install one exact root and companion generation')
+}
 if (JSON.stringify(Object.keys(legion).sort()) !== JSON.stringify(publicContract.runtimeExports)) {
   throw new Error('packed runtime exports drifted from the public contract')
 }

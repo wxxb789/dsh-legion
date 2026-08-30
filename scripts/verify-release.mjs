@@ -1,18 +1,20 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
-const rootFlag = process.argv.indexOf('--root')
-if (rootFlag !== -1 && process.argv[rootFlag + 1] === undefined) {
+const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
+const rootFlag = arguments_.indexOf('--root')
+if (rootFlag !== -1 && arguments_[rootFlag + 1] === undefined) {
   throw new Error('--root requires a directory')
 }
 const root = rootFlag === -1
   ? resolve(dirname(fileURLToPath(import.meta.url)), '..')
-  : resolve(process.argv[rootFlag + 1] ?? '')
+  : resolve(arguments_[rootFlag + 1] ?? '')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 const changelog = await readFile(join(root, 'CHANGELOG.md'), 'utf8')
 const version = String(manifest.version)
-const tag = process.argv[2] ?? process.env.GITHUB_REF_NAME
+const tag = arguments_[0] ?? process.env.GITHUB_REF_NAME
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 if (!SEMVER.test(version)) {
@@ -32,27 +34,44 @@ if (releaseDate === undefined
   || parsedDate.toISOString().slice(0, 10) !== releaseDate) {
   throw new Error(`CHANGELOG.md has no valid dated [${version}] release heading`)
 }
-const contractsDirectory = join(root, 'contracts')
-try {
-  const publicContract = JSON.parse(await readFile(join(contractsDirectory, 'v1.json'), 'utf8'))
-  const journalContract = JSON.parse(await readFile(join(contractsDirectory, 'journal-v1.json'), 'utf8'))
-  const compatibility = JSON.parse(await readFile(join(contractsDirectory, 'compatibility.json'), 'utf8'))
-  if (publicContract.packageVersion !== version
-    || compatibility.packageVersion !== version
-    || compatibility.compatibilityReceiptVersion !== publicContract.compatibilityReceiptVersion) {
-    throw new Error('release package, public contract, and compatibility policy versions disagree')
-  }
-  if (journalContract.schemaVersion !== 'dsh-legion-journal-contract-v1'
-    || journalContract.projection?.key !== 'legion-run'
-    || journalContract.projection?.stateVersion
-      !== publicContract.journalContract.projectionStateVersion) {
-    throw new Error('journal release metadata is inconsistent')
-  }
-} catch (error) {
-  if (error?.code !== 'ENOENT') throw error
+const workspacePackages = readWorkspacePackages(root)
+const names = workspacePackages.map(item => item.name)
+if (workspacePackages.some(item => item.version !== version)) {
+  throw new Error('release workspace package versions must be lockstep')
 }
-if (manifest.private === true) throw new Error('release package must not be private')
-if (manifest.publishConfig?.access !== 'public') {
-  throw new Error('release package must declare publishConfig.access=public')
+const companion = workspacePackages.find(item => item.name === 'dsh-legion-receipts')
+if (companion === undefined
+  || manifest.dependencies?.[companion.name] !== `workspace:${version}`
+  || companion.manifest.dependencies?.[manifest.name] !== undefined) {
+  throw new Error('release package pair dependency direction or exact version is invalid')
+}
+const contractsDirectory = join(root, 'contracts')
+const publicContract = JSON.parse(await readFile(join(contractsDirectory, 'v1.json'), 'utf8'))
+const journalContract = JSON.parse(await readFile(join(contractsDirectory, 'journal-v1.json'), 'utf8'))
+const compatibility = JSON.parse(await readFile(join(contractsDirectory, 'compatibility.json'), 'utf8'))
+if (publicContract.packageVersion !== version
+  || compatibility.packageVersion !== version
+  || compatibility.compatibilityReceiptVersion !== publicContract.compatibilityReceiptVersion
+  || JSON.stringify(compatibility.releasePackages) !== JSON.stringify(names)) {
+  throw new Error('release package pair, public contract, and compatibility policy versions disagree')
+}
+if (journalContract.schemaVersion !== 'dsh-legion-journal-contract-v1'
+  || journalContract.projection?.key !== 'legion-run'
+  || journalContract.projection?.stateVersion
+    !== publicContract.journalContract.projectionStateVersion) {
+  throw new Error('journal release metadata is inconsistent')
+}
+if (compatibility.npmTrustedPublisher?.repository !== 'wxxb789/dsh-legion'
+  || compatibility.npmTrustedPublisher?.workflow !== '.github/workflows/release.yml'
+  || compatibility.npmTrustedPublisher?.environment !== 'npm'
+  || compatibility.npmTrustedPublisher?.status !== 'prerequisite-deferred') {
+  throw new Error('companion npm Trusted Publisher prerequisite metadata is incomplete')
+}
+for (const workspacePackage of workspacePackages) {
+  if (workspacePackage.manifest.private === true
+    || workspacePackage.manifest.publishConfig?.access !== 'public'
+    || workspacePackage.manifest.publishConfig?.registry !== 'https://registry.npmjs.org') {
+    throw new Error(`${workspacePackage.name} must declare public npm identity`)
+  }
 }
 process.stdout.write(`release metadata is consistent for ${tag}\n`)

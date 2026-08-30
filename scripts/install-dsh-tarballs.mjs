@@ -12,6 +12,7 @@ import { parseArgs } from 'node:util'
 import { runNativeCommand } from './native-command.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { restoreProjectFiles } from './source-install-restore.mjs'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const { values } = parseArgs({
@@ -75,31 +76,43 @@ for (const filename of readdirSync(tarballRoot).filter(name => name.endsWith('.t
     throw new Error(`${filename} has no package name/version`)
   }
   if (tarballs.has(manifest.name)) throw new Error(`duplicate packed package ${manifest.name}`)
-  const spec = `file:${relative(projectRoot, tarball).replaceAll('\\', '/')}`
-  tarballs.set(manifest.name, { version: manifest.version, spec, manifest })
+  const specFor = directory => `file:${relative(directory, tarball).replaceAll('\\', '/')}`
+  tarballs.set(manifest.name, { version: manifest.version, tarball, specFor, manifest })
 }
 if (tarballs.size === 0) throw new Error(`${tarballRoot} contains no npm tarballs`)
 
-const packagePath = join(projectRoot, 'package.json')
 const workspacePath = join(projectRoot, 'pnpm-workspace.yaml')
 const lockPath = join(projectRoot, 'pnpm-lock.yaml')
 const npmrcPath = join(projectRoot, '.npmrc')
-const packageSource = readFileSync(packagePath, 'utf8')
 const workspaceSource = readFileSync(workspacePath, 'utf8')
 const lockSource = readFileSync(lockPath, 'utf8')
 const npmrcSource = readFileSync(npmrcPath, 'utf8')
-const manifest = JSON.parse(packageSource)
+const workspacePackages = readWorkspacePackages(projectRoot)
+const manifestSources = new Map(workspacePackages.map(item => [
+  item.manifestPath,
+  readFileSync(item.manifestPath, 'utf8'),
+]))
 const compatibility = JSON.parse(readFileSync(join(projectRoot, 'contracts', 'compatibility.json'), 'utf8'))
-const direct = Object.entries(manifest.devDependencies ?? {}).filter(([name]) => isDshPackage(name))
-for (const [name, expected] of direct) {
-  const packed = tarballs.get(name)
-  if (packed === undefined) throw new Error(`DSH tarballs do not provide direct dependency ${name}`)
-  if (packed.version !== expected || packed.version !== compatibility.latestTestedDshVersion) {
-    throw new Error(`${name} tarball version ${packed.version} does not match declared ${expected}`)
+const direct = new Map()
+for (const workspacePackage of workspacePackages) {
+  for (const group of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+    for (const [name, expected] of Object.entries(workspacePackage.manifest[group] ?? {})) {
+      if (!isDshPackage(name)) continue
+      const packed = tarballs.get(name)
+      if (packed === undefined) {
+        throw new Error(`DSH tarballs do not provide ${workspacePackage.name} ${group} dependency ${name}`)
+      }
+      if (packed.version !== compatibility.latestTestedDshVersion
+        || (group === 'devDependencies' && packed.version !== expected)) {
+        throw new Error(`${name} tarball version ${packed.version} does not match ${workspacePackage.name} ${group} declaration ${expected}`)
+      }
+      direct.set(name, packed)
+      workspacePackage.manifest[group][name] = packed.specFor(workspacePackage.directory)
+    }
   }
 }
 const closure = new Set()
-const queue = direct.map(([name]) => name)
+const queue = [...direct.keys()]
 while (queue.length > 0) {
   const name = queue.shift()
   if (closure.has(name)) continue
@@ -119,7 +132,6 @@ while (queue.length > 0) {
     if (isDshPackage(dependency) && optionalPeers[dependency]?.optional !== true) queue.push(dependency)
   }
 }
-for (const name of closure) manifest.devDependencies[name] = tarballs.get(name).spec
 if (/^overrides:/m.test(workspaceSource)) throw new Error('source install refuses to replace existing pnpm overrides')
 const policyBuilds = booleanMapBlock(policySource, 'allowBuilds', policyPath)
 const workspaceBuilds = booleanMapBlock(workspaceSource, 'allowBuilds', workspacePath)
@@ -128,13 +140,14 @@ for (const [selector, allowed] of policyBuilds.values) {
   const fileMarker = selector.indexOf('@file:')
   const name = fileMarker === -1 ? selector : selector.slice(0, fileMarker)
   const packed = tarballs.get(name)
-  allowBuilds.set(fileMarker === -1 || packed === undefined ? selector : `${name}@${packed.spec}`, allowed)
+  const rootSpec = packed?.specFor(projectRoot)
+  allowBuilds.set(fileMarker === -1 || rootSpec === undefined ? selector : `${name}@${rootSpec}`, allowed)
 }
 for (const [name, allowed] of workspaceBuilds.values) allowBuilds.set(name, allowed)
 const buildPolicy = [...allowBuilds].sort(([left], [right]) => left.localeCompare(right))
   .map(([name, allowed]) => `  ${JSON.stringify(name)}: ${String(allowed)}`)
 const overrides = [...closure].sort().map(name => [name, tarballs.get(name)])
-  .map(([name, packed]) => `  ${JSON.stringify(name)}: ${JSON.stringify(packed.spec)}`)
+  .map(([name, packed]) => `  ${JSON.stringify(name)}: ${JSON.stringify(packed.specFor(projectRoot))}`)
 const workspaceWithOverrides = `${workspaceBuilds.without}
 
 allowBuilds:
@@ -146,8 +159,9 @@ ${overrides.join('\n')}
 
 let installError
 try {
-  writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}
-`)
+  for (const workspacePackage of workspacePackages) {
+    writeFileSync(workspacePackage.manifestPath, `${JSON.stringify(workspacePackage.manifest, null, 2)}\n`)
+  }
   writeFileSync(workspacePath, workspaceWithOverrides)
   writeFileSync(npmrcPath, `registry=${registry}/\n`)
   rmSync(lockPath)
@@ -157,10 +171,10 @@ try {
 }
 
 const originals = [
-  [packagePath, packageSource],
+  ...workspacePackages.map(item => [item.manifestPath, manifestSources.get(item.manifestPath)]),
   [workspacePath, workspaceSource],
   [lockPath, lockSource],
   [npmrcPath, npmrcSource],
 ]
 restoreProjectFiles(originals, installError)
-console.log(`installed ${String(closure.size)} DSH source package(s) without registry resolution`)
+console.log(`installed ${String(closure.size)} DSH source package(s) without registry DSH resolution`)

@@ -14,7 +14,7 @@ export interface PublishReleaseOptions {
 }
 
 export type PublishReleaseResult =
-  | { readonly kind: 'identical' | 'absent'; readonly message: string }
+  | { readonly kind: 'identical' | 'absent' | 'recovered'; readonly message: string }
   | {
       readonly kind: 'published'
       readonly message: string
@@ -24,3 +24,11 @@ export type PublishReleaseResult =
 
 export function integrityOf(filename: string): string
 export function publishRelease(options: PublishReleaseOptions): PublishReleaseResult
+
+export interface PublishPackageSetOptions {
+  readonly packages: readonly Pick<PublishReleaseOptions, 'tarball' | 'packageSpec'>[]
+  readonly registry: string
+  readonly execute?: (args: string[]) => NpmCommandResult
+}
+
+export function publishPackageSet(options: PublishPackageSetOptions): PublishReleaseResult[]

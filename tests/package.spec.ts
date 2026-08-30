@@ -8,6 +8,8 @@ import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 
 interface PackageManifest {
+  name?: string
+  version?: string
   main?: string
   types?: string
   files?: string[]
@@ -37,6 +39,43 @@ describe('published package contract', () => {
         ],
       },
     ])
+  })
+
+  it('aggregates every workspace package through non-recursive package-local gates', async () => {
+    const root = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')) as PackageManifest
+    const companion = JSON.parse(await readFile(
+      resolve(ROOT, 'packages/run-receipt-feed/package.json'),
+      'utf8',
+    )) as PackageManifest
+    const localScripts = {
+      clean: 'clean:package',
+      typecheck: 'typecheck:package',
+      build: 'build:package',
+      'test:unit': 'test:unit:package',
+      'verify:pack': 'verify:pack:package',
+    }
+    for (const [aggregate, local] of Object.entries(localScripts)) {
+      expect(root.scripts?.[aggregate], aggregate)
+        .toBe(`node scripts/run-workspace-script.mjs ${local}`)
+      expect(root.scripts?.[local], `root ${local}`).toBeTypeOf('string')
+      expect(companion.scripts?.[local], `companion ${local}`).toBeTypeOf('string')
+      const recursive = new RegExp(`(?:^|&&\\s*)pnpm run ${aggregate.replace(':', '\\:')}(?:\\s|$)`)
+      expect(root.scripts?.[local]).not.toMatch(recursive)
+      expect(companion.scripts?.[local]).not.toMatch(recursive)
+    }
+    expect(root.scripts?.prepare).toBe('pnpm run build:package')
+    expect(companion.scripts?.prepare).toBe('pnpm run build:package')
+    expect(root.files).toContain('scripts/workspace-packages.mjs')
+    expect(root.files).toContain('scripts/run-workspace-script.mjs')
+    const config = await readFile(resolve(ROOT, 'vitest.config.ts'), 'utf8')
+    expect(config).toContain("include: ['src/**/*.ts', 'packages/*/src/**/*.ts']")
+  })
+
+  it('makes source DSH installation workspace-manifest driven', async () => {
+    const installer = await readFile(resolve(ROOT, 'scripts/install-dsh-tarballs.mjs'), 'utf8')
+    expect(installer).toContain('readWorkspacePackages(projectRoot)')
+    expect(installer).toContain("for (const group of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'])")
+    expect(installer).not.toContain("const packagePath = join(projectRoot, 'package.json')")
   })
 
   it('ships every runtime, preset, and example surface named by its manifest and README', async () => {

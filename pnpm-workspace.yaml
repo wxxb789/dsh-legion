@@ -5,4 +5,5 @@ packages:
 # JSONL session persistence uses Koffi for Windows write-through publication.
 # The real continuation-manager integration test mounts that official DSH backend.
 allowBuilds:
+  esbuild: true
   koffi: true

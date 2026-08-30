@@ -3,6 +3,7 @@ import { restoreProjectFiles, type SourceInstallIo } from '../scripts/source-ins
 
 const originals = [
   ['package.json', 'package'],
+  ['packages/run-receipt-feed/package.json', 'companion-package'],
   ['pnpm-workspace.yaml', 'workspace'],
   ['pnpm-lock.yaml', 'lock'],
 ] as const

@@ -65,12 +65,12 @@
   },
   "compatibilityReceiptFields": [
     "schemaVersion",
+    "matrixSlot",
     "requestedDshVersion",
     "resolvedDshVersion",
     "platform",
     "nodeVersion",
-    "packageVersion",
-    "tarballSha256",
+    "packages",
     "consumerLockfileFile",
     "consumerLockfileSha256",
     "dshDependencies",
@@ -79,7 +79,7 @@
     "durableDiagnostics",
     "status"
   ],
-  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v2",
+  "compatibilityReceiptVersion": "dsh-legion-compatibility-receipt-v3",
   "configKeyRemovalVersion": "2.0.0",
   "configVersion": 2,
   "cohortRunIdPrefix": "team-run-",

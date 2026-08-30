@@ -1,12 +1,12 @@
-import { createHash } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runNativeCommand } from './native-command.mjs'
+import { readPackedPackageSet, verifyPackedPackageContents } from './package-set.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
 const sourceMode = arguments_.find(argument => argument.startsWith('--source='))?.slice(9)
   ?? 'workspace'
@@ -38,8 +38,7 @@ if (sourceMode === 'git') {
 }
 
 try {
-  const digests = []
-  const tarballs = []
+  const rounds = []
   for (const round of ['first', 'second']) {
     const roundRoot = join(sandbox, round)
     const packageRoot = join(roundRoot, 'package')
@@ -58,22 +57,45 @@ try {
     )
     run('pnpm', ['run', 'build'], packageRoot)
     await mkdir(destination)
-    run('npm', ['pack', '--ignore-scripts', '--pack-destination', destination], packageRoot)
-    const tarball = join(destination, `dsh-legion-${String(manifest.version)}.tgz`)
-    tarballs.push(tarball)
-    digests.push(createHash('sha256').update(await readFile(tarball)).digest('hex'))
+    const workspacePackages = readWorkspacePackages(packageRoot)
+    for (const workspacePackage of workspacePackages) {
+      run('pnpm', [
+        '--dir', workspacePackage.directory,
+        '--config.ignore-scripts=true',
+        'pack',
+        '--pack-destination', destination,
+      ], packageRoot)
+    }
+    const packageSet = readPackedPackageSet(destination, workspacePackages)
+    for (const item of packageSet) verifyPackedPackageContents(item)
+    const rootPackage = packageSet.find(item => item.relativeDirectory === '.')
+      ?? packageSet.find(item => item.name === 'dsh-legion')
+    const companion = packageSet.find(item => item.name === 'dsh-legion-receipts')
+    if (rootPackage === undefined || companion === undefined) {
+      throw new Error('reproducible pack requires dsh-legion and dsh-legion-receipts')
+    }
+    const dependency = rootPackage.manifest.dependencies?.[companion.name]
+    if (dependency !== companion.version || String(dependency).startsWith('workspace:')) {
+      throw new Error(`packed root must depend on ${companion.name}@${companion.version}, found ${String(dependency)}`)
+    }
+    rounds.push(packageSet)
   }
-  if (digests[0] !== digests[1]) {
-    throw new Error(`reproducible pack mismatch: ${digests[0]} != ${digests[1]}`)
+
+  const first = new Map(rounds[0].map(item => [item.name, item]))
+  const second = new Map(rounds[1].map(item => [item.name, item]))
+  for (const [name, item] of first) {
+    const repeated = second.get(name)
+    if (repeated?.tarballSha256 !== item.tarballSha256) {
+      throw new Error(`reproducible pack mismatch for ${name}: ${item.tarballSha256} != ${String(repeated?.tarballSha256)}`)
+    }
   }
   if (outputDirectory !== undefined) {
     await mkdir(outputDirectory, { recursive: true })
-    await copyFile(
-      tarballs[0],
-      join(outputDirectory, `dsh-legion-${String(manifest.version)}.tgz`),
-    )
+    for (const item of first.values()) await copyFile(item.tarball, join(outputDirectory, item.tarballFile))
   }
-  process.stdout.write(`verified reproducible package sha256:${digests[0]}\n`)
+  for (const item of [...first.values()].sort((left, right) => left.name.localeCompare(right.name))) {
+    process.stdout.write(`verified reproducible package ${item.name}@${item.version} ${item.tarballSha256}\n`)
+  }
 } finally {
   await rm(sandbox, { recursive: true, force: true })
 }

@@ -6,8 +6,10 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { runNativeCommand } from './native-command.mjs'
+import { readPackedPackageSet } from './package-set.mjs'
 import { resolveNpmRegistry } from './registry-config.mjs'
 import { trustedTempRoot } from './trusted-temp-root.mjs'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'))
@@ -117,13 +119,36 @@ try {
   const consumerDir = join(sandboxRoot, 'consumer')
   await mkdir(packDir, { recursive: true })
   await mkdir(consumerDir, { recursive: true })
-  const tarball = join(packDir, `dsh-legion-${String(manifest.version)}.tgz`)
-  const suppliedTarball = process.env.DSH_LEGION_TARBALL
-  if (suppliedTarball === undefined) {
-    run('npm', ['pack', '--ignore-scripts', '--pack-destination', packDir], projectRoot)
+  const workspacePackages = readWorkspacePackages(projectRoot)
+  const suppliedTarballs = [
+    process.env.DSH_LEGION_RECEIPTS_TARBALL,
+    process.env.DSH_LEGION_TARBALL,
+  ]
+  if (suppliedTarballs.every(value => value === undefined)) {
+    for (const workspacePackage of workspacePackages) {
+      run('pnpm', [
+        '--dir', workspacePackage.directory,
+        '--config.ignore-scripts=true',
+        'pack',
+        '--pack-destination', packDir,
+      ], projectRoot)
+    }
   } else {
-    await copyFile(resolve(suppliedTarball), tarball)
+    if (suppliedTarballs.some(value => value === undefined)) {
+      throw new Error('supplied packed delegation requires both root and companion tarballs')
+    }
+    for (const suppliedTarball of suppliedTarballs) {
+      await copyFile(resolve(suppliedTarball), join(packDir, basename(suppliedTarball)))
+    }
   }
+  const packageSet = readPackedPackageSet(packDir, workspacePackages)
+  const rootArtifact = packageSet.find(item => item.name === manifest.name)
+  const companionArtifact = packageSet.find(item => item.name === 'dsh-legion-receipts')
+  if (rootArtifact === undefined || companionArtifact === undefined
+    || rootArtifact.manifest.dependencies?.[companionArtifact.name] !== companionArtifact.version) {
+    throw new Error('packed delegation requires one exact dsh-legion package pair')
+  }
+  const tarball = rootArtifact.tarball
 
   const dshVersion = resolveDshVersion(dshVersionSpec)
   process.stdout.write(`testing packed delegation against DSH ${dshVersion}\n`)
@@ -132,8 +157,12 @@ try {
   // as a newer prerelease exists on the registry every transitive edge slides
   // forward and the minimum channel silently installs a mixed closure. The
   // declared package closure is exactly the set that has to be held down.
+  const dshPackageNames = [...new Set([
+    ...compatibilityPolicy.registryInstallPackageClosure,
+    ...compatibilityPolicy.dshPackageClosure,
+  ])].sort()
   const overrides = Object.fromEntries(
-    compatibilityPolicy.dshPackageClosure.map(name => [`@deepseek-ai/${name}`, dshVersion]),
+    dshPackageNames.map(name => [`@deepseek-ai/${name}`, dshVersion]),
   )
   await writeFile(join(consumerDir, 'package.json'), JSON.stringify({
     name: 'dsh-legion-packed-delegation-consumer',
@@ -154,23 +183,7 @@ try {
     '',
   ].join('\n'))
 
-  const dshPackages = [
-    '@deepseek-ai/dsh-agent',
-    '@deepseek-ai/dsh-agent-loop',
-    '@deepseek-ai/dsh-agent-loop-testkit',
-    '@deepseek-ai/dsh-llm',
-    '@deepseek-ai/dsh-session',
-    '@deepseek-ai/dsh-session-persistence-jsonl',
-    '@deepseek-ai/dsh-session-projection',
-    '@deepseek-ai/dsh-session-query',
-    '@deepseek-ai/dsh-session-query-sqlite',
-    '@deepseek-ai/dsh-scope',
-    '@deepseek-ai/dsh-subagent',
-    '@deepseek-ai/dsh-subagent-spawn-in-process',
-    '@deepseek-ai/dsh-system-prompt',
-    '@deepseek-ai/dsh-token-meter',
-    '@deepseek-ai/dsh-tools',
-  ].map(name => `${name}@${dshVersion}`)
+  const dshPackages = dshPackageNames.map(name => `@deepseek-ai/${name}@${dshVersion}`)
   let dshDependencies
   if (process.env.DSH_LEGION_OFFLINE === '1') {
     const nodeModules = join(consumerDir, 'node_modules')
@@ -179,8 +192,8 @@ try {
       '@deepseek-ai/cordis',
       ...dshPackages.map(specifier => specifier.slice(0, specifier.lastIndexOf('@'))),
       '@deepseek-ai/schemastery',
-      'dsh-legion-receipts',
       'js-yaml',
+      'zod',
     ]
     for (const packageName of packages) {
       const source = await realpath(join(projectRoot, 'node_modules', packageName))
@@ -188,9 +201,11 @@ try {
       await mkdir(dirname(target), { recursive: true })
       await symlink(source, target, 'junction')
     }
-    const legionTarget = join(nodeModules, 'dsh-legion')
-    await mkdir(legionTarget, { recursive: true })
-    run('tar', ['-xzf', tarball, '-C', legionTarget, '--strip-components=1'], consumerDir)
+    for (const artifact of [companionArtifact, rootArtifact]) {
+      const target = join(nodeModules, artifact.name)
+      await mkdir(target, { recursive: true })
+      run('tar', ['-xzf', artifact.tarball, '-C', target, '--strip-components=1'], consumerDir)
+    }
     dshDependencies = await Promise.all(dshPackages.map(async (specifier) => {
       const name = specifier.slice('@deepseek-ai/'.length, specifier.lastIndexOf('@'))
       const packageManifest = JSON.parse(await readFile(
@@ -205,7 +220,8 @@ try {
       'add',
       '--save-exact',
       `--registry=${dshRegistry}`,
-      tarball,
+      companionArtifact.tarball,
+      rootArtifact.tarball,
       '@deepseek-ai/cordis@4.0.1',
       ...dshPackages,
     ], consumerDir)
@@ -244,23 +260,34 @@ try {
   runNode(['packed-delegation-consumer.mjs'], consumerDir)
   const receiptPath = process.env.DSH_COMPATIBILITY_RECEIPT || undefined
   if (receiptPath !== undefined) {
-    const tarballSha256 = createHash('sha256').update(await readFile(tarball)).digest('hex')
-    const installedManifest = JSON.parse(await readFile(
-      join(consumerDir, 'node_modules', 'dsh-legion', 'package.json'),
-      'utf8',
-    ))
+    const installedPackages = await Promise.all(packageSet.map(async artifact => {
+      const installedManifest = JSON.parse(await readFile(
+        join(consumerDir, 'node_modules', artifact.name, 'package.json'),
+        'utf8',
+      ))
+      if (installedManifest.version !== artifact.version) {
+        throw new Error(`packed consumer installed ${artifact.name}@${String(installedManifest.version)} instead of ${artifact.version}`)
+      }
+      const tarballSha256 = createHash('sha256').update(await readFile(artifact.tarball)).digest('hex')
+      return {
+        name: artifact.name,
+        version: installedManifest.version,
+        tarballFile: artifact.tarballFile,
+        tarballSha256: `sha256:${tarballSha256}`,
+      }
+    }))
     const consumerLockfile = await readFile(join(consumerDir, 'pnpm-lock.yaml'))
     const consumerLockfileSha256 = createHash('sha256').update(consumerLockfile).digest('hex')
     const lockfilePath = resolve(receiptPath.replace(/\.json$/, '.lock.yaml'))
     await writeFile(lockfilePath, consumerLockfile)
     await writeFile(resolve(receiptPath), JSON.stringify({
       schemaVersion: publicContract.compatibilityReceiptVersion,
+      matrixSlot: `${process.platform}-${requestedChannel ?? 'minimum'}-${process.version.slice(1)}`,
       requestedDshVersion: dshVersionSpec,
       resolvedDshVersion: dshVersion,
       platform: process.platform,
       nodeVersion: process.version,
-      packageVersion: installedManifest.version,
-      tarballSha256: `sha256:${tarballSha256}`,
+      packages: installedPackages.sort((left, right) => left.name.localeCompare(right.name)),
       consumerLockfileFile: basename(lockfilePath),
       consumerLockfileSha256: `sha256:${consumerLockfileSha256}`,
       dshDependencies,

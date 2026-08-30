@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { load } from 'js-yaml'
-import { publishRelease } from '../scripts/publish-release.mjs'
+import { publishPackageSet, publishRelease } from '../scripts/publish-release.mjs'
 
 const ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
@@ -14,6 +14,9 @@ const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
   devDependencies: Record<string, string>
   publishConfig: { access: string; registry: string }
 }
+const COMPANION_MANIFEST = JSON.parse(
+  readFileSync(join(ROOT, 'packages/run-receipt-feed/package.json'), 'utf8'),
+) as { name: string; version: string; publishConfig: { access: string; registry: string } }
 const VERSION = MANIFEST.version
 const RELEASE_REGISTRY = 'https://registry.npmjs.org'
 const RELEASE_TARBALL_CONTENT = 'release tarball bytes'
@@ -96,6 +99,9 @@ describe('reproducible CI and release contracts', () => {
     expect(ci).toContain('dsh-pnpm-workspace.yaml')
     expect(ci).toContain('package_json_file: deepseek-harness/package.json')
     expect(workflow).toContain('pnpm exec node scripts/install-dsh-tarballs.mjs')
+    expect((workflow.match(/--non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs"/g) ?? []))
+      .toHaveLength(2)
+    expect(workflow).toContain("if: inputs.dsh-source-artifact == ''")
     expect(workflow).toContain('DSH_REGISTRY: https://registry.npmjs.org')
     expect(workflow).toContain("PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: 'false'")
     expect(workflow).toContain('windows-latest')
@@ -138,7 +144,7 @@ describe('reproducible CI and release contracts', () => {
   it('resolves one exact DSH generation before installing every packed consumer dependency', () => {
     const sourceInstaller = readFileSync(join(ROOT, 'scripts/install-dsh-tarballs.mjs'), 'utf8')
     expect(sourceInstaller).toContain('tarballs.set(manifest.name')
-    expect(sourceInstaller).toContain('manifest.devDependencies[name] = tarballs.get(name).spec')
+    expect(sourceInstaller).toContain('workspacePackage.manifest[group][name] = packed.specFor(workspacePackage.directory)')
     expect(sourceInstaller).toContain('restoreProjectFiles(originals, installError)')
     const sourceRestorer = readFileSync(join(ROOT, 'scripts/source-install-restore.mjs'), 'utf8')
     expect(sourceRestorer).toContain('throw new AggregateError')
@@ -147,11 +153,11 @@ describe('reproducible CI and release contracts', () => {
     expect(script).toContain('const dshVersion = resolveDshVersion(dshVersionSpec)')
     expect(script).toContain('resolveNpmRegistry(projectRoot)')
     expect(script).not.toContain('registry.npmjs.org')
-    expect(script).toContain('].map(name => `${name}@${dshVersion}`)')
-    expect(script).toContain("'@deepseek-ai/dsh-agent-loop-testkit'")
-    expect(script).toContain("'@deepseek-ai/dsh-session-query'")
-    expect(script).toContain("'@deepseek-ai/dsh-session-query-sqlite'")
-    expect(script).toContain("'@deepseek-ai/dsh-subagent-spawn-in-process'")
+    expect(script).toContain('...compatibilityPolicy.registryInstallPackageClosure')
+    expect(script).toContain('...compatibilityPolicy.dshPackageClosure')
+    expect(script).toContain('const packageSet = readPackedPackageSet(packDir, workspacePackages)')
+    expect(script).toContain('companionArtifact.tarball')
+    expect(script).toContain('rootArtifact.tarball')
     const consumer = readFileSync(join(ROOT, 'scripts/packed-delegation-consumer.mjs'), 'utf8')
     expect(consumer).toContain('configVersion: 2')
     const profileInstaller = readFileSync(join(ROOT, 'scripts/verify-profile-install.mjs'), 'utf8')
@@ -170,16 +176,27 @@ describe('reproducible CI and release contracts', () => {
       permissions: Record<string, string>
       jobs: {
         gates: { needs: string; uses: string; with: Record<string, string> }
-        release: { needs: string[]; permissions: Record<string, string>; steps: Array<Record<string, unknown>> }
+        release: { environment: string; needs: string[]; permissions: Record<string, string>; steps: Array<Record<string, unknown>> }
       }
     }
     expect(parsed.permissions).toEqual({ contents: 'read' })
-    expect(MANIFEST.publishConfig).toEqual({
-      access: 'public',
-      registry: 'https://registry.npmjs.org',
-    })
+    expect(COMPANION_MANIFEST.version).toBe(VERSION)
+    expect([MANIFEST.publishConfig, COMPANION_MANIFEST.publishConfig]).toEqual([
+      { access: 'public', registry: 'https://registry.npmjs.org' },
+      { access: 'public', registry: 'https://registry.npmjs.org' },
+    ])
+    expect(parsed.jobs.release.environment).toBe('npm')
     expect(parsed.jobs.release.permissions).toMatchObject({
       contents: 'write', 'id-token': 'write', attestations: 'write',
+    })
+    const compatibility = JSON.parse(
+      readFileSync(join(ROOT, 'contracts/compatibility.json'), 'utf8'),
+    ) as { npmTrustedPublisher: Record<string, string> }
+    expect(compatibility.npmTrustedPublisher).toEqual({
+      repository: 'wxxb789/dsh-legion',
+      workflow: '.github/workflows/release.yml',
+      environment: 'npm',
+      status: 'prerequisite-deferred',
     })
     expect(parsed.jobs.gates).toMatchObject({
       needs: 'pack',
@@ -208,16 +225,27 @@ describe('reproducible CI and release contracts', () => {
     expect(workflow).not.toContain('npm pack --ignore-scripts --pack-destination dist')
     expect(workflow).toContain('runs-on: ubuntu-24.04')
     expect(workflow).toContain('node-version: 24.19.0')
-    expect(workflow).toContain('test "${#tarballs[@]}" -eq 1')
+    expect(workflow).toContain('test "${#tarballs[@]}" -eq 2')
+    expect(workflow).toContain('ROOT_TARBALL=')
+    expect(workflow).toContain('COMPANION_TARBALL=')
     expect(workflow).toContain('node scripts/verify-compatibility-receipts.mjs dist')
-    expect(workflow).toContain('tar -xzf "$RELEASE_TARBALL" -C dist/sbom-root')
-    expect(workflow).toContain('path: dist/sbom-root/package')
+    expect(workflow).toContain('tar -xzf "$ROOT_TARBALL" -C dist/sbom-root')
+    expect(workflow).toContain('tar -xzf "$COMPANION_TARBALL" -C dist/sbom-companion')
+    expect(workflow).toContain('output-file: dist/dsh-legion.spdx.json')
+    expect(workflow).toContain('output-file: dist/dsh-legion-receipts.spdx.json')
     expect(workflow).toMatch(/anchore\/sbom-action@[a-f0-9]{40}/)
     expect(workflow).toContain('node scripts/hash-artifacts.mjs')
     expect(workflow).toMatch(/actions\/attest-build-provenance@[a-f0-9]{40}/)
     expect(workflow).toContain('subject-path: dist/*')
-    expect(workflow).toContain('node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only')
-    expect(workflow).toContain('node scripts/publish-release.mjs "$RELEASE_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$COMPANION_TARBALL" "dsh-legion-receipts@$VERSION" "$DSH_REGISTRY" --check-only')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$ROOT_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY" --check-only')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$COMPANION_TARBALL" "dsh-legion-receipts@$VERSION" "$DSH_REGISTRY"')
+    expect(workflow).toContain('node scripts/publish-release.mjs "$ROOT_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"')
+    expect(workflow.indexOf('node scripts/publish-release.mjs "$COMPANION_TARBALL" "dsh-legion-receipts@$VERSION" "$DSH_REGISTRY"'))
+      .toBeLessThan(workflow.indexOf('node scripts/publish-release.mjs "$ROOT_TARBALL" "dsh-legion@$VERSION" "$DSH_REGISTRY"'))
+    expect((workflow.match(/overwrite: true/g) ?? [])).toHaveLength(2)
+    expect(readFileSync(join(ROOT, '.github/workflows/quality-gates.yml'), 'utf8'))
+      .toContain('overwrite: true')
     expect(workflow.indexOf('Verify npm recovery identity before publishing release evidence'))
       .toBeLessThan(workflow.indexOf('actions/attest-build-provenance'))
     expect(workflow).not.toContain('NPM_TOKEN')
@@ -261,6 +289,36 @@ describe('reproducible CI and release contracts', () => {
     expect(outcome.calls.map(call => call[0])).toEqual(['view'])
   })
 
+  it('recovers when npm accepted identical bytes before publish returned an error', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-publish-race-'))
+    const tarball = join(root, 'dsh-legion.tgz')
+    const calls: string[][] = []
+    writeFileSync(tarball, RELEASE_TARBALL_CONTENT)
+    try {
+      const result = publishRelease({
+        tarball,
+        packageSpec: `dsh-legion@${VERSION}`,
+        registry: RELEASE_REGISTRY,
+        execute(args) {
+          calls.push(args)
+          if (args[0] === 'view') {
+            return calls.filter(call => call[0] === 'view').length === 1
+              ? { status: 1, stdout: '', stderr: 'npm error code E404\nnpm error 404 Not Found\n' }
+              : { status: 0, stdout: JSON.stringify(RELEASE_TARBALL_INTEGRITY), stderr: '' }
+          }
+          return { status: 1, stdout: '', stderr: 'connection closed after upload\n' }
+        },
+      })
+      expect(result).toEqual({
+        kind: 'recovered',
+        message: `dsh-legion@${VERSION} published identical content before npm returned an error; recovered`,
+      })
+      expect(calls.map(call => call[0])).toEqual(['view', 'publish', 'view'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('preflights an absent npm version without publishing or mutating release evidence', () => {
     const outcome = runReleasePublisher({ absent: true, checkOnly: true })
     expect(outcome.error).toBeUndefined()
@@ -280,6 +338,95 @@ describe('reproducible CI and release contracts', () => {
       'publish', expect.stringMatching(/dsh-legion\.tgz$/), '--access', 'public', '--provenance',
       `--registry=${RELEASE_REGISTRY}`,
     ])
+  })
+
+  it('recovers a partial pair publication by skipping identical companion bytes and publishing root second', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-publish-pair-'))
+    const companionTarball = join(root, 'dsh-legion-receipts.tgz')
+    const rootTarball = join(root, 'dsh-legion.tgz')
+    writeFileSync(companionTarball, RELEASE_TARBALL_CONTENT)
+    writeFileSync(rootTarball, RELEASE_TARBALL_CONTENT)
+    const calls: string[][] = []
+    const execute = (args: string[]) => {
+      calls.push(args)
+      if (args[0] === 'view') {
+        return args[1]?.startsWith(`${COMPANION_MANIFEST.name}@`)
+          ? { status: 0, stdout: JSON.stringify(RELEASE_TARBALL_INTEGRITY), stderr: '' }
+          : { status: 1, stdout: '', stderr: 'npm error code E404\nnpm error 404 Not Found\n' }
+      }
+      return { status: 0, stdout: 'published\n', stderr: '' }
+    }
+    try {
+      const result = publishPackageSet({
+        packages: [
+          { tarball: companionTarball, packageSpec: `${COMPANION_MANIFEST.name}@${VERSION}` },
+          { tarball: rootTarball, packageSpec: `dsh-legion@${VERSION}` },
+        ],
+        registry: RELEASE_REGISTRY,
+        execute,
+      })
+      expect(result.map(item => item.kind)).toEqual(['identical', 'published'])
+      expect(calls.filter(call => call[0] === 'publish').map(call => call[1]))
+        .toEqual([rootTarball])
+      expect(calls.findIndex(call => call[1]?.startsWith(`${COMPANION_MANIFEST.name}@`)))
+        .toBeLessThan(calls.findIndex(call => call[1]?.startsWith('dsh-legion@')))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('skips both package publications only when both registry artifacts are byte-identical', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-publish-pair-identical-'))
+    const companionTarball = join(root, 'dsh-legion-receipts.tgz')
+    const rootTarball = join(root, 'dsh-legion.tgz')
+    writeFileSync(companionTarball, RELEASE_TARBALL_CONTENT)
+    writeFileSync(rootTarball, RELEASE_TARBALL_CONTENT)
+    const calls: string[][] = []
+    try {
+      const result = publishPackageSet({
+        packages: [
+          { tarball: companionTarball, packageSpec: `${COMPANION_MANIFEST.name}@${VERSION}` },
+          { tarball: rootTarball, packageSpec: `dsh-legion@${VERSION}` },
+        ],
+        registry: RELEASE_REGISTRY,
+        execute(args) {
+          calls.push(args)
+          return { status: 0, stdout: JSON.stringify(RELEASE_TARBALL_INTEGRITY), stderr: '' }
+        },
+      })
+      expect(result.map(item => item.kind)).toEqual(['identical', 'identical'])
+      expect(calls.map(call => call[0])).toEqual(['view', 'view'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('fails the pair before publishing when either same-version artifact has different bytes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-legion-publish-pair-mismatch-'))
+    const companionTarball = join(root, 'dsh-legion-receipts.tgz')
+    const rootTarball = join(root, 'dsh-legion.tgz')
+    writeFileSync(companionTarball, RELEASE_TARBALL_CONTENT)
+    writeFileSync(rootTarball, RELEASE_TARBALL_CONTENT)
+    const calls: string[][] = []
+    try {
+      expect(() => publishPackageSet({
+        packages: [
+          { tarball: companionTarball, packageSpec: `${COMPANION_MANIFEST.name}@${VERSION}` },
+          { tarball: rootTarball, packageSpec: `dsh-legion@${VERSION}` },
+        ],
+        registry: RELEASE_REGISTRY,
+        execute(args) {
+          calls.push(args)
+          if (args[0] === 'view' && args[1]?.startsWith('dsh-legion@')) {
+            return { status: 0, stdout: JSON.stringify('sha512-different'), stderr: '' }
+          }
+          return { status: 1, stdout: '', stderr: 'npm error code E404\nnpm error 404 Not Found\n' }
+        },
+      })).toThrow('dsh-legion@')
+      expect(calls.some(call => call[0] === 'publish')).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('verifies release tag/version/changelog identity and rejects a mismatch', () => {

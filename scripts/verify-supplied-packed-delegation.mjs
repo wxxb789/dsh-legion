@@ -1,12 +1,17 @@
-import { readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { readPackedPackageSet } from './package-set.mjs'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
-const directory = resolve(process.argv[2] ?? 'package-tarball')
-const tarballs = (await readdir(directory, { withFileTypes: true }))
-  .filter(entry => entry.isFile() && entry.name.endsWith('.tgz'))
-  .map(entry => resolve(directory, entry.name))
-if (tarballs.length !== 1) {
-  throw new Error(`packed delegation requires exactly one supplied tarball, found ${String(tarballs.length)}`)
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
+const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
+const directory = resolve(arguments_[0] ?? 'package-tarball')
+const packageSet = readPackedPackageSet(directory, readWorkspacePackages(root))
+const rootArtifact = packageSet.find(item => item.name === 'dsh-legion')
+const companionArtifact = packageSet.find(item => item.name === 'dsh-legion-receipts')
+if (rootArtifact === undefined || companionArtifact === undefined) {
+  throw new Error('packed delegation requires the root and companion tarballs')
 }
-process.env.DSH_LEGION_TARBALL = tarballs[0]
+process.env.DSH_LEGION_TARBALL = rootArtifact.tarball
+process.env.DSH_LEGION_RECEIPTS_TARBALL = companionArtifact.tarball
 await import('./verify-packed-delegation.mjs')
