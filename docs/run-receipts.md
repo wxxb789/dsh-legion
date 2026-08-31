@@ -77,7 +77,7 @@ A local offline pass does not prove public-registry availability, CI, or a runni
 
 ## Manual Web record
 
-**U10 handoff status: PENDING.** The existing URL had a live `dsh web` listener, but its selected Web composition declared only the base/Web bundles with no Legion dependency or patch row, and no `pnpm run dev:web` watcher was observed. The exact packed pair was therefore not mounted or interactively testable. Do not mark this lane passed until the existing GUI at `http://127.0.0.1:3080` is proven to be running the exact packed root/companion pair under test and a human records the interactions below. A reachable page or a source checkout is not package-pair evidence.
+**U10 handoff status: DEFERRED (user-directed, 2026-08-31).** The existing URL had a live `dsh web` listener, but its selected Web composition declared only the base/Web bundles with no Legion dependency or patch row, and no `pnpm run dev:web` watcher was observed. The exact packed pair was therefore not mounted or interactively testable. Issue #2's authority explicitly deferred this real-browser lane after the automated exact-pair and CI evidence passed; these checks are retained as a future verification checklist rather than closure blockers. A reachable page or a source checkout is not package-pair evidence.
 
 Record these identifiers first:
 
@@ -91,15 +91,15 @@ Client-plugin HMR is valid only while that watcher rebuilds bundles from the sam
 
 | Check | Status | Evidence to record |
 |---|---|---|
-| Both exact package versions load; the generated Remote namespace exists; no duplicate Slot entry or page error appears | PENDING | Loader/module identities and console record |
-| A held in-flight run is visible before the first child starts; reload preserves the run ID and Host facts | PENDING | Before/after run ID and screenshots or recording |
-| Per-member stage, provider, state, elapsed source, token coverage, unavailable dimensions, and terminal outcome are honest | PENDING | Visible values for local and remote/mixed participants |
-| Another overlay occupant and the conversation remain operable; bounding boxes do not overlap | PENDING | Bounding boxes and both control results |
-| Keyboard-only select, dismiss, reopen, focus restoration, and live-region announcements work on desktop | PENDING | Focus order and announced text |
-| Narrow and touch layouts use the full-width non-dragging dock with operable targets | PENDING | Viewport/pointer conditions and interaction record |
-| Switching Sessions never shows the previous Session's Receipt | PENDING | Session IDs and visible run IDs |
-| A direct Specialist invocation after a terminal Cohort does not make that Cohort Receipt appear current | PENDING | Invocation order and resulting state copy |
-| Browser storage contains presentation preferences only, never full Receipt facts | PENDING | Storage key/value inspection |
-| Host restart starts with no full Receipt facts while prior tool-result history remains in the conversation | PENDING | Before/after Host instance and conversation record |
+| Both exact package versions load; the generated Remote namespace exists; no duplicate Slot entry or page error appears | DEFERRED | Loader/module identities and console record |
+| A held in-flight run is visible before the first child starts; reload preserves the run ID and Host facts | DEFERRED | Before/after run ID and screenshots or recording |
+| Per-member stage, provider, state, elapsed source, token coverage, unavailable dimensions, and terminal outcome are honest | DEFERRED | Visible values for local and remote/mixed participants |
+| Another overlay occupant and the conversation remain operable; bounding boxes do not overlap | DEFERRED | Bounding boxes and both control results |
+| Keyboard-only select, dismiss, reopen, focus restoration, and live-region announcements work on desktop | DEFERRED | Focus order and announced text |
+| Narrow and touch layouts use the full-width non-dragging dock with operable targets | DEFERRED | Viewport/pointer conditions and interaction record |
+| Switching Sessions never shows the previous Session's Receipt | DEFERRED | Session IDs and visible run IDs |
+| A direct Specialist invocation after a terminal Cohort does not make that Cohort Receipt appear current | DEFERRED | Invocation order and resulting state copy |
+| Browser storage contains presentation preferences only, never full Receipt facts | DEFERRED | Storage key/value inspection |
+| Host restart starts with no full Receipt facts while prior tool-result history remains in the conversation | DEFERRED | Before/after Host instance and conversation record |
 
-Public-registry installation, pushed `main` CI URLs, and the issue #2 closure comment are also external evidence. Leave issue #2 open until the responsible maintainer attaches those records and every non-deferred row above is no longer pending.
+Pushed `main` CI evidence is recorded on issue #2. The issue authority explicitly deferred both this real-browser lane and public npm name/OIDC Trusted Publisher proof; neither is a closure blocker for issue #2, and no tag or publication is implied. Complete the table before a later claim of real-browser support, and satisfy the existing `prerequisite-deferred` release contract before publishing either package.

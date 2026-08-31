@@ -450,6 +450,10 @@ describe('repository vocabulary', () => {
         expect(await readFile(resolve(ROOT, path), 'utf8'), `${entry.id}:${path}`).toContain(marker)
       }
     }
+    expect(guide).toContain('U10 handoff status: DEFERRED (user-directed, 2026-08-31)')
+    expect(guide).not.toContain('| PENDING |')
+    expect(guide).toContain('neither is a closure blocker for issue #2')
+    expect(guide).toContain('no tag or publication is implied')
     expect(guide).toContain('Cross-cutting R5 evidence')
     expect(await readFile(resolve(ROOT, 'tests/run-receipt-telemetry.spec.ts'), 'utf8'))
       .toContain('derives settlement from the plan without publishing child lastAssistantMessage')
