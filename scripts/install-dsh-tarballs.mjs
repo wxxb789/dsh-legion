@@ -139,6 +139,16 @@ while (queue.length > 0) {
     if (isDshPackage(dependency) && optionalPeers[dependency]?.optional !== true) queue.push(dependency)
   }
 }
+// Overrides pin referenced packages but do not materialize optional peer type
+// faces. Add the declared closure as temporary root dev dependencies so the
+// offline packed consumer can compile every published declaration it exposes.
+const rootPackage = workspacePackages.find(item => item.relativeDirectory === '.')
+if (rootPackage === undefined) throw new Error('workspace has no root package')
+rootPackage.manifest.devDependencies ??= {}
+for (const name of closure) {
+  if (direct.has(name)) continue
+  rootPackage.manifest.devDependencies[name] = tarballs.get(name).specFor(rootPackage.directory)
+}
 if (/^overrides:/m.test(workspaceSource)) throw new Error('source install refuses to replace existing pnpm overrides')
 const policyBuilds = booleanMapBlock(policySource, 'allowBuilds', policyPath)
 const workspaceBuilds = booleanMapBlock(workspaceSource, 'allowBuilds', workspacePath)
