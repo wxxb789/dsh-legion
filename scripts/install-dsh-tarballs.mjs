@@ -110,8 +110,16 @@ for (const workspacePackage of workspacePackages) {
     }
   }
 }
+const declaredClosure = compatibility.dshPackageClosure
+if (!Array.isArray(declaredClosure)
+  || declaredClosure.some(name => typeof name !== 'string' || !/^dsh-[a-z0-9-]+$/u.test(name))) {
+  throw new Error('compatibility policy has an invalid DSH package closure')
+}
 const closure = new Set()
-const queue = [...direct]
+const queue = [
+  ...direct,
+  ...declaredClosure.map(name => `@deepseek-ai/${name}`),
+]
 while (queue.length > 0) {
   const name = queue.shift()
   if (closure.has(name)) continue
