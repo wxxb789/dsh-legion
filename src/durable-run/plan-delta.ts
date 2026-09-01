@@ -1,4 +1,4 @@
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import type { StrategyLimits } from '../orchestration-contract.ts'
 import { ArtifactName } from '../identity.ts'
 import { canonicalValue, deepCopy, deepFreeze, sha256Digest } from '../internal/value.ts'

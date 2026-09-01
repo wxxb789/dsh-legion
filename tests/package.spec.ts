@@ -198,7 +198,8 @@ describe('published package contract', () => {
     ) as PackageManifest
     expect(manifest.files).toEqual(expect.arrayContaining([
       'lib', 'cordis.patch.yml', 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md',
-      'docs/run-receipts.md', 'examples', 'presets', 'scripts/registry-config.mjs',
+      'docs/notes/dsh-0.1.2-alpha.3-upgrade.md', 'docs/run-receipts.md',
+      'examples', 'presets', 'scripts/registry-config.mjs',
       'README.md', 'LICENSE',
     ]))
     expect(manifest.exports).toHaveProperty('.')
@@ -208,12 +209,19 @@ describe('published package contract', () => {
       './contracts/journal-v1.json': './contracts/journal-v1.json',
     })
     expect(manifest.bin).toEqual({ 'dsh-legion': 'lib/bin.js' })
-    expect(manifest.dependencies).toHaveProperty('js-yaml')
-    expect(manifest.dependencies?.['dsh-legion-receipts']).toBe('workspace:1.2.0')
-    expect(manifest.devDependencies?.['@deepseek-ai/dsh-typert-registry']).toBe('0.1.2-alpha.1')
     const compatibility = JSON.parse(
       await readFile(resolve(ROOT, 'contracts/compatibility.json'), 'utf8'),
-    ) as { dshPeerRange: string }
+    ) as { dshPeerRange: string; latestTestedDshVersion: string }
+    expect(manifest.dependencies).toHaveProperty('js-yaml')
+    expect(manifest.dependencies?.['@deepseek-ai/schemastery']).toBe('^3.18.2')
+    expect(manifest.dependencies?.['dsh-legion-receipts']).toBe('workspace:1.2.0')
+    expect(manifest.peerDependencies?.['@deepseek-ai/cordis']).toBe('^4.0.2')
+    expect(manifest.devDependencies?.['@deepseek-ai/cordis']).toBe('4.0.2')
+    expect(manifest.devDependencies?.['@deepseek-ai/cordis-plugin-include']).toBe('^1.0.7')
+    expect(manifest.devDependencies?.['@deepseek-ai/cordis-plugin-loader']).toBe('^1.0.3')
+    expect(manifest.dependencies?.['@deepseek-ai/dsh-util-values']).toBe(compatibility.dshPeerRange)
+    expect(manifest.devDependencies?.['@deepseek-ai/dsh-typert-registry'])
+      .toBe(compatibility.latestTestedDshVersion)
     for (const dependency of [
       '@deepseek-ai/dsh-agent',
       '@deepseek-ai/dsh-client-store',
@@ -252,6 +260,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'contracts/compatibility.json')),
       access(resolve(ROOT, 'contracts/journal-v1.json')),
       access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md')),
+      access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.3-upgrade.md')),
       access(resolve(ROOT, 'docs/run-receipts.md')),
       access(resolve(ROOT, 'examples/durable-stair-step.config.yml')),
     ])

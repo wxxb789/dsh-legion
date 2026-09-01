@@ -34,6 +34,10 @@ if (requestedChannel !== undefined && !Object.hasOwn(compatibilityChannels, requ
 const dshVersionSpec = process.env.DSH_VERSION
   ?? compatibilityChannels[requestedChannel ?? 'minimum']
 const dshRegistry = resolveNpmRegistry(projectRoot)
+const cordisVersion = manifest.devDependencies?.['@deepseek-ai/cordis']
+if (typeof cordisVersion !== 'string' || !/^\d+\.\d+\.\d+$/u.test(cordisVersion)) {
+  throw new Error('package.json must pin one exact @deepseek-ai/cordis development version')
+}
 const canonicalTempRoot = trustedTempRoot()
 const sandboxRoot = await mkdtemp(join(canonicalTempRoot, 'dsh-legion-packed-delegation-'))
 const relativeSandbox = relative(canonicalTempRoot, resolve(sandboxRoot))
@@ -158,9 +162,11 @@ try {
     ...compatibilityPolicy.registryInstallPackageClosure,
     ...compatibilityPolicy.dshPackageClosure,
   ])].sort()
-  const overrides = Object.fromEntries(
-    dshPackageNames.map(name => [`@deepseek-ai/${name}`, dshVersion]),
-  )
+  const companionSpec = `file:${relative(consumerDir, companionArtifact.tarball).replaceAll('\\', '/')}`
+  const overrides = Object.fromEntries([
+    ...dshPackageNames.map(name => [`@deepseek-ai/${name}`, dshVersion]),
+    [companionArtifact.name, companionSpec],
+  ])
   await writeFile(join(consumerDir, 'package.json'), JSON.stringify({
     name: 'dsh-legion-packed-delegation-consumer',
     private: true,
@@ -173,6 +179,7 @@ try {
     "  - '.'",
     '',
     'allowBuilds:',
+    '  esbuild: true',
     '  koffi: true',
     '',
     'overrides:',
@@ -224,7 +231,7 @@ try {
       `--registry=${dshRegistry}`,
       companionArtifact.tarball,
       rootArtifact.tarball,
-      '@deepseek-ai/cordis@4.0.1',
+      `@deepseek-ai/cordis@${cordisVersion}`,
       ...dshPackages,
     ], consumerDir)
     dshDependencies = await verifyDshGeneration(consumerDir, dshVersion)

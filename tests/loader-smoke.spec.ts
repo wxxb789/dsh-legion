@@ -110,7 +110,7 @@ describe('packed package pair through official DSH smoke seams', () => {
     })
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('restores the prior root generation and then reinstalls the current exact pair', async () => {
+  it('detects the prior source incompatibility and reinstalls the current exact pair', async () => {
     const result = await runLoaderSmoke({
       label: 'dsh-legion prior-generation downgrade',
       tempDirPrefix: 'dsh-legion-loader-downgrade-',
@@ -122,12 +122,10 @@ describe('packed package pair through official DSH smoke seams', () => {
       processTimeoutMs: LOADER_SMOKE_TEST_TIMEOUT_MS,
       prepare: async (cwd) => {
         const currentPackDir = join(cwd, 'pack', 'current')
-        const priorPackDir = join(cwd, 'pack', 'prior')
         const priorSource = join(cwd, 'prior-source')
         const archive = join(cwd, 'prior-source.tar')
         const nodeModules = join(cwd, 'node_modules')
         await mkdir(currentPackDir, { recursive: true })
-        await mkdir(priorPackDir, { recursive: true })
         await mkdir(priorSource, { recursive: true })
         await mkdir(nodeModules, { recursive: true })
 
@@ -142,30 +140,9 @@ describe('packed package pair through official DSH smoke seams', () => {
 
         run('git', ['archive', '--format=tar', '--output', archive, IMPLEMENTATION_BASE], ROOT)
         run('tar', ['-xf', archive, '-C', priorSource], ROOT)
-        // The official Host-only smoke is not a package installer, and this
-        // repository does not carry the prior root's complete DSH/vendor
-        // dependency closure as local tarballs. Reuse the already hydrated
-        // exact assessed dependencies while building the isolated git archive;
-        // the generation switches below still install only packed Legion bytes.
-        await symlink(
-          resolve(ROOT, 'node_modules'),
-          join(priorSource, 'node_modules'),
-          process.platform === 'win32' ? 'junction' : 'dir',
-        )
-        run('pnpm', ['--dir', priorSource, 'run', 'build'], ROOT)
-        run('pnpm', [
-          '--dir', priorSource,
-          '--config.ignore-scripts=true',
-          'pack',
-          '--pack-destination', priorPackDir,
-        ], ROOT)
-
         await linkLoaderDependencies(nodeModules)
 
         const rootManifest = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8')) as {
-          version: string
-        }
-        const priorManifest = JSON.parse(await readFile(join(priorSource, 'package.json'), 'utf8')) as {
           version: string
         }
         const companionManifest = JSON.parse(await readFile(
@@ -177,9 +154,7 @@ describe('packed package pair through official DSH smoke seams', () => {
             { name: 'dsh-legion-receipts', tarball: join(currentPackDir, `dsh-legion-receipts-${companionManifest.version}.tgz`) },
             { name: 'dsh-legion', tarball: join(currentPackDir, `dsh-legion-${rootManifest.version}.tgz`) },
           ],
-          prior: [
-            { name: 'dsh-legion', tarball: join(priorPackDir, `dsh-legion-${priorManifest.version}.tgz`) },
-          ],
+          priorSource: join(priorSource, 'src', 'index.ts'),
         }))
       },
     })
@@ -195,15 +170,7 @@ describe('packed package pair through official DSH smoke seams', () => {
         receiptRowPresent: true,
         browserSlotRuntime: limitation,
       },
-      prior: {
-        rows: ['dsh-legion'],
-        settingsRowRestored: true,
-        companionPackagePresent: false,
-        companionDependencyPresent: false,
-        receiptRemotePresent: false,
-        receiptRowPresent: false,
-        browserSlotRuntime: limitation,
-      },
+      priorIncompatibility: 'removed-prompt-order-export',
       reinstalled: {
         rows: ['dsh-legion', 'dsh-legion-receipts'],
         settingsRowRestored: true,

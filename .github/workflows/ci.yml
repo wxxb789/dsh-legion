@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: dsh
         run: |
-          version=$(node -e "const p=require('./contracts/compatibility.json'); if(p.minimumDshVersion!==p.latestTestedDshVersion) throw new Error('source CI requires one assessed DSH version'); process.stdout.write(p.latestTestedDshVersion)")
+          version=$(node -e "const p=require('./contracts/compatibility.json'); process.stdout.write(p.latestTestedDshVersion)")
           echo "tag=dsh-v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

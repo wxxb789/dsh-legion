@@ -1,5 +1,5 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
 import { settleChildRun, type ChildCleanup } from './child-run.ts'
 import type { DelegationPlan } from './compiler.ts'

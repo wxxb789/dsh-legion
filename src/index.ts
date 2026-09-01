@@ -1,9 +1,10 @@
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { RUN_RECEIPT_TOKEN_FIELDS } from 'dsh-legion-receipts'
 import {
   Config,
@@ -383,10 +384,6 @@ export const DELEGATION_INJECT = Object.freeze([
   'subagents',
   'systemPrompt',
 ] as const)
-
-const PROMPT_ORDER = (
-  FIRST_PARTY_SECTION_ORDER.TOOL_SUBAGENT + FIRST_PARTY_SECTION_ORDER.TOOL_REPORT
-) / 2
 
 interface SpecialistToolArgs {
   readonly kind: 'specialist'
@@ -1400,7 +1397,10 @@ async function applyDelegationRow(ctx: Context, config: LegionConfig): Promise<v
 
   ctx.systemPrompt.section({
     name: `tool:${generation.config.toolName}`,
-    order: PROMPT_ORDER,
+    order: (
+      ctx.systemPrompt.getSectionOrder('TOOL_SUBAGENT')
+      + ctx.systemPrompt.getSectionOrder('TOOL_REPORT')
+    ) / 2,
     text: () => {
       if (activeSnapshot === undefined
         || Object.keys(activeSnapshot.specialists.activeSpecialists).length === 0) return ''

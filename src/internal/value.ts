@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+export { deepFreeze } from '@deepseek-ai/dsh-util-values'
 
 /** Clone detached plain JSON-like policy data without retaining authored references. */
 export function deepCopy<Value>(value: Value): Value {
@@ -7,13 +8,6 @@ export function deepCopy<Value>(value: Value): Value {
   return Object.fromEntries(
     Object.entries(value).map(([key, child]) => [key, deepCopy(child)]),
   ) as Value
-}
-
-/** Recursively freeze owned detached data. */
-export function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
 }
 
 /** Canonicalize JSON-like data by sorting keys and dropping undefined fields. */

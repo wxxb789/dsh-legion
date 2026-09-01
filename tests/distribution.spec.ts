@@ -9,6 +9,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 
 const PACKAGE_ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 let root: string | undefined
@@ -51,6 +52,7 @@ describe('profile-local package distribution', () => {
     expect(ctx.loader.internal).toBeDefined()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(AgentPresets, {
       default: 'legion-resolution',

@@ -9,6 +9,7 @@ import { load } from 'js-yaml'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SessionStore from '@deepseek-ai/dsh-session'
+import * as SystemPromptModule from '@deepseek-ai/dsh-system-prompt'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 
 const cwd = process.cwd()
@@ -106,17 +107,30 @@ try {
         },
       })
       if (result.error !== undefined) throw result.error
+      return result
+    }
+    const readCompatibleWorker = expectedReceipts => {
+      const result = runWorker(expectedReceipts)
       if (result.status !== 0) throw new Error(`generation worker failed: ${result.stderr}`)
       return JSON.parse(result.stdout)
     }
+    const assertPriorSourceIncompatible = async priorSourcePath => {
+      const priorSource = await readFile(priorSourcePath, 'utf8')
+      if (!priorSource.includes('FIRST_PARTY_SECTION_ORDER')) {
+        throw new Error('prior generation does not contain the expected removed prompt-order import')
+      }
+      if ('FIRST_PARTY_SECTION_ORDER' in SystemPromptModule) {
+        throw new Error('current DSH unexpectedly retains the removed prompt-order export')
+      }
+      return 'removed-prompt-order-export'
+    }
 
     await install(artifacts.current)
-    const current = runWorker(true)
-    await install(artifacts.prior)
-    const prior = runWorker(false)
+    const current = readCompatibleWorker(true)
+    const priorIncompatibility = await assertPriorSourceIncompatible(artifacts.priorSource)
     await install(artifacts.current)
-    const reinstalled = runWorker(true)
-    process.stdout.write(JSON.stringify({ current, prior, reinstalled }))
+    const reinstalled = readCompatibleWorker(true)
+    process.stdout.write(JSON.stringify({ current, priorIncompatibility, reinstalled }))
   }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`)

@@ -4,7 +4,7 @@ Recovery folds the legion-run projection, acquires a Host lease with a larger fe
 
 ## Capability requirements
 
-Read-only replay and planning are pure. Resume and cancel require Session flush, projection registration, and Host-owned atomic run coordination. Durable child receipts are optional evidence; their absence is represented as unknown rather than success. The assessed DSH 0.1.2-alpha.1 line lacks mandatory coordination and cannot register persisted `legion/*` event types, so mutation fails closed before append.
+Read-only replay and planning are pure. Resume and cancel require Session flush, projection registration, and Host-owned atomic run coordination. Durable child receipts are optional evidence; their absence is represented as unknown rather than success. The assessed DSH 0.1.2-alpha.3 line lacks mandatory coordination and cannot admit required persisted `legion/*` event types, so mutation fails closed before append.
 
 ## Failure behavior
 

@@ -16,6 +16,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as SpawnProvider from '@deepseek-ai/dsh-subagent-spawn-in-process'
 import * as legion from '../src/index.ts'
@@ -43,6 +44,7 @@ describe('real DSH continuation manager integration', () => {
     ctx.baseUrl = pathToFileURL(root).href + '/'
     try {
       await mountAgentLoopTestDependencies(ctx)
+      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(JsonlSessionPersistence, { root })
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(SubagentRuntime)

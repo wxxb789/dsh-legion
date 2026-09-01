@@ -386,6 +386,26 @@ describe('Run Receipt companion Client', () => {
 
     await show(second, baseline('session-a', 0), b.runtime)
     expect(b.view.container.querySelector('[data-receipt-state="new-instance-empty"]')).not.toBeNull()
+
+    await show(second, replacement('session-a', 1, [receipt('session-a', 2, 1)]), b.runtime)
+    second.fail(new RemoteStreamCarrierError('carrier lost again'))
+    const third = await b.script.nextOpen('session-a')
+    await show(third, { type: 'unavailable', code: 'session-not-live' }, b.runtime)
+    expect(b.view.container.querySelector('[data-receipt-state="feed-unavailable"]')).not.toBeNull()
+    expect(b.view.container.textContent).not.toContain(runId(2))
+  })
+
+  it('clears prior-generation facts when a reconnect opens with a malformed frame', async () => {
+    const b = await trackedBench()
+    const first = await b.script.nextOpen('session-a')
+    await show(first, baseline('session-a', 8, [receipt('session-a', 3, 1)]), b.runtime)
+    first.fail(new RemoteStreamCarrierError('carrier lost'))
+    const second = await b.script.nextOpen('session-a')
+
+    await show(second, { type: 'baseline', value: null } as never, b.runtime)
+    expect(b.view.container.querySelector('[data-receipt-state="invalid-frame"]')).not.toBeNull()
+    expect(b.view.container.textContent).not.toContain(runId(3))
+    expect(b.view.container.textContent).toContain('Run Receipt feed emitted an invalid frame')
   })
 
   it('rejects lower and equal same-generation revisions without replacing the last valid facts', async () => {

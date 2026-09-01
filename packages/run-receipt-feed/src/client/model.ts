@@ -2,15 +2,17 @@
 import {
   RemoteSnapshotStream,
   RemoteStreamCarrierError,
+  isRemoteFailure,
   type ClientRemote,
 } from '@deepseek-ai/dsh-api-gateway/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import {
   ReceiptFeedFrameSchema,
   type ReceiptFeedBaseline,
   type ReceiptFeedReplacement,
+  type ReceiptFeedUnavailable,
   type ReceiptSessionModel,
   type RunReceipt,
 } from '../types.ts'
@@ -42,18 +44,15 @@ export interface ClientReceiptSnapshot {
   readonly diagnostic: string | undefined
 }
 
-class InvalidReceiptFrameError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'InvalidReceiptFrameError'
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    'legion-receipts/feed-unavailable': { readonly reason: ReceiptFeedUnavailable['code'] }
+    'legion-receipts/invalid-frame': {}
   }
 }
 
-class ReceiptFeedUnavailableError extends Error {
-  constructor(readonly code: string) {
-    super(`Run Receipt feed unavailable: ${code}`)
-    this.name = 'ReceiptFeedUnavailableError'
-  }
+function invalidReceiptFrame(message: string): RemoteError<'legion-receipts/invalid-frame'> {
+  return new RemoteError('legion-receipts/invalid-frame', message, {})
 }
 
 function hasPartialFacts(receipt: RunReceipt): boolean {
@@ -181,8 +180,14 @@ export class ClientReceiptModel {
       open: async function* (signal) {
         for await (const input of remote.legionReceipts.follow(sessionId, signal)) {
           const parsed = ReceiptFeedFrameSchema.safeParse(input)
-          if (!parsed.success) throw new InvalidReceiptFrameError('Run Receipt feed emitted an invalid frame')
-          if (parsed.data.type === 'unavailable') throw new ReceiptFeedUnavailableError(parsed.data.code)
+          if (!parsed.success) throw invalidReceiptFrame('Run Receipt feed emitted an invalid frame')
+          if (parsed.data.type === 'unavailable') {
+            throw new RemoteError(
+              'legion-receipts/feed-unavailable',
+              `Run Receipt feed unavailable: ${parsed.data.code}`,
+              { reason: parsed.data.code },
+            )
+          }
           yield parsed.data
         }
       },
@@ -208,7 +213,9 @@ export class ClientReceiptModel {
 
   private acceptBaseline(epoch: number, sessionId: string, frame: ReceiptFeedBaseline): void {
     if (!this.current(epoch, sessionId)) return
-    if (frame.value.sessionId !== sessionId) throw new InvalidReceiptFrameError('Run Receipt baseline crossed its Session address')
+    if (frame.value.sessionId !== sessionId) {
+      throw invalidReceiptFrame('Run Receipt baseline crossed its Session address')
+    }
     const previous = this.store.getSnapshot()
     this.store.set({
       sessionId,
@@ -224,7 +231,7 @@ export class ClientReceiptModel {
     const previous = this.store.getSnapshot()
     if (frame.value.sessionId !== sessionId || previous.model === undefined
       || frame.value.revision <= previous.model.revision) {
-      throw new InvalidReceiptFrameError('Run Receipt replacement did not advance the current Session revision')
+      throw invalidReceiptFrame('Run Receipt replacement did not advance the current Session revision')
     }
     this.store.set({
       sessionId,
@@ -239,13 +246,19 @@ export class ClientReceiptModel {
     if (!this.current(epoch, sessionId)) return
     const previous = this.store.getSnapshot()
     const diagnostic = error instanceof Error ? error.message : String(error)
-    if (error instanceof ReceiptFeedUnavailableError) {
+    const failureCode = isRemoteFailure(error) ? error.code : undefined
+    if (failureCode === 'legion-receipts/feed-unavailable') {
       this.store.set({ sessionId, state: 'feed-unavailable', model: undefined, directClear: false, diagnostic })
+      return
+    }
+    if (failureCode === 'legion-receipts/invalid-frame'
+      && (previous.state === 'opening' || previous.state === 'reconnecting')) {
+      this.store.set({ sessionId, state: 'invalid-frame', model: undefined, directClear: false, diagnostic })
       return
     }
     this.store.set({
       ...previous,
-      state: error instanceof InvalidReceiptFrameError ? 'invalid-frame' : 'stream-error',
+      state: failureCode === 'legion-receipts/invalid-frame' ? 'invalid-frame' : 'stream-error',
       diagnostic,
     })
   }

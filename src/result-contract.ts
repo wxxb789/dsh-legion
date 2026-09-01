@@ -1,4 +1,5 @@
-import { validateJsonSchemaValue, type ObjectJsonSchema, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { validateJsonSchemaValue, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ResultContract } from './config.ts'
 import { deepFreeze } from './internal/value.ts'
 

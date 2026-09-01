@@ -8,9 +8,9 @@ import {
 } from './identity.ts'
 import {
   validateJsonSchemaValue,
-  type JsonValue,
   type ObjectJsonSchema,
 } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { deepFreeze } from './internal/value.ts'
 import {
   ERROR_DIAGNOSTIC_CODES,

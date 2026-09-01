@@ -245,7 +245,20 @@ describe('dsh-legion', () => {
       'description', 'prompt', 'run_in_background', 'specialist',
     ])
 
+    ctx.systemPrompt.section({
+      name: 'test:subagent-order',
+      order: ctx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
+      text: '',
+    })
+    ctx.systemPrompt.section({
+      name: 'test:report-order',
+      order: ctx.systemPrompt.getSectionOrder('TOOL_REPORT'),
+      text: '',
+    })
     const prompt = await ctx.systemPrompt.assemble()
+    const sectionNames = prompt.sections.map(section => section.name)
+    expect(sectionNames.indexOf('test:subagent-order')).toBeLessThan(sectionNames.indexOf('tool:legion'))
+    expect(sectionNames.indexOf('tool:legion')).toBeLessThan(sectionNames.indexOf('test:report-order'))
     const guidance = prompt.sections.find(section => section.name === 'tool:legion')?.text
     expect(guidance).toContain('`quick`: Cheap exploration and summaries.')
     expect(guidance).toContain('fast-route/fast-model')

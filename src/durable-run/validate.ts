@@ -1,4 +1,4 @@
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import type { SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session/types'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ProfileName, StrategyName } from '../identity.ts'

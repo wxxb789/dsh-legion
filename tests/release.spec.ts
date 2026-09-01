@@ -148,12 +148,18 @@ describe('reproducible CI and release contracts', () => {
     expect(readFileSync(join(ROOT, '.npmrc'), 'utf8').replace(/\r\n/g, '\n'))
       .toBe('registry=https://mirrors.cloud.tencent.com/npm/\nverify-deps-before-run=false\n')
     const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')
-    expect(() => load(ci)).not.toThrow()
+    const parsedCi = load(ci) as {
+      jobs: { 'dsh-source': { steps: Array<{ id?: string; run?: string }> } }
+    }
+    expect(parsedCi).toBeDefined()
     expect(ci).toContain('uses: ./.github/workflows/quality-gates.yml')
     expect(ci).toContain('repository: deepseek-ai/deepseek-harness')
     expect(ci).toContain('dsh-source-artifact: dsh-npm-source')
     expect(ci).toContain('dsh-pnpm-workspace.yaml')
     expect(ci).toContain('package_json_file: deepseek-harness/package.json')
+    const sourceSelector = parsedCi.jobs['dsh-source'].steps.find(step => step.id === 'dsh')?.run
+    expect(sourceSelector).toContain('latestTestedDshVersion')
+    expect(sourceSelector).not.toContain('minimumDshVersion')
     expect(workflow).toContain('pnpm exec node scripts/install-dsh-tarballs.mjs')
     expect((workflow.match(/--non-applicable "source installer rewrote every workspace DSH edge to supplied tarballs"/g) ?? []))
       .toHaveLength(2)

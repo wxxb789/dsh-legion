@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { LlmResolvedModelInfo, LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { deepFreeze } from './internal/value.ts'
 import type { RouteCandidate } from './config.ts'
 import type { DelegationPlan, EffectiveSpecialist } from './compiler.ts'
 import {
@@ -146,12 +147,6 @@ export class RoutePlanError extends Error {
     this.name = 'RoutePlanError'
     this.plan = plan
   }
-}
-
-function deepFreeze<Value>(value: Value): Value {
-  if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value
-  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-  return Object.freeze(value)
 }
 
 function candidateCopy(candidate: RouteCandidate): Readonly<RouteCandidate> {

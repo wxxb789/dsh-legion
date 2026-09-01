@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 
 const PACKAGE_ROOT = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const WORKSPACE_ROOT = resolve(PACKAGE_ROOT, '../..')
-const DSH_RANGE = '>=0.1.2-alpha.1 <0.2.0'
+const COMPATIBILITY = JSON.parse(
+  await readFile(resolve(WORKSPACE_ROOT, 'contracts/compatibility.json'), 'utf8'),
+) as { readonly dshPeerRange: string; readonly latestTestedDshVersion: string }
 
 interface ExportTarget {
   readonly types: string
@@ -83,8 +85,10 @@ async function materialize(): Promise<{
     '@deepseek-ai/dsh-api-gateway/client': {
       RemoteSnapshotStream: class RemoteSnapshotStream {},
       RemoteStreamCarrierError: class RemoteStreamCarrierError extends Error {},
+      isRemoteFailure: () => false,
     },
     '@deepseek-ai/dsh-client-store': { createSnapshotStore() {}, defineStore() {} },
+    '@deepseek-ai/cordis': {},
     react: { createElement() {}, Fragment: Symbol('Fragment'), memo: (component: unknown) => component, useEffect() {}, useRef() {} },
     '@deepseek-ai/dsh-client-ui-primitives': { Button() {}, Pill() {}, StateDot() {} },
   }
@@ -139,9 +143,14 @@ describe('dsh-legion-receipts package contract', () => {
       ],
       platform: 'web',
     })
-    expect(value.dependencies).toEqual({ zod: '^4.4.3' })
+    expect(value.dependencies).toEqual({
+      '@deepseek-ai/dsh-util-values': COMPATIBILITY.dshPeerRange,
+      zod: '^4.4.3',
+    })
     expect(value.peerDependencies).not.toHaveProperty('dsh-legion')
     expect(value.devDependencies).not.toHaveProperty('dsh-legion')
+    expect(value.peerDependencies).not.toHaveProperty('@deepseek-ai/dsh-llm')
+    expect(value.devDependencies).not.toHaveProperty('@deepseek-ai/dsh-llm')
     for (const dependency of [
       '@deepseek-ai/cordis',
       '@deepseek-ai/dsh-api-gateway',
@@ -154,15 +163,14 @@ describe('dsh-legion-receipts package contract', () => {
       '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-session',
       '@deepseek-ai/dsh-client-ui-slots',
-      '@deepseek-ai/dsh-llm',
       '@deepseek-ai/dsh-session',
       '@deepseek-ai/dsh-typert-protocol',
     ]) {
       expect(value.peerDependencies[dependency], dependency).toBe(
-        dependency === '@deepseek-ai/cordis' ? '^4.0.1' : DSH_RANGE,
+        dependency === '@deepseek-ai/cordis' ? '^4.0.2' : COMPATIBILITY.dshPeerRange,
       )
       expect(value.devDependencies[dependency], dependency).toBe(
-        dependency === '@deepseek-ai/cordis' ? '^4.0.1' : '0.1.2-alpha.1',
+        dependency === '@deepseek-ai/cordis' ? '4.0.2' : COMPATIBILITY.latestTestedDshVersion,
       )
     }
     expect(value.peerDependencies.react).toBe('^18.2.0')
@@ -173,8 +181,9 @@ describe('dsh-legion-receipts package contract', () => {
       '@deepseek-ai/dsh-client-test-runtime',
       '@deepseek-ai/dsh-host-webserver',
       '@deepseek-ai/dsh-typert-registry',
-    ]) expect(value.devDependencies[dependency], dependency).toBe('0.1.2-alpha.1')
-    expect(value.devDependencies['@deepseek-ai/dsh-typert-generator']).toBe('0.1.2-alpha.1')
+    ]) expect(value.devDependencies[dependency], dependency).toBe(COMPATIBILITY.latestTestedDshVersion)
+    expect(value.devDependencies['@deepseek-ai/dsh-typert-generator'])
+      .toBe(COMPATIBILITY.latestTestedDshVersion)
     expect(value.devDependencies['@types/react']).toBe('~18.3.1')
     expect(value.devDependencies.tsdown).toBe('^0.22.2')
     expect(value.devDependencies.typescript).toBe('^6.0.3')
@@ -213,7 +222,16 @@ describe('dsh-legion-receipts package contract', () => {
   })
 
   it('uses package-mode Typert generation instead of handwritten descriptors', async () => {
-    const config = await readFile(resolve(PACKAGE_ROOT, 'tsdown.config.ts'), 'utf8')
+    const [config, clientConfig, protocolManifest] = await Promise.all([
+      readFile(resolve(PACKAGE_ROOT, 'tsdown.config.ts'), 'utf8'),
+      readFile(resolve(PACKAGE_ROOT, 'tsdown.client.config.ts'), 'utf8'),
+      readFile(resolve(PACKAGE_ROOT, 'typert-protocol/package.json'), 'utf8'),
+    ])
+    expect(JSON.parse(protocolManifest)).toMatchObject({
+      name: '@deepseek-ai/dsh-typert-protocol',
+      version: COMPATIBILITY.latestTestedDshVersion,
+    })
+    expect(clientConfig).toContain("'@deepseek-ai/dsh-typert-protocol'")
     expect(config).toContain("from '@deepseek-ai/dsh-typert-generator/tsdown'")
     expect(config).toMatch(/typertPlugin\(\{\s*mode:\s*'package',\s*faces:\s*\['host'\]\s*\}\)/)
     expect(config).not.toMatch(/\.typert-package|cpSync|writeBundle/)
@@ -279,13 +297,14 @@ describe('dsh-legion-receipts package contract', () => {
     await ctx.fiber.dispose()
   })
 
-  it('registers under its own loader identity, declares exact externals, and inlines self Remote plus Zod', async () => {
+  it('registers under its own loader identity and inlines private Remote dependencies', async () => {
     const value = await manifest()
     const client = await materialize()
     expect(client.id).toBe(value.name)
     expect(client.required).toEqual([
       '@deepseek-ai/dsh-api-gateway/client',
       '@deepseek-ai/dsh-client-store',
+      '@deepseek-ai/cordis',
       'react',
       '@deepseek-ai/dsh-client-ui-primitives',
     ])
@@ -300,6 +319,7 @@ describe('dsh-legion-receipts package contract', () => {
 
     const source = await bundle()
     expect(source).toContain('dsh-legion-receipts')
+    expect(source).not.toContain('require("@deepseek-ai/dsh-typert-protocol")')
     expect(source).not.toContain('require("dsh-legion-receipts/remote")')
     expect(source).not.toContain("require('dsh-legion-receipts/remote')")
     expect(source).not.toContain('require("zod")')

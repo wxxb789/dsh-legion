@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
-import { deepFreeze } from '@deepseek-ai/dsh-llm'
+import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import {
   RECEIPT_FEED_LIMITS,

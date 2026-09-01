@@ -1,4 +1,4 @@
-import type { JsonValue } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
   ARTIFACT_CONTRACTS,
   STRATEGY_FANOUT_MAX,
