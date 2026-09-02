@@ -198,7 +198,8 @@ describe('published package contract', () => {
     ) as PackageManifest
     expect(manifest.files).toEqual(expect.arrayContaining([
       'lib', 'cordis.patch.yml', 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md',
-      'docs/notes/dsh-0.1.2-alpha.3-upgrade.md', 'docs/run-receipts.md',
+      'docs/notes/dsh-0.1.2-alpha.3-upgrade.md',
+      'docs/notes/dsh-0.1.2-alpha.4-upgrade.md', 'docs/run-receipts.md',
       'examples', 'presets', 'scripts/registry-config.mjs',
       'README.md', 'LICENSE',
     ]))
@@ -261,6 +262,7 @@ describe('published package contract', () => {
       access(resolve(ROOT, 'contracts/journal-v1.json')),
       access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.1-upgrade.md')),
       access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.3-upgrade.md')),
+      access(resolve(ROOT, 'docs/notes/dsh-0.1.2-alpha.4-upgrade.md')),
       access(resolve(ROOT, 'docs/run-receipts.md')),
       access(resolve(ROOT, 'examples/durable-stair-step.config.yml')),
     ])

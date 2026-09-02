@@ -16,7 +16,7 @@ import type { PendingLegionEvent } from '../src/durable-run/events.ts'
 function sessionFake(): Session {
   const events: unknown[] = []
   return {
-    events,
+    snapshotEvents: () => events,
     append(type: string, data: unknown) {
       const event = { type, seq: events.length, time: 1, data }
       events.push(event)
@@ -36,7 +36,7 @@ describe('durable event append', () => {
     const session = sessionFake()
     const pending = pendingRun({ ...runRecord, runId: 'another-run' as never })
     expect(() => appendLegionEvent(session, { runs: {} }, pending)).toThrow(/header/)
-    expect(session.events).toHaveLength(0)
+    expect(session.snapshotEvents()).toHaveLength(0)
   })
 
   it('rejects an attempt from an old run fence before append', () => {
@@ -73,7 +73,7 @@ describe('durable event append', () => {
     }
     expect(() => appendLegionEvent(session, state, staleAttempt))
       .toThrow(/attempt fence is not current/)
-    expect(session.events).toHaveLength(0)
+    expect(session.snapshotEvents()).toHaveLength(0)
   })
 
   it('rejects plan-version regression and terminal rewrites', () => {

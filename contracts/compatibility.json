@@ -17,7 +17,7 @@
   },
   "dshPeerRange": ">=0.1.2-alpha.2 <0.2.0",
   "minimumDshVersion": "0.1.2-alpha.2",
-  "latestTestedDshVersion": "0.1.2-alpha.3",
+  "latestTestedDshVersion": "0.1.2-alpha.4",
   "registryInstallPackageClosure": [
     "dsh-agent",
     "dsh-agent-loop",
@@ -137,13 +137,13 @@
     "dsh-workspace"
   ],
   "packageVersion": "1.2.0",
-  "assessedDshVersions": ["0.1.2-alpha.2", "0.1.2-alpha.3"],
+  "assessedDshVersions": ["0.1.2-alpha.2", "0.1.2-alpha.4"],
   "hostCapabilities": {
     "ephemeralProfileAndStrategy": "supported",
     "journalContractAndPureReplay": "supported",
     "liveSettingsReconfiguration": "capability-detected-optional",
     "durableMutation": "unavailable-fail-closed",
-    "reason": "DSH 0.1.2-alpha.3 still provides no atomic run coordination Host service for durable mutation, and required out-of-repository legion/* events cannot enter its generated persisted-event vocabulary or use the ignorable informational-event escape hatch. Journal activation therefore remains fail-closed. Ephemeral Specialists and Strategies remain supported; full Run Receipt facts use the optional process-local companion feed, append no custom Session event, and keep the bounded tool summary when the companion is absent."
+    "reason": "DSH 0.1.2-alpha.4 still provides no atomic run coordination Host service for durable mutation, and required out-of-repository legion/* events cannot enter its generated persisted-event vocabulary or use the ignorable informational-event escape hatch. Journal activation therefore remains fail-closed. Ephemeral Specialists and Strategies remain supported; full Run Receipt facts use the optional process-local companion feed, append no custom Session event, and keep the bounded tool summary when the companion is absent."
   },
   "previousMinorCompatibility": [
     "config-v2-with-durable-fields-omitted",

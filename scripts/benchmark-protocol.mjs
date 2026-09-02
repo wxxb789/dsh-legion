@@ -25,9 +25,11 @@ class BenchmarkSessionProjections extends Service {
 
   snapshot(session) {
     const values = {}
+    const events = typeof session.snapshotEvents === 'function' ? session.snapshotEvents() : session.events
+    const inheritedEventCount = session.inheritedEventCount ?? session.header.seedLength ?? 0
     for (const definition of this.definitions.values()) {
-      let state = definition.init()
-      for (const event of session.events) state = definition.apply(state, event)
+      let state = definition.init(session.header, inheritedEventCount)
+      for (const event of events) state = definition.apply(state, event)
       if (definition.wire !== undefined) values[definition.key] = definition.wire.view(state)
     }
     values.tokenUsage ??= {
@@ -39,7 +41,7 @@ class BenchmarkSessionProjections extends Service {
 
 class BenchmarkTokenMeter extends Service {
   constructor(ctx) { super(ctx, 'tokenMeter') }
-  measure(session) { return { logRevision: session.events.length, totalTokens: 0, surfaceTokens: 0 } }
+  measure(session) { return { logRevision: session.seq, totalTokens: 0, surfaceTokens: 0 } }
 }
 
 const review = {

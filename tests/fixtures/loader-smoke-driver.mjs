@@ -46,7 +46,8 @@ try {
   replay.assertConsumed()
 
   const session = ctx.sessions.create(SessionId('loader-smoke-session'))
-  const customReceiptEventObserved = session.events.some(event => event.type === 'legion/run-receipt')
+  const customReceiptEventObserved = session.snapshotEvents()
+    .some(event => event.type === 'legion/run-receipt')
   await ctx.loader.remove(receiptId)
   await ctx.loader.await()
   const receiptAbsentAfterUninstall = ctx.get('legionReceipts') === undefined

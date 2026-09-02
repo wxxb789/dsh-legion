@@ -123,7 +123,7 @@ describe('real DSH continuation manager integration', () => {
       expect(persona).toContain('## Legion profile instruction: local:deep.md')
       expect(persona).toContain('Use the loaded continuation instruction.')
       expect(persona).toContain('Use the exact child route.')
-      expect(child.session.events.some(event => event.type === 'assistant/message')).toBe(true)
+      expect(child.session.snapshotEvents().some(event => event.type === 'assistant/message')).toBe(true)
     } finally {
       await ctx.fiber.dispose()
       rmSync(root, { recursive: true, force: true })

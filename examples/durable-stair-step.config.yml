@@ -1,5 +1,5 @@
 # Advanced durable Strategy example using only dsh-legion public config contracts.
-# DSH 0.1.2-alpha.3 provides neither the atomic coordination service nor a
+# DSH 0.1.2-alpha.4 provides neither the atomic coordination service nor a
 # required-event admission seam for legion/* events; this config fails closed.
 configVersion: 3
 enableStrategies: true

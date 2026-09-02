@@ -300,7 +300,10 @@ try {
     || Object.values(receipt).some(Array.isArray)) {
     throw new Error(`packed Strategy returned an invalid bounded Receipt summary: ${JSON.stringify(receipt)}`)
   }
-  if (parent.session.events.some(event => event.type === 'legion/run-receipt')) {
+  const parentEvents = typeof parent.session.snapshotEvents === 'function'
+    ? parent.session.snapshotEvents()
+    : parent.session.events
+  if (parentEvents.some(event => event.type === 'legion/run-receipt')) {
     throw new Error('packed persistent Session contains a custom Run Receipt event')
   }
   process.stdout.write('packed tarball completed one harmless real Config v3 Cohort Strategy successfully\n')

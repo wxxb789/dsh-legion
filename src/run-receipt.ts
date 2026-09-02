@@ -124,9 +124,35 @@ interface LifecycleRecord {
 }
 
 interface SessionCut {
-  readonly header: Session['header']
   readonly events: readonly SessionEvent[]
   readonly logRevision: number
+}
+
+interface CompatibleSessionEventSource {
+  readonly header: Session['header'] & { readonly seedLength?: unknown }
+  readonly inheritedEventCount?: unknown
+  readonly events?: readonly SessionEvent[]
+  readonly seq?: unknown
+  snapshotEvents?(fromSeq?: number, toSeqExclusive?: number): readonly SessionEvent[]
+}
+
+function snapshotOwnSessionEvents(
+  source: CompatibleSessionEventSource,
+  toSeqExclusive: number,
+): readonly SessionEvent[] {
+  const eventCount = source.seq ?? source.events?.length
+  if (!safeCount(eventCount) || !safeCount(toSeqExclusive) || toSeqExclusive > eventCount) {
+    throw new Error('session exposes an invalid event count')
+  }
+  const fromSeq = source.inheritedEventCount ?? source.header.seedLength ?? 0
+  if (!safeCount(fromSeq) || fromSeq > toSeqExclusive) {
+    throw new Error('session exposes an invalid inherited event count')
+  }
+  if (typeof source.snapshotEvents === 'function') {
+    return source.snapshotEvents(fromSeq, toSeqExclusive)
+  }
+  if (source.events !== undefined) return source.events.slice(fromSeq, toSeqExclusive)
+  throw new Error('session exposes no supported event snapshot API')
 }
 
 interface ParticipantCandidate {
@@ -510,27 +536,21 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
     if (meter === undefined) return unavailable('capability-unavailable')
     try {
       const measured = meter.measure(session)
-      if (!Number.isSafeInteger(measured.logRevision)
-        || measured.logRevision < 0
-        || measured.logRevision > session.events.length) return unavailable('observation-failed')
       if (record.tokenCache?.session === session
         && record.tokenCache.logRevision === measured.logRevision) return record.tokenCache.sample
       liveSession = session
       cut = {
-        header: session.header,
-        events: session.events.slice(0, measured.logRevision),
+        events: snapshotOwnSessionEvents(
+          session as unknown as CompatibleSessionEventSource,
+          measured.logRevision,
+        ),
         logRevision: measured.logRevision,
       }
     } catch {
       return unavailable('observation-failed')
     }
   }
-  const seedLength = cut.header.seedLength ?? 0
-  if (!Number.isSafeInteger(seedLength) || seedLength < 0 || seedLength > cut.events.length) {
-    return unavailable('observation-failed')
-  }
-  const own = cut.events.slice(seedLength)
-  const { windows, incomplete } = completeTurns(own)
+  const { windows, incomplete } = completeTurns(cut.events)
   const dimensions: Record<RunReceiptTokenField, TokenDimension> = {
     totalTokens: dimension(),
     uncachedInputTokens: dimension(),
@@ -546,7 +566,7 @@ function sessionTokenSample(ctx: Context, record: LifecycleRecord): RunReceiptTo
       addUsage(dimensions, usage)
     }
   }
-  for (const event of own) {
+  for (const event of cut.events) {
     if (event.type === 'compaction/summary' && event.data.usage !== undefined) {
       addCompactionUsage(dimensions, event.data.usage)
     }
@@ -745,8 +765,10 @@ class HostRunReceiptParticipationObserver implements RunReceiptParticipationObse
           depth: entry.depth,
           coldLifecycle: true,
           coldCut: {
-            header: observation.header,
-            events: observation.events,
+            events: snapshotOwnSessionEvents(
+              observation as unknown as CompatibleSessionEventSource,
+              observation.cursor + 1,
+            ),
             logRevision: observation.cursor + 1,
           },
         }

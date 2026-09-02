@@ -3,7 +3,7 @@ import AgentRegistry, { emitAgentEvent, type Agent, type AgentStatus } from '@de
 import type {} from '@deepseek-ai/dsh-compaction'
 import { MessageId, type TokenUsage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-llm-retry'
-import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SqliteSessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -75,6 +75,18 @@ class IncompatiblePublisher extends Service {
 
   publish(): unknown {
     return { ok: false, code: 'future-publication-result' }
+  }
+}
+
+class LegacyTokenMeter extends Service {
+  constructor(ctx: Context) {
+    super(ctx, 'tokenMeter')
+  }
+
+  measure(session: Session): { logRevision: number } {
+    const events = (session as unknown as { events?: readonly unknown[] }).events
+    if (events === undefined) throw new Error('legacy Session exposes no events snapshot')
+    return { logRevision: events.length }
   }
 }
 
@@ -354,7 +366,7 @@ describe('Run Receipt public publication and degraded execution', () => {
 
     if (outcome.kind === 'failed') throw new Error(outcome.failure.message)
     expect(outcome.kind).toBe('completed')
-    expect(runtime.session.events.some(event => event.type === ('legion/run-receipt' as never))).toBe(false)
+    expect(runtime.session.snapshotEvents().some(event => event.type === ('legion/run-receipt' as never))).toBe(false)
     expect(outcome.receipt.feed).toEqual({ status: 'available', failure: null })
   })
 
@@ -640,7 +652,7 @@ describe('Run Receipt public publication and degraded execution', () => {
     emitAgentEvent(runtime.ctx, child, 'agent/status', { status: 'idle' })
     const reportedSample = latestReceipt(publisher).tokenAccount.sessions[0]
     expect(reportedSample).toMatchObject({
-      logRevision: child.session.events.length,
+      logRevision: child.session.seq,
       totalTokens: { status: 'reported', value: 10 },
     })
     expect(reportedSample).not.toBe(incompleteSample)
@@ -715,7 +727,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const session = runtime.ctx.sessions.create(SessionId('mixed-local-child'), {
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 1,
           },
@@ -769,7 +780,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const session = runtime.ctx.sessions.create(SessionId('nested-root-child'), {
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 1,
           },
@@ -838,7 +848,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const session = runtime.ctx.sessions.create(SessionId('cold-root-child'), {
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 1,
           },
@@ -847,7 +856,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const nested = runtime.ctx.sessions.create(SessionId('cold-nested-child'), {
           meta: {
             parentSession: session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 2,
           },
@@ -969,7 +977,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const session = runtime.ctx.sessions.create(SessionId('truncation-root-child'), {
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 1,
           },
@@ -979,7 +986,6 @@ describe('Run Receipt public publication and degraded execution', () => {
           const nested = runtime.ctx.sessions.create(SessionId(`truncation-nested-${String(index).padStart(3, '0')}`), {
             meta: {
               parentSession: session.id,
-              seedLength: 0,
               origin: 'subagent',
               delegationDepth: 2,
             },
@@ -1041,11 +1047,13 @@ describe('Run Receipt public publication and degraded execution', () => {
       capabilities: FULL_PROVIDER_CAPABILITIES,
       inheritsParentContext: false,
       async start(request: ResolvedSubagentStartRequest) {
+        const inherited = seed.snapshotEvents()
         const session = runtime.ctx.sessions.create(SessionId('settled-fork-child'), {
-          seed: seed.events,
+          seed: inherited,
+          inheritedEventCount: SessionLogOffset(inherited.length),
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: seed.events.length,
+            isSeeded: true,
             origin: 'subagent',
             delegationDepth: 1,
           },
@@ -1107,6 +1115,79 @@ describe('Run Receipt public publication and degraded execution', () => {
     })
   })
 
+  it('reads alpha.2 Session events and seedLength at the compatibility boundary', async () => {
+    const seed = Session.create(SessionId('legacy-seed-source'))
+    appendUsageTurn(seed, {
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 150,
+      cacheReadTokens: 30,
+      cacheWriteTokens: 0,
+    })
+    let runtime!: Awaited<ReturnType<typeof setup>>
+    runtime = await setup({
+      name: 'remote',
+      capabilities: FULL_PROVIDER_CAPABILITIES,
+      inheritsParentContext: false,
+      async start(request: ResolvedSubagentStartRequest) {
+        const inherited = seed.snapshotEvents()
+        const session = runtime.ctx.sessions.create(SessionId('legacy-fork-child'), {
+          seed: inherited,
+          inheritedEventCount: SessionLogOffset(inherited.length),
+          meta: {
+            parentSession: request.parent.session.id,
+            isSeeded: true,
+            origin: 'subagent',
+            delegationDepth: 1,
+          },
+        })
+        session.append('subagent/descriptor', request.descriptor)
+        appendUsageTurn(session, {
+          inputTokens: 10,
+          outputTokens: 2,
+          totalTokens: 15,
+          cacheReadTokens: 3,
+          cacheWriteTokens: 0,
+        })
+        const legacySession = {
+          id: session.id,
+          header: { ...session.header, seedLength: inherited.length },
+          events: session.snapshotEvents(),
+          seq: session.seq,
+        } as unknown as Session
+        const child = { id: session.id, session: legacySession, status: 'idle' } as unknown as Agent
+        const remove = runtime.ctx.agents.register(child)
+        return {
+          id: child.id,
+          localAgent: child,
+          result: Promise.resolve(completed()),
+          async dispose() { remove() },
+        }
+      },
+    })
+    await runtime.ctx.plugin(LegacyTokenMeter)
+    const publisher = new RecordingPublisher(runtime.ctx)
+    const { snapshot, plan } = executionPlan()
+
+    const outcome = await executeStrategyPlan(
+      runtime.ctx,
+      snapshot,
+      plan,
+      runtime.parent,
+      new AbortController().signal,
+    )
+
+    expect(outcome.kind).toBe('completed')
+    expect(latestReceipt(publisher).tokenAccount.sessions).toEqual([expect.objectContaining({
+      childId: 'legacy-fork-child',
+      totalTokens: { status: 'reported', value: 15, source: 'session-fold' },
+      uncachedInputTokens: { status: 'reported', value: 10, source: 'session-fold' },
+      outputTokens: { status: 'reported', value: 2, source: 'session-fold' },
+      cacheReadTokens: { status: 'reported', value: 3, source: 'session-fold' },
+      cacheWriteTokens: { status: 'reported', value: 0, source: 'session-fold' },
+    })])
+  })
+
   it('keeps absent provider cache buckets unavailable rather than reporting zero', async () => {
     let runtime!: Awaited<ReturnType<typeof setup>>
     runtime = await setup({
@@ -1117,7 +1198,6 @@ describe('Run Receipt public publication and degraded execution', () => {
         const session = runtime.ctx.sessions.create(SessionId('cache-absent-child'), {
           meta: {
             parentSession: request.parent.session.id,
-            seedLength: 0,
             origin: 'subagent',
             delegationDepth: 1,
           },
