@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
+import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { RUN_RECEIPT_TOKEN_FIELDS } from 'dsh-legion-receipts'
@@ -538,49 +538,6 @@ function runtimeSnapshot(ctx: Context, config: CompiledConfig): RuntimeSnapshot 
   }
 }
 
-function requireProvider(ctx: Context, plan: DelegationPlan): SubagentProvider {
-  const provider = ctx.subagents.getProvider(plan.subagentProvider)
-  if (provider === undefined) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" requires unavailable subagent provider "${plan.subagentProvider}"`,
-    )
-  }
-  if (plan.mode === 'continuable') {
-    if (provider.prepareContinuable === undefined) {
-      throw new Error(
-        `dsh-legion: Specialist "${plan.specialist}" cannot run in the background because provider "${provider.name}" is not continuable`,
-      )
-    }
-    return provider
-  }
-  if (plan.agentOptions !== undefined && !provider.capabilities.agentOptions) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" requires Agent option overrides but provider "${provider.name}" does not support them`,
-    )
-  }
-  if (plan.maxDepth !== undefined && !provider.capabilities.depthLimit) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" sets numeric maxDepth but provider "${provider.name}" cannot enforce it; use provider-managed`,
-    )
-  }
-  if (plan.persona !== undefined && !provider.capabilities.persona) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" sets persona but provider "${provider.name}" does not support it`,
-    )
-  }
-  if (plan.toolFilter !== undefined && !provider.capabilities.toolFilter) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" sets toolFilter but provider "${provider.name}" does not support it`,
-    )
-  }
-  if (plan.outputSchema !== undefined && !provider.capabilities.outputSchema) {
-    throw new Error(
-      `dsh-legion: Specialist "${plan.specialist}" requires structured output but provider "${provider.name}" does not support it`,
-    )
-  }
-  return provider
-}
-
 function requireSelectedLlmAdapter(ctx: Context, plan: DelegationPlan): void {
   const selected = plan.routePlan?.selected
   if (selected === undefined) return
@@ -940,19 +897,18 @@ function createToolDefinition(
         if (routePlan.kind === 'unroutable-route-plan') throw new RoutePlanError(routePlan)
         plan = applyRoutePlan(plan, routePlan)
       }
-      requireProvider(ctx, plan)
       const request = requestFor(parent, plan)
       requireSelectedLlmAdapter(ctx, plan)
 
       if (plan.mode === 'continuable') {
         exec.signal.throwIfAborted()
-        clearRunReceiptTerminal(ctx, parent.session)
         const started = await ctx.subagents.startContinuable({
           provider: plan.subagentProvider,
           label: plan.label,
           request,
           signal: exec.signal,
         })
+        clearRunReceiptTerminal(ctx, parent.session)
         return {
           kind: 'continuable' as const,
           profile: plan.specialist,
@@ -968,12 +924,13 @@ function createToolDefinition(
 
       return settleForeground(
         plan,
-        () => {
-          clearRunReceiptTerminal(ctx, parent.session)
-          return ctx.subagents.start(plan.subagentProvider, {
+        async () => {
+          const run = await ctx.subagents.start(plan.subagentProvider, {
             ...request,
             signal: exec.signal,
           })
+          clearRunReceiptTerminal(ctx, parent.session)
+          return run
         },
         exec.signal,
         cleanup => {

@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type {
-  SettingsScope, SettingsScopeSnapshot,
-} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { LegionCard, type LegionCardProps } from '../src/client/LegionCard.ts'
 import {
   LegionCardController, type LegionCardSection,
@@ -13,57 +11,13 @@ vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
   IconChevronDownOutline14: () => null,
 }))
 
-class FakeScope implements SettingsScope<LegionCardSection> {
-  private readonly listeners = new Set<() => void>()
-  readonly mutations: Array<Parameters<SettingsScope<LegionCardSection>['mutate']>[0]> = []
-  private snapshot: SettingsScopeSnapshot<LegionCardSection>
-
-  constructor(section: LegionCardSection, base: LegionCardSection = {}) {
-    this.snapshot = {
-      status: 'ready',
-      value: { ...base, ...section },
-      base: { ...base },
-      user: { ...section },
-      revision: 1,
-      writable: true,
-      mode: 'host',
-    }
-  }
-
-  getSnapshot(): SettingsScopeSnapshot<LegionCardSection> {
-    return this.snapshot
-  }
-
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener)
-    return () => { this.listeners.delete(listener) }
-  }
-
-  async mutate(ops: Parameters<SettingsScope<LegionCardSection>['mutate']>[0]): Promise<void> {
-    this.mutations.push(ops)
-    const user = { ...this.snapshot.user as LegionCardSection } as Record<string, unknown>
-    for (const op of ops) {
-      const field = op.path[0]
-      if (typeof field !== 'string') continue
-      if (op.op === 'set') user[field] = op.value
-      else if (op.op === 'unset') delete user[field]
-    }
-    this.snapshot = {
-      ...this.snapshot,
-      value: { ...this.snapshot.base as LegionCardSection, ...user },
-      user,
-      revision: (this.snapshot.revision ?? 0) + 1,
-    }
-    for (const listener of this.listeners) listener()
-  }
-
-  set(field: string, value: unknown): Promise<void> {
-    return this.mutate([{ op: 'set', path: [field], value: value as never }])
-  }
-
-  unset(field: string): Promise<void> {
-    return this.mutate([{ op: 'unset', path: [field] }])
-  }
+function readyScope(section: LegionCardSection, base: LegionCardSection = {}) {
+  const stub = stubSettingsScope<LegionCardSection>()
+  stub.publish({
+    status: 'ready', value: { ...base, ...section }, base: { ...base }, user: { ...section },
+    revision: 1, writable: true, mode: 'host',
+  })
+  return stub
 }
 
 async function settle(): Promise<void> {
@@ -81,8 +35,10 @@ function records(value: unknown): Record<string, unknown>[] {
 
 describe('Legion Settings card canonical vocabulary', () => {
   it('loads legacy defaultProfile and saves only canonical defaultSpecialist', async () => {
-    const scope = new FakeScope({ defaultProfile: 'quick' })
-    const face = new LegionCardController(scope).inject()
+    const stub = readyScope({ defaultProfile: 'quick' })
+    const accepted = Promise.withResolvers<void>()
+    stub.mutate.mockReturnValue(accepted.promise)
+    const face = new LegionCardController(stub.scope).inject()
 
     expect(face.hooks.legionCard.getSnapshot().defaultSpecialist).toMatchObject({
       text: 'quick',
@@ -106,21 +62,55 @@ describe('Legion Settings card canonical vocabulary', () => {
 
     face.edit('defaultSpecialist', 'quick')
     face.save()
-    await settle()
-
-    expect(scope.mutations).toEqual([[{
+    await vi.waitFor(() => expect(stub.mutate).toHaveBeenCalledWith([{
       op: 'unset',
       path: ['defaultProfile'],
     }, {
       op: 'set',
       path: ['defaultSpecialist'],
       value: 'quick',
-    }]])
-    expect(scope.getSnapshot().user).toEqual({ defaultSpecialist: 'quick' })
+    }]))
+    stub.publish({
+      value: { defaultSpecialist: 'quick' }, user: { defaultSpecialist: 'quick' }, revision: 2,
+    })
+    expect(face.hooks.legionCard.getSnapshot()).toMatchObject({
+      dirty: false, saving: true, failed: false,
+    })
+    accepted.resolve()
+    await settle()
+
+    expect(stub.scope.getSnapshot().user).toEqual({ defaultSpecialist: 'quick' })
+    expect(face.hooks.legionCard.getSnapshot()).toMatchObject({ dirty: false, failed: false })
+  })
+
+  it('keeps a staged draft when the Host does not publish acceptance', async () => {
+    const stub = stubSettingsScope<LegionCardSection>()
+    stub.publish({
+      status: 'ready', value: { toolName: 'legion' }, base: {}, user: {},
+      revision: 1, writable: true, mode: 'host',
+    })
+    const face = new LegionCardController(stub.scope).inject()
+
+    face.edit('toolName', 'delegate')
+    expect(face.hooks.legionCard.getSnapshot()).toMatchObject({
+      dirty: true,
+      failed: false,
+      toolName: { text: 'delegate' },
+    })
+    face.save()
+    await settle()
+
+    expect(stub.set).toHaveBeenCalledWith('toolName', 'delegate')
+    expect(stub.scope.getSnapshot().user).toEqual({})
+    expect(face.hooks.legionCard.getSnapshot()).toMatchObject({
+      dirty: true,
+      failed: true,
+      toolName: { text: 'delegate' },
+    })
   })
 
   it('renders current Specialist copy and canonical accessible control ids', () => {
-    const state = new LegionCardController(new FakeScope({ defaultSpecialist: 'quick' })).inject()
+    const state = new LegionCardController(readyScope({ defaultSpecialist: 'quick' }).scope).inject()
       .hooks.legionCard.getSnapshot()
     const tree = LegionCard({
       t: key => en[key as keyof typeof en],

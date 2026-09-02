@@ -461,8 +461,17 @@ describe('dsh-legion', () => {
     expect(JSON.stringify(outputSchema)).toContain('feed')
   })
 
-  it('clears retained terminal presentation only after direct preflight and before start', async () => {
+  it('clears retained terminal presentation only after successful direct publication', async () => {
     let publisher!: RecordingPublisher
+    let rejectStart = false
+    const childResult = Promise.withResolvers<SubagentResult>()
+    const spawn = provider('spawn', {
+      result: () => childResult.promise,
+      onStart: () => {
+        expect(publisher.publications).toEqual([])
+        if (rejectStart) throw new Error('provider rejected start')
+      },
+    })
     const ctx = await setup({
       configVersion: 2,
       toolName: 'legion',
@@ -477,14 +486,7 @@ describe('dsh-legion', () => {
         },
       },
       defaultProfile: 'quick',
-    }, [provider('spawn', {
-      onStart: () => {
-        expect(publisher.publications.at(-1)).toEqual({
-          type: 'clear-terminal',
-          sessionId: 'direct-clear-parent',
-        })
-      },
-    })])
+    }, [spawn])
     publisher = new RecordingPublisher(ctx)
     const caller = parent('direct-clear-parent')
 
@@ -506,19 +508,56 @@ describe('dsh-legion', () => {
     expect(cancelled.isError).toBe(true)
     expect(publisher.publications).toEqual([])
 
-    const result = await execute(ctx, {
+    const pending = execute(ctx, {
       specialist: 'quick',
       description: 'Valid direct call.',
       prompt: 'Start once.',
       run_in_background: false,
     }, caller)
+    await vi.waitFor(() => expect(publisher.publications).toEqual([{
+      type: 'clear-terminal',
+      sessionId: 'direct-clear-parent',
+    }]))
+    childResult.resolve({
+      output: [{ type: 'text', text: 'child result' }],
+      stopReason: 'completed',
+    })
+    const result = await pending
 
     if (result.isError) throw new Error(rendered(result))
     expect(result.isError).toBe(false)
-    expect(publisher.publications).toEqual([{
-      type: 'clear-terminal',
-      sessionId: 'direct-clear-parent',
-    }])
+
+    publisher.publications.length = 0
+    rejectStart = true
+    const rejected = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Rejected direct call.',
+      prompt: 'Reject after admission.',
+      run_in_background: false,
+    }, caller)
+    expect(rejected.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
+
+    rejectStart = false
+    ;(spawn.capabilities as { depthLimit: boolean }).depthLimit = false
+    const unsupported = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Unsupported direct call.',
+      prompt: 'Reject unsupported depth.',
+      run_in_background: false,
+    }, caller)
+    expect(unsupported.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
+
+    ;(spawn.capabilities as { depthLimit: boolean }).depthLimit = true
+    const rejectedContinuable = await execute(ctx, {
+      specialist: 'quick',
+      description: 'Rejected continuable call.',
+      prompt: 'Reject unavailable continuation.',
+      run_in_background: true,
+    }, caller)
+    expect(rejectedContinuable.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
   })
 
   it('does not clear terminal presentation for an unroutable direct call', async () => {
@@ -1012,9 +1051,13 @@ describe('dsh-legion', () => {
 
   it('starts the selected profile as a continuable child by default', async () => {
     const ctx = await setup(baseConfig)
-    const start = vi.spyOn(ctx.subagents, 'startContinuable').mockResolvedValue({
-      childId: SessionId('durable-child'),
-      messageId: MessageId('initial-message'),
+    const publisher = new RecordingPublisher(ctx)
+    const start = vi.spyOn(ctx.subagents, 'startContinuable').mockImplementation(async () => {
+      expect(publisher.publications).toEqual([])
+      return {
+        childId: SessionId('durable-child'),
+        messageId: MessageId('initial-message'),
+      }
     })
 
     const result = await execute(ctx, {
@@ -1032,6 +1075,20 @@ describe('dsh-legion', () => {
       }),
     }))
     expect(rendered(result)).toContain('started Legion Specialist deep as subagent durable-child')
+    expect(publisher.publications).toEqual([{
+      type: 'clear-terminal',
+      sessionId: 'parent',
+    }])
+
+    publisher.publications.length = 0
+    start.mockRejectedValueOnce(new Error('continuable start rejected'))
+    const rejected = await execute(ctx, {
+      profile: 'deep',
+      description: 'reject architecture',
+      prompt: 'Do not clear.',
+    })
+    expect(rejected.isError).toBe(true)
+    expect(publisher.publications).toEqual([])
   })
 
   it('passes Agent options, depth, persona, and tool filtering through an advertising continuable provider', async () => {

@@ -50,6 +50,7 @@
     "dsh-session-projection",
     "dsh-session-query",
     "dsh-session-query-sqlite",
+    "dsh-settings",
     "dsh-subagent",
     "dsh-subagent-spawn-in-process",
     "dsh-system-prompt",
